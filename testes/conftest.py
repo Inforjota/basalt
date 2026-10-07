@@ -186,7 +186,7 @@ class Servidor(Cliente):
     """o servidor do Basalt a correr NOUTRO processo (como em produção), numa porta local, com a memória em pastas
     temporárias, modo `cabecalho` (o utilizador é o do cabeçalho X-Basalt-Email) e, se houver `ollama`, com IA e embeddings."""
 
-    def __init__(self, mem: Memoria, ollama=None, modo="cabecalho", utilizadores=None, extra=""):
+    def __init__(self, mem: Memoria, ollama=None, modo="cabecalho", utilizadores=None, extra="", indexar=False):
         self.mem = mem
         self.porta = porta_livre()
         self.toml = mem.base / "basalt.toml"
@@ -195,6 +195,12 @@ class Servidor(Cliente):
                    BASALT_CAS_GRACA=os.environ["BASALT_CAS_GRACA"], BASALT_SIG_ISOLADO="1")
         env.pop("BASALT_CONFIG", None)
         self.env = env
+        if indexar:      # antes de arrancar: um índice já feito (o servidor só indexa sozinho se o encontrar vazio)
+            mem.excluir.write_text("".join(f"{p.stem}\n" for p in sorted(mem.real.glob("*.md")) if not (mem.copia / p.name).exists()),
+                                   encoding="utf-8")        # o que a cópia não tem está retido: não entra no índice
+            r = subprocess.run([sys.executable, "-m", "basalt.sig", "indexar"], env=dict(env, BASALT_CONFIG=str(self.toml)),
+                               cwd=str(mem.base), capture_output=True, text=True, timeout=120)
+            assert r.returncode == 0, r.stdout + r.stderr
         self.log = open(mem.base / "servidor.log", "w+")
         self.proc = subprocess.Popen([sys.executable, str(AQUI / "lanca_servidor.py"), str(self.toml)], env=env, cwd=str(mem.base),
                                      stdout=self.log, stderr=subprocess.STDOUT)
