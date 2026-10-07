@@ -1,0 +1,23 @@
+# docker compose up -d   → http://localhost:8121  (modo «aberto» em localhost; em rede, pôr [auth] modo = "senha" no basalt.toml)
+services:
+  basalt:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: basalt:local
+    container_name: basalt
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8121:8121"        # só esta máquina; para expor, põe um proxy com TLS à frente (ver docs/INSTALAR.md)
+    volumes:
+      - ./dados:/dados                # notas, cópia editável, índice, sessões, basalt.toml — TUDO fica aqui
+    environment:
+      - TZ=Europe/Lisbon
+      # IA (opcional): chave por variável, nunca no toml.  ex.: - BASALT_IA_CHAVE=${BASALT_IA_CHAVE}
+    # Com o Ollama na mesma máquina (embeddings/chat locais): descomenta e aponta o basalt.toml a http://ollama:11434/v1
+    # depends_on: [ollama]
+  # ollama:
+  #   image: ollama/ollama
+  #   volumes: [ollama:/root/.ollama]
+# volumes:
+#   ollama: {}

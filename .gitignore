@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.venv*/
+.worktrees/
+*.egg-info/
+build/
+dist/
+basalt-dados/
+docker/dados/
+*.tmp
+.pytest_cache/

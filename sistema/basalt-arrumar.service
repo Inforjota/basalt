@@ -1,0 +1,10 @@
+[Unit]
+Description=Basalt — arrumar (Entrada → notas, ligações, índice)
+After=basalt.service
+
+[Service]
+Type=oneshot
+User=basalt
+WorkingDirectory=/var/lib/basalt
+Environment=BASALT_CONFIG=/var/lib/basalt/basalt.toml
+ExecStart=/usr/bin/python3 -m basalt arrumar

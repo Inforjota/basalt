@@ -1,0 +1,11 @@
+# arruma a Entrada e corrige ligações todas as noites (precisa de IA configurada; sem IA só corrige ligações)
+[Unit]
+Description=Basalt — arrumar as notas de noite
+
+[Timer]
+OnCalendar=*-*-* 04:10:00
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

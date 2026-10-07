@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="pt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Basalt — as tuas notas, com memória</title>
+<meta name="description" content="Cofre Markdown (Obsidian) com pesquisa por significado, Entrada que se arruma sozinha e agentes de IA que nunca sobrepõem o que escreveste. Código aberto, só Python, na tua máquina.">
+<style>
+:root{--bg:#faf8f4;--fg:#1d1b17;--mute:#6b6760;--acc:#2f5d50;--acc2:#b8552f;--card:#fff;--line:#e6e1d8;--code:#f1ede6}
+@media (prefers-color-scheme:dark){:root{--bg:#15171a;--fg:#ece9e3;--mute:#9b978f;--acc:#7fc1ad;--acc2:#e08b63;--card:#1d2024;--line:#2b2f35;--code:#23272d}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:920px;margin:0 auto;padding:0 16px 64px}
+header{display:flex;justify-content:space-between;align-items:center;padding:20px 0}
+.logo{font-weight:800;letter-spacing:-.02em;font-size:22px}.logo span{color:var(--acc)}
+.lang button{background:none;border:1px solid var(--line);color:var(--fg);border-radius:8px;padding:4px 10px;cursor:pointer;font:inherit;font-size:14px}
+.lang button[aria-pressed=true]{background:var(--acc);color:#fff;border-color:var(--acc)}
+h1{font-size:clamp(30px,6vw,48px);line-height:1.1;letter-spacing:-.03em;margin:32px 0 12px}
+.lead{font-size:20px;color:var(--mute);max-width:640px;margin:0 0 28px}
+.cta{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:48px}
+.btn{display:inline-block;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:600}
+.btn.p{background:var(--acc);color:#fff}.btn.s{border:1px solid var(--line);color:var(--fg)}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin:24px 0 48px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--mute);font-size:15px}
+h2{font-size:26px;letter-spacing:-.02em;margin:48px 0 12px}
+pre{background:var(--code);border:1px solid var(--line);border-radius:12px;padding:14px 16px;overflow:auto;font-size:14px;line-height:1.5}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.note{border-left:3px solid var(--acc2);padding:8px 14px;color:var(--mute);background:var(--card);border-radius:0 10px 10px 0}
+footer{margin-top:64px;padding-top:20px;border-top:1px solid var(--line);color:var(--mute);font-size:14px}
+[data-en]{display:none}html[lang=en] [data-pt]{display:none}html[lang=en] [data-en]{display:revert}
+a{color:var(--acc)}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="logo">▲ <span>Basalt</span></div>
+  <div class="lang" role="group" aria-label="idioma / language">
+    <button type="button" data-lang="pt" aria-pressed="true">PT</button>
+    <button type="button" data-lang="en" aria-pressed="false">EN</button>
+  </div>
+</header>
+
+<h1 data-pt>As tuas notas, com memória.</h1>
+<h1 data-en>Your notes, with memory.</h1>
+<p class="lead" data-pt>Um cofre Markdown (compatível com o Obsidian) que procura por significado, responde com fontes, arruma as ideias soltas sozinho — e deixa os teus agentes de IA ler e escrever <strong>sem nunca sobrepor</strong> o que escreveste. Na tua máquina, só Python, sem conta em lado nenhum.</p>
+<p class="lead" data-en>A Markdown vault (Obsidian-compatible) that searches by meaning, answers with sources, tidies loose ideas on its own — and lets your AI agents read and write <strong>without ever overwriting</strong> what you wrote. On your machine, plain Python, no account anywhere.</p>
+
+<div class="cta">
+  <a class="btn p" href="#instalar" data-pt>Instalar em 2 minutos</a>
+  <a class="btn p" href="#instalar" data-en>Install in 2 minutes</a>
+  <a class="btn s" href="https://github.com/REPO_POR_DEFINIR" data-pt>Código (MIT)</a>
+  <a class="btn s" href="https://github.com/REPO_POR_DEFINIR" data-en>Source (MIT)</a>
+</div>
+
+<div class="grid">
+  <div class="card"><h3 data-pt>Os teus ficheiros</h3><h3 data-en>Your files</h3>
+    <p data-pt>Markdown numa pasta com histórico git. Abre com o Obsidian, o vim, o que quiseres. Sem base de dados fechada.</p>
+    <p data-en>Markdown in a folder with git history. Open it with Obsidian, vim, anything. No closed database.</p></div>
+  <div class="card"><h3 data-pt>Pesquisa por significado, offline</h3><h3 data-en>Semantic search, offline</h3>
+    <p data-pt>Com embeddings locais (Ollama) encontras «aquela nota do barco das 8» sem acertar nas palavras. Sem embeddings, procura por palavras (BM25).</p>
+    <p data-en>With local embeddings (Ollama) you find “that note about the 8 o’clock ferry” without matching the words. Without them, lexical search (BM25).</p></div>
+  <div class="card"><h3 data-pt>Agentes que não estragam nada</h3><h3 data-en>Agents that break nothing</h3>
+    <p data-pt>Servidor MCP com 7 ferramentas. Cada escrita exige o <code>hash</code> da versão lida; se mudou, o agente recebe o texto actual e funde. Não há apagar.</p>
+    <p data-en>MCP server with 7 tools. Every write needs the <code>hash</code> of the version read; if it changed, the agent gets the current text and merges. There is no delete.</p></div>
+  <div class="card"><h3 data-pt>Nada se perde numa corrida</h3><h3 data-en>Nothing lost in a race</h3>
+    <p data-pt>Escritas atómicas compare-and-swap (<code>renameat2</code>), trinco entre processos, cópias de segurança do que sai numa troca. Auditado por uma IA de outra família.</p>
+    <p data-en>Atomic compare-and-swap writes (<code>renameat2</code>), cross-process lock, safety copies of whatever leaves in a swap. Audited by an AI of another family.</p></div>
+  <div class="card"><h3 data-pt>Mesmo sem rede</h3><h3 data-en>Truly offline</h3>
+    <p data-pt>A interface guarda uma cópia local (service worker + IndexedDB) com trancas por sessão: editas no telemóvel sem rede e sincroniza quando voltar.</p>
+    <p data-en>The UI keeps a local copy (service worker + IndexedDB) with per-session locks: edit on your phone with no network, sync when it is back.</p></div>
+  <div class="card"><h3 data-pt>Diagramas, fórmulas, IA no editor</h3><h3 data-en>Diagrams, formulas, AI in the editor</h3>
+    <p data-pt>Mermaid e KaTeX como no Obsidian; editor CodeMirror 6 com resumir, reescrever, continuar. Segredos em claro são recusados ao gravar.</p>
+    <p data-en>Mermaid and KaTeX as in Obsidian; a CodeMirror 6 editor with summarise, rewrite, continue. Plaintext secrets are refused on save.</p></div>
+</div>
+
+<h2 id="instalar" data-pt>Instalar</h2><h2 id="install" data-en>Install</h2>
+<pre><code>git clone https://github.com/REPO_POR_DEFINIR basalt &amp;&amp; cd basalt
+python3 -m basalt iniciar --dados ~/basalt-dados --email tu@exemplo.pt
+BASALT_CONFIG=~/basalt-dados/basalt.toml python3 -m basalt serve   # http://127.0.0.1:8121</code></pre>
+<p data-pt>Python ≥ 3.11 e git. Docker e systemd também: ver <code>docs/INSTALAR.md</code>. IA local opcional com o Ollama (<code>nomic-embed-text</code> + um modelo de chat).</p>
+<p data-en>Python ≥ 3.11 and git. Docker and systemd too: see <code>docs/INSTALAR.md</code>. Optional local AI with Ollama (<code>nomic-embed-text</code> + a chat model).</p>
+
+<h2 data-pt>Os teus agentes</h2><h2 data-en>Your agents</h2>
+<pre><code>claude mcp add basalt -- python3 -m basalt mcp --utilizador tu@exemplo.pt</code></pre>
+<p data-pt>Depois, no Claude Code: «procura nas minhas notas o que decidi sobre o servidor», «acrescenta à nota <code>projecto_x</code> que…». Codex, Cursor e claude.ai (por HTTP com token) em <code>docs/MCP.md</code>.</p>
+<p data-en>Then, in Claude Code: “search my notes for what I decided about the server”, “append to note <code>project_x</code> that…”. Codex, Cursor and claude.ai (over HTTP with a token) in <code>docs/MCP.md</code>.</p>
+
+<h2 data-pt>Segurança, em duas linhas</h2><h2 data-en>Security, in two lines</h2>
+<p class="note" data-pt>Escuta em <code>127.0.0.1</code> por omissão; para a rede, um proxy HTTPS à frente. Sessões HttpOnly/SameSite=Strict, scrypt, limite de tentativas por IP. O MCP por HTTP só aceita <code>Authorization: Bearer</code> — nunca o cookie — por isso um site de terceiros no teu browser não consegue escrever nas tuas notas.</p>
+<p class="note" data-en>Listens on <code>127.0.0.1</code> by default; for the network, an HTTPS proxy in front. HttpOnly/SameSite=Strict sessions, scrypt, per-IP attempt limit. MCP over HTTP accepts <code>Authorization: Bearer</code> only — never the cookie — so a third-party site in your browser cannot write to your notes.</p>
+
+<footer>
+  <span data-pt>MIT · feito nos Açores por <a href="https://inforjota.com">Inforjota</a> · a interface e a configuração estão em português; interface em inglês no roteiro.</span>
+  <span data-en>MIT · made in the Azores by <a href="https://inforjota.com">Inforjota</a> · the UI and config keys are in Portuguese; an English UI is on the roadmap.</span>
+</footer>
+</main>
+<script>
+(function(){
+  var h=document.documentElement, bs=document.querySelectorAll(".lang button");
+  function set(l){h.lang=l;bs.forEach(function(b){b.setAttribute("aria-pressed",String(b.dataset.lang===l))});try{localStorage.setItem("basalt-lang",l)}catch(e){}}
+  var g=null;try{g=localStorage.getItem("basalt-lang")}catch(e){}
+  set(g||((navigator.language||"pt").toLowerCase().startsWith("pt")?"pt":"en"));
+  bs.forEach(function(b){b.addEventListener("click",function(){set(b.dataset.lang)})});
+})();
+</script>
+</body>
+</html>

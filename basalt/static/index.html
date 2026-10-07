@@ -425,6 +425,10 @@ body.modo-notas .obsidian-shell{
 .markdown-body .embed-nota-corpo{font-size:.94em}
 .markdown-body .embed-nota-link{padding:4px 12px; color:var(--text-dim)}
 .markdown-body .embed-nota-ficheiro{padding:4px 12px; color:var(--text-dim)}
+/* anexos ![[foto.png]] — ficheiros em /anexos/ do espaço */
+.markdown-body .embed-img{max-width:100%; height:auto; display:block; margin:.6em 0; border-radius:var(--radius-sm)}
+.markdown-body .embed-media{max-width:100%; display:block; margin:.6em 0}
+.markdown-body a.embed-anexo-link{display:block; text-decoration:none}
 
 /* ---------- #41: badge "por enviar" e conflito de sincronização ---------- */
 .badge-porenviar{background:color-mix(in srgb, var(--warning) 22%, transparent); color:var(--warning)}
@@ -825,7 +829,7 @@ async function reagirResposta(res, path, bloqAntes, inicio){
   }catch(e){}
 }
 
-async function apiSend(method, path, body){
+async function apiSend(method, path, body, opcoes){
   var res;
   try{
     res = await fetch(path, {
@@ -833,8 +837,12 @@ async function apiSend(method, path, body){
       credentials: "same-origin",
       headers: {"Content-Type":"application/json","X-Basalt":"1"},
       body: JSON.stringify(body || {}),
+      signal: (opcoes && opcoes.signal) || undefined,
     });
-  }catch(e){ return apiSendFalhaRede(); }
+  }catch(e){
+    if(e && e.name === "AbortError") throw e;   // cancelado por quem pediu — não é «sem rede»
+    return apiSendFalhaRede();
+  }
   return handleRes(res);
 }
 
@@ -1680,10 +1688,27 @@ function renderKatex(src, display){
 }
 
 /* ---- notas embutidas ![[nome]] — 1 nível só (dentro de uma embutida, ![[...]] noutra vira link simples) ---- */
+/* anexos: ![[foto.png]] (também ![[foto.png|300]] e ![[doc.pdf#p2]] do Obsidian) — o ficheiro vive em /anexos/ do espaço */
+var ANEXO_RX = /^[A-Za-z0-9\u00C0-\u024F][A-Za-z0-9\u00C0-\u024F._ \-]{0,118}[A-Za-z0-9]$/;
+function renderAnexo(nome){
+  nome = String(nome || "").split("|")[0].split("#")[0].trim();
+  var m = /\.([a-z0-9]+)$/i.exec(nome), ext = m ? m[1].toLowerCase() : "";
+  if(!ANEXO_RX.test(nome) || !ext){
+    return '<div class="embed-nota embed-nota-ficheiro">📎 ' + escapeHtml(nome) + "</div>";
+  }
+  var url = "/anexos/" + encodeURIComponent(nome), nomeHtml = escapeHtml(nome);
+  if(/^(png|jpe?g|gif|webp|svg)$/.test(ext)){
+    return '<a class="embed-anexo-img" href="' + url + '" target="_blank" rel="noopener"><img class="embed-img" src="' + url + '" alt="' + nomeHtml + '" loading="lazy"></a>';
+  }
+  if(/^(mp3|m4a|wav|ogg)$/.test(ext)) return '<audio class="embed-media" controls preload="none" src="' + url + '"></audio>';
+  if(/^(mp4|webm)$/.test(ext)) return '<video class="embed-media" controls preload="none" src="' + url + '"></video>';
+  return '<a class="embed-nota embed-nota-ficheiro embed-anexo-link" href="' + url + '" target="_blank" rel="noopener">📎 ' + nomeHtml + "</a>";
+}
+
 function renderEmbed(nome, profundidade){
   var pareceNota = /^[a-zA-Z0-9_:]+$/.test(nome);
   if(!pareceNota){
-    return '<div class="embed-nota embed-nota-ficheiro">📎 ' + escapeHtml(nome) + "</div>";
+    return renderAnexo(nome);
   }
   var tituloHtml = '<a href="#/nota/' + nome + '" class="wiki-link" data-nome="' + escapeHtml(nome) + '">' + escapeHtml(nome) + "</a>";
   if(profundidade >= 1){
@@ -2162,6 +2187,57 @@ function initTopbar(){
 var VIEW_CLEANUP = null;
 var ABRIR_EM_EDICAO = null;
 var NOTA_RECEM_CRIADA = null;   // #41 fase 3b: nome da nota criada agora mesmo (aviso de "parecida" só se aplica a esta)
+var ETIQUETAS_CACHE = [];      // nomes das #etiquetas já usadas (GET /api/etiquetas), para o autocompletar do editor
+function carregarEtiquetas(){
+  if(!navigator.onLine) return;
+  apiGet("/api/etiquetas").then(function(r){
+    ETIQUETAS_CACHE = ((r && r.etiquetas) || []).map(function(e){ return e.etiqueta; }).filter(Boolean);
+  }).catch(function(){});   // sem rede ou sem a rota: fica a lista que havia
+}
+/* anexos: colar/largar ficheiros no editor → POST /api/anexos (corpo = o ficheiro) → ![[nome]] no cursor */
+var ANEXO_EXT_POR_TIPO = {"image/png":"png","image/jpeg":"jpg","image/gif":"gif","image/webp":"webp","image/svg+xml":"svg",
+  "application/pdf":"pdf","audio/mpeg":"mp3","audio/mp4":"m4a","audio/x-m4a":"m4a","audio/wav":"wav","audio/x-wav":"wav",
+  "audio/ogg":"ogg","video/mp4":"mp4","video/webm":"webm","text/csv":"csv","application/json":"json","text/plain":"txt"};
+function nomeParaAnexo(ficheiro){
+  var nome = String(ficheiro.name || "").trim();
+  var generico = !nome || /^(image|imagem)\.(png|jpe?g|gif|webp)$/i.test(nome);   // o browser chama "image.png" ao que se cola
+  if(generico){
+    var d = new Date(), z = function(n){ return (n < 10 ? "0" : "") + n; };
+    var ext = ANEXO_EXT_POR_TIPO[ficheiro.type] || (nome.split(".").pop() || "png");
+    nome = "colado-" + d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + "-" + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds()) + "." + ext;
+  }
+  return nome.replace(/[^A-Za-z0-9À-ɏ._ \-]+/g, "_").slice(0, 120);
+}
+function enviarAnexo(ficheiro){
+  var nome = nomeParaAnexo(ficheiro);
+  return fetch("/api/anexos?nome=" + encodeURIComponent(nome), {
+    method: "POST", credentials: "same-origin",
+    headers: {"X-Basalt": "1", "Content-Type": ficheiro.type || "application/octet-stream"},
+    body: ficheiro,
+  }).then(handleRes, function(){ return apiSendFalhaRede(); });
+}
+function ligarAnexosNoEditor(alvo, obterEditor){
+  function tratar(e, lista){
+    var fich = [], i;
+    for(i = 0; i < lista.length; i++){ if(lista[i] && lista[i].size > 0) fich.push(lista[i]); }
+    if(!fich.length) return;
+    e.preventDefault(); e.stopPropagation();
+    if(!navigator.onLine){ showToast("precisa de rede para guardar anexos."); return; }
+    fich.forEach(function(f){
+      enviarAnexo(f).then(function(r){
+        var ed = obterEditor();
+        if(ed && r && r.nome) ed.inserirNoCursor("![[" + r.nome + "]]");
+        showToast("anexo guardado: " + r.nome);
+      }).catch(function(er){ showToast("anexo não guardado: " + ((er && er.message) || er)); });
+    });
+  }
+  alvo.addEventListener("paste", function(e){ var cd = e.clipboardData; if(cd && cd.files && cd.files.length) tratar(e, cd.files); }, true);
+  alvo.addEventListener("drop", function(e){ var dt = e.dataTransfer; if(dt && dt.files && dt.files.length) tratar(e, dt.files); }, true);
+  alvo.addEventListener("dragover", function(e){
+    var dt = e.dataTransfer;
+    if(dt && dt.types && Array.prototype.indexOf.call(dt.types, "Files") >= 0) e.preventDefault();   // senão o browser abre o ficheiro
+  }, true);
+}
 var EDITOR_ACTIVO = null;       // #41 fase 3b: instância BasaltEditor montada agora (para aplicar mudança de tema ao vivo)
 var NOTAS_SHELL = null;
 
@@ -3196,6 +3272,7 @@ function renderNotaCompleta(nota, centro, contexto){
       }
       var root = document.getElementById("modal-root");
       var cancelado = false;
+      var iaCtrl = (typeof AbortController === "function") ? new AbortController() : null;
       root.innerHTML =
         '<div class="modal-backdrop" id="ia-backdrop">' +
           '<div class="modal ia-modal" role="dialog" aria-modal="true">' +
@@ -3204,13 +3281,13 @@ function renderNotaCompleta(nota, centro, contexto){
             '<div class="modal-actions" id="ia-acoes"><button id="ia-cancelar" class="btn" type="button">Cancelar</button></div>' +
           "</div></div>";
       var backdrop = document.getElementById("ia-backdrop");
-      function fechar(){ cancelado = true; root.innerHTML = ""; }
+      function fechar(){ cancelado = true; root.innerHTML = ""; if(iaCtrl){ try{ iaCtrl.abort(); }catch(_e){} } }
       backdrop.addEventListener("click", function(e){ if(e.target === backdrop) fechar(); });
       document.getElementById("ia-cancelar").addEventListener("click", fechar);
 
       var res, erro = null;
       try{
-        res = await apiSend("POST", "/api/ia", {acao: acao, texto: sel.texto, contexto: editorApi.obterTexto()});
+        res = await apiSend("POST", "/api/ia", {acao: acao, texto: sel.texto, contexto: editorApi.obterTexto()}, iaCtrl ? {signal: iaCtrl.signal} : undefined);
       }catch(e){ erro = e; }
       if(cancelado) return;
       var corpo = document.getElementById("ia-corpo");
@@ -3273,6 +3350,7 @@ function renderNotaCompleta(nota, centro, contexto){
     // (ex.: Escape a fechar a pesquisa, ou o seu próprio atalho Mod-s) o evento chega com
     // defaultPrevented=true e não fazemos nada — evita cancelar/gravar em duplicado.
     function ligarComandosComuns(alvo){
+      ligarAnexosNoEditor(alvo, function(){ return editorApi; });
       alvo.addEventListener("keydown", function(e){
         if(e.defaultPrevented) return;
         if(e.key === "Escape"){ cancelar(); return; }
@@ -3295,7 +3373,9 @@ function renderNotaCompleta(nota, centro, contexto){
     }
 
     function montarEditorNovo(){
+      carregarEtiquetas();
       editorApi = edInstance = window.BasaltEditor.criar(host, {
+        etiquetas: function(){ return ETIQUETAS_CACHE; },
         texto: nota.texto,
         tema: temaEditorActual(),
         listarNotas: function(){

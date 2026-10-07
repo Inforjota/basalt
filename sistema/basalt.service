@@ -1,0 +1,32 @@
+# /etc/systemd/system/basalt.service — Basalt como serviço do sistema (utilizador próprio, sem root)
+#   sudo useradd --system --create-home --home-dir /var/lib/basalt basalt
+#   sudo -u basalt python3 -m basalt iniciar --dados /var/lib/basalt      # cria basalt.toml + pastas
+#   sudo systemctl enable --now basalt
+[Unit]
+Description=Basalt — notas com memória (servidor web + MCP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=basalt
+Group=basalt
+WorkingDirectory=/var/lib/basalt
+Environment=BASALT_CONFIG=/var/lib/basalt/basalt.toml
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m basalt serve
+Restart=on-failure
+RestartSec=3
+# endurecimento: o Basalt só precisa de escrever nos seus dados
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/basalt
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

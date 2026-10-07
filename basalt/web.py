@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import arrumar as arr
-from . import auth, config, sig
+from . import anexos, auth, config, etiquetas, sig
 from . import cas as _cas
 from . import ia as ia_mod
 from . import unir
@@ -1297,8 +1297,12 @@ class H(BaseHTTPRequestHandler):
         g = lambda k, d="": (q.get(k) or [d])[0]
         try:
             with self._dentro(user):
+                if u.path.startswith("/anexos/"):                                           # ficheiros das notas (![[foto.png]])
+                    return self._anexo(urllib.parse.unquote(u.path[len("/anexos/"):]))
                 if not u.path.startswith("/api/"):
                     return self._static(u.path)
+                if u.path == "/api/etiquetas":                                              # autocompletar #etiquetas no editor
+                    return self._json(200, {"etiquetas": etiquetas.do_espaco(config.actual())})
                 if u.path == "/api/eu":
                     return self._json(200, {"email": user.email, "nome": user.nome or user.email.split("@")[0], "admin": user.admin,
                                             "modo": self.cfg.auth.modo, "espaco": user.espaco, "lingua": self.cfg.lingua,
@@ -1345,6 +1349,37 @@ class H(BaseHTTPRequestHandler):
         if self.headers.get("X-Basalt") != "1":
             self._json(403, {"erro": "Pedido sem o cabeçalho X-Basalt."}); return False
         return True
+
+    # ── anexos: imagens, PDFs, áudio… guardados ao lado das notas (basalt/anexos.py) e etiquetas ──
+    def _anexo(self, nome):
+        estado, cab, corpo = anexos.ler(config.actual(), nome)
+        if estado != 200:
+            return self._json(estado, {"erro": "Nome de anexo inválido." if estado == 400 else "Não existe."})
+        self.send_response(200)
+        for k, v in (cab.items() if hasattr(cab, "items") else cab):
+            self.send_header(k, v)
+        self.end_headers(); self.wfile.write(corpo)
+
+    def _anexo_enviar(self, user, u):
+        """POST /api/anexos?nome=foto.png com o ficheiro no corpo. Verifica tamanho e nome ANTES de ler o corpo."""
+        nome = (urllib.parse.parse_qs(u.query).get("nome") or [""])[0]
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        if n <= 0:
+            return self._json(400, {"erro": "Ficheiro vazio."})
+        if n > anexos.TAMANHO_MAX:
+            return self._json(413, {"erro": "Ficheiro demasiado grande (máximo %d MiB)." % (anexos.TAMANHO_MAX // (1024 * 1024))})
+        if not anexos.nome_ok(nome):
+            return self._json(400, {"erro": "Nome de ficheiro inválido (letras, dígitos, espaços, . _ - e uma extensão conhecida)."})
+        dados = self.rfile.read(n)
+        try:
+            with self._dentro(user):
+                final = anexos.guardar(config.actual(), nome, dados)
+        except ValueError as e:
+            return self._json(400, {"erro": str(e)})
+        return self._json(201, {"nome": final, "bytes": len(dados)})
 
     def do_PUT(self):
         if self._extra("PUT"):
@@ -1406,6 +1441,8 @@ class H(BaseHTTPRequestHandler):
             return self._sem_acesso(u.path)
         if not self._escrita(user):
             return
+        if u.path == "/api/anexos":                                                          # corpo = o ficheiro, não JSON
+            return self._anexo_enviar(user, u)
         try:
             c = self._corpo()
             with self._dentro(user):
@@ -1508,6 +1545,11 @@ def criar_servidor(cfg, host=None, porta=None):
         esp.criar()
         git_iniciar(esp)
     classe = type("Handler", (H,), {"cfg": cfg, "aut": auth.Autenticador(cfg)})
+    try:
+        from . import mcp
+        mcp.registar(ROTAS_EXTRA, cfg, classe.aut)   # POST /mcp (só Bearer) + GET /mcp → 405; o MCP importa basalt.web sozinho
+    except ImportError:
+        pass
     srv = ThreadingHTTPServer((host if host is not None else cfg.escutar, cfg.porta if porta is None else porta), classe)
     srv.daemon_threads = True
     return srv
