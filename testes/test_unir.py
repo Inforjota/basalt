@@ -38,6 +38,14 @@ class TestJuncoesValidas:
     def test_facto_dentro_de_outro_numero_nao_conta(self, escrito):
         assert not unir.tem_facto("20", escrito)
 
+    def test_ip_e_versao_sao_um_facto_cada_nao_pedacos(self):
+        a = FM_A + "Servidor em 192.0.2.104.\n"
+        b = FM_B + "A versão é v1.20.\n"
+        bom = FM_A + "Servidor em 192.0.2.104.\nA versão é v1.20.\n"
+        assert validar(bom, a=a, b=b)[0]
+        ok, motivo, _ = validar(bom.replace("192.0.2.104", "192.0.2.105"), a=a, b=b)
+        assert not ok and "192.0.2.104" in motivo
+
     def test_name_entre_aspas_no_frontmatter_e_aceite(self):
         assert validar(BOA.replace("name: nota_a", 'name: "nota_a"'))[0]
 
@@ -160,6 +168,23 @@ class TestAplicarEDesfazer:
     def test_sem_autor_configurado_assina_como_basalt(self, real):
         unir.aplicar(real, "nota_a", "nota_b", BOA, A, B)
         assert git(real, "log", "-1", "--format=%an <%ae>").strip() == "Basalt <basalt@localhost>"
+
+    def test_gravacao_feita_depois_da_verificacao_nao_se_perde_e_a_fusao_recua_inteira(self, real, monkeypatch):
+        original = unir._git
+        outra = (real / "outra.md").read_text()
+
+        def git_espiao(r, *args):
+            res = original(r, *args)
+            if args[:2] == ("commit", "-q") and "antes de unir" in args[-1]:     # já depois da verificação e da fotografia…
+                (real / "nota_a.md").write_text(A + "AGENTE escreveu aqui\n", encoding="utf-8")       # …um agente grava na nota A
+            return res
+        monkeypatch.setattr(unir, "_git", git_espiao)
+        with pytest.raises(RuntimeError, match="recuei tudo"):
+            unir.aplicar(real, "nota_a", "nota_b", BOA, A, B)
+        assert (real / "nota_a.md").read_text() == A + "AGENTE escreveu aqui\n"      # a escrita do agente ganha
+        assert (real / "nota_b.md").read_text() == B                                   # a «fundida» não foi apagada
+        assert (real / "outra.md").read_text() == outra                                # nem as ligações trocadas
+        assert not list(real.glob(".*.tmp"))
 
 
 # ───────────────────────── o botão «Unir» da web (basalt.web._correr_fusao) ─────────────────────────

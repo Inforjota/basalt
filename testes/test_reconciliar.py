@@ -265,6 +265,7 @@ class TestEscritasAMeio:
         (memoria.real / "b.md").write_text("b AGENTE", encoding="utf-8")
         c, r = web.gravar("b", "b WEB", sha("b0"))
         assert c == 409 and r["estado"] == "ocupado" and r["pendente"] is True
+        assert r["actual"] == "b0" and r["hash_actual"] == sha("b0")       # o 409 «pendente» traz também o texto actual e o hash dele
         assert memoria.ler("copia", "b") == "b0" and memoria.ler("real", "b") == "b AGENTE"
 
     def test_corrida_que_ja_passou_ainda_assim_devolve_texto_e_hash_do_que_esta_la(self, memoria, monkeypatch):

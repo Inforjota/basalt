@@ -338,6 +338,13 @@ class TestSegredos:
         r = srv.pedido("PUT", srv.nota_url(nome), {"texto": texto + linha + "\n", "base_hash": sha(texto)})
         assert r.codigo == 200
 
+    @pytest.mark.parametrize("linha, e_segredo", [
+        ("Validade da senha: 2026-10-06", False), ("a senha expira: 06/10/2026", False), ("password: 09h30 de amanhã", False),
+        ("senha: Tr0ub4dor&3", True), ("password = hunter2!", True), ("senha: 2026-10-06x7", True)])
+    def test_uma_data_ou_hora_depois_de_senha_nao_e_a_password(self, linha, e_segredo):
+        from basalt import web
+        assert bool(web.tem_segredo_texto(linha)) is e_segredo
+
     def test_password_em_claro_escrita_a_mao_nao_e_gravada(self, srv):
         texto = nova(srv, "s_password")
         r = srv.pedido("PUT", srv.nota_url("s_password"),
