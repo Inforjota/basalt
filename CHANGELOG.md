@@ -21,6 +21,6 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   notas (`GET /api/etiquetas`); o pedido à IA pode ser cancelado a meio (o texto fica como estava).
 - Interface em inglês (`[basalt] idioma = "pt" | "en" | "auto"`, ou `BASALT_IDIOMA`): o português fica byte a byte igual; em `auto` o
   servidor escolhe pelo `Accept-Language` (com `Vary: Accept-Language`). A página traduz tudo o que mostra (dicionário `EN`, `t()`/`tf()`);
-  depois de mudar o `idioma` é preciso recarregar a página (service worker). Limitações: as mensagens de erro da API do servidor, o
-  ecrã de entrada (`/entrar`) e o prefixo `guarda:` da barra de comandos ficam em português. Testes em `testes/test_idioma.py`.
+  depois de mudar o `idioma` é preciso recarregar a página (service worker). O ecrã de entrada (`/entrar`) também sai em inglês. Limitações: as mensagens de erro da API do
+  servidor e o prefixo `guarda:` da barra de comandos ficam em português. Testes em `testes/test_idioma.py`.
 - Sem rasto do autor original: nenhum nome, domínio, IP ou caminho da instalação de origem no código (teste `test_sem_rasto`).

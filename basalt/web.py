@@ -77,10 +77,14 @@ def idioma_do_pedido(configurado: str, accept_language: str | None) -> str:
 
 
 def indice_no_idioma(html: bytes, idioma: str) -> bytes:
-    """Em «en» troca o <html lang="pt-PT"> da página; em «pt» devolve os mesmos bytes (o português fica byte a byte igual)."""
+    """Em «en» troca o <html lang="pt-PT"> (index.html) ou <html lang="pt"> (entrar.html) da página; em «pt» devolve os mesmos
+    bytes (o português fica byte a byte igual). A página lê `document.documentElement.lang` e traduz-se a si própria."""
     if idioma != "en":
         return html
-    return html.replace(b'<html lang="pt-PT">', b'<html lang="en" data-idioma="en">', 1)
+    for antes in (b'<html lang="pt-PT">', b'<html lang="pt">'):
+        if antes in html:
+            return html.replace(antes, b'<html lang="en" data-idioma="en">', 1)
+    return html
 
 # A cópia editável tem VÁRIOS escritores em processos diferentes — esta web, o vigia 2vias (memória real ⇄ cópia) e quem
 # sincronizar a cópia com o telemóvel. Todos passam por um trinco (flock no mesmo ficheiro); o vigia revalida os hashes
@@ -1294,7 +1298,7 @@ class H(BaseHTTPRequestHandler):
             return self._json(404, {"erro": "não existe"})
         b = p.read_bytes()
         auto = False
-        if rel == "index.html":
+        if rel in ("index.html", "entrar.html"):        # as duas páginas com texto: a interface e o ecrã de entrada
             auto = self.cfg.idioma == "auto"
             b = indice_no_idioma(b, idioma_do_pedido(self.cfg.idioma, self.headers.get("Accept-Language")))
         self.send_response(200)

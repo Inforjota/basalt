@@ -13,6 +13,7 @@ from conftest import RAIZ
 from pagina_falsa import ESTADO, esperar, pronta
 
 INDEX = RAIZ / "basalt" / "static" / "index.html"
+ENTRAR = RAIZ / "basalt" / "static" / "entrar.html"
 
 # valores do dicionário que podem ser IGUAIS à chave: nomes próprios e siglas que não se traduzem
 IGUAIS = {"Basalt", "🪨 Basalt", "OK", "Markdown", "MCP", "Obsidian", "Original", "Git", "API", "PDF", "IA", "AI"}
@@ -80,6 +81,10 @@ def test_indice_no_idioma():
     assert b'<html lang="pt-PT"' not in em
     assert em.count(b"<html ") == 1
     assert len(original.replace(b'<html lang="pt-PT">', b"", 1)) == len(em.replace(b'<html lang="en" data-idioma="en">', b"", 1))
+    entrar = ENTRAR.read_bytes()                                     # o ecrã de entrada usa lang="pt" (sem -PT): a mesma regra
+    assert indice_no_idioma(entrar, "pt") == entrar
+    em = indice_no_idioma(entrar, "en")
+    assert b'<html lang="en" data-idioma="en">' in em and b'<html lang="pt">' not in em and em.count(b"<html ") == 1
 
 
 def test_servir_indice_respeita_idioma(servidor_local):
@@ -100,6 +105,43 @@ def test_servir_indice_respeita_idioma(servidor_local):
     s.cfg.idioma = "en"
     r = s.get("/", cabecalhos={"Accept-Language": "pt-PT"})
     assert b'<html lang="en"' in r.corpo and "Vary" not in r.cabecalhos
+
+
+def test_servir_ecra_de_entrada_respeita_idioma(servidor_local):
+    s = servidor_local(modo="senha")                                 # /entrar só existe no modo senha; é público (sem sessão)
+    s.cfg.idioma = "auto"
+    r = s.get("/entrar", email=None, cabecalhos={"Accept-Language": "en-US"})
+    assert r.codigo == 200 and b'<html lang="en" data-idioma="en">' in r.corpo and "Accept-Language" in r.cabecalhos.get("Vary", "")
+    r = s.get("/entrar", email=None, cabecalhos={"Accept-Language": "pt-PT"})
+    assert r.codigo == 200 and b'<html lang="pt">' in r.corpo
+    s.cfg.idioma = "pt"
+    r = s.get("/entrar", email=None, cabecalhos={"Accept-Language": "en-US"})
+    assert r.corpo == ENTRAR.read_bytes() and "Vary" not in r.cabecalhos
+    s.cfg.idioma = "en"
+    r = s.get("/entrar", email=None, cabecalhos={"Accept-Language": "pt-PT"})
+    assert b'<html lang="en" data-idioma="en">' in r.corpo
+
+
+@pytest.mark.lento
+@pytest.mark.parametrize("idioma, titulo, botao, senha, erro_esperado", [
+    ("en", "Basalt — sign in", "Sign in", "Password", "Wrong e-mail or password."),
+    ("pt", "Basalt — entrar", "Entrar", "Palavra-passe", "E-mail ou senha errados."),
+])
+def test_ecra_de_entrada_no_idioma(servidor_local, contexto, idioma, titulo, botao, senha, erro_esperado):
+    """a página de entrada traduz o que mostra E a resposta (em português) do servidor a uma senha errada."""
+    s = servidor_local(modo="senha")
+    s.cfg.idioma = idioma
+    page = contexto().new_page()
+    page.goto(f"http://127.0.0.1:{s.porta}/entrar")
+    assert page.evaluate("document.documentElement.lang") == idioma
+    assert page.title() == titulo
+    assert page.inner_text("#ok") == botao
+    assert page.inner_text("label[for=senha]") == senha
+    page.fill("#email", "ninguem@exemplo.pt")
+    page.fill("#senha", "senha-errada-123")
+    page.click("#ok")
+    esperar(page, "document.getElementById('erro').textContent.length > 0")
+    assert page.inner_text("#erro") == erro_esperado
 
 
 # ───────────────────────── cobertura do dicionário ─────────────────────────
