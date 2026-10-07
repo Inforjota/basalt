@@ -409,7 +409,7 @@ def exportar_ambiente(cfg: Config) -> None:
     """põe no ambiente do processo (sem sobrepor o que já lá estiver) o que os subprocessos e módulos de linha de comandos
     precisam do toml: BASALT_CONFIG, BASALT_GIT, BASALT_GIT_NOME/EMAIL."""
     if cfg.origem:
-        os.environ.setdefault(ENV_CONFIG, str(cfg.origem))
+        os.environ.setdefault(ENV_CONFIG, str(Path(cfg.origem).resolve()))   # absoluto: os subprocessos correm noutra pasta
     os.environ.setdefault("BASALT_GIT", "1" if cfg.git else "0")
     os.environ.setdefault("BASALT_GIT_NOME", cfg.git_autor.nome)
     os.environ.setdefault("BASALT_GIT_EMAIL", cfg.git_autor.email)
