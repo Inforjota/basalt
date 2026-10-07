@@ -5,7 +5,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 ## [Por lançar]
 
 ### 1.0.0b1 — primeira versão pública (beta)
-- Porte do Basalt de produção (Inforjota, 09/2026) para um pacote só com a biblioteca-padrão do Python:
+- Porte da instalação de origem (Inforjota, 09/2026) para um pacote só com a biblioteca-padrão do Python:
   `basalt/config.py` (um `basalt.toml`, vários utilizadores, um espaço por utilizador), `auth.py` (cabecalho / senha / aberto;
   tokens Bearer para agentes), `cas.py` (escrita atómica compare-and-swap, nada se perde numa corrida), `duasvias.py`
   (sincronização real ↔ cópia editável), `sig.py` (pesquisa por significado com recurso lexical BM25), `ia.py` (OpenAI-compatível,
@@ -24,9 +24,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   depois de mudar o `idioma` é preciso recarregar a página (service worker). O ecrã de entrada (`/entrar`) também sai em inglês. Limitações: as mensagens de erro da API do
   servidor e o prefixo `guarda:` da barra de comandos ficam em português. Testes em `testes/test_idioma.py`.
 - Sem rasto do autor original: nenhum nome, domínio, IP ou caminho da instalação de origem no código (teste `test_sem_rasto`).
-- Robustez (auditorias Astra t41r5/t41r6 da produção, 07/10/2026): o recuo da fusão («Unir») espera a graça do CAS antes de
+- Robustez (auditorias externas, rondas 5 e 6, da instalação de origem, 07/10/2026): o recuo da fusão («Unir») espera a graça do CAS antes de
   apagar o que saiu e diz, nota a nota, o que não voltou; um erro de disco a meio também recua; a nota mantida é relida depois
   da troca; a geração da cópia local é persistente (IndexedDB + localStorage) e comparada dentro de cada transacção que
   escreve; o service worker (cache `basalt-v8`) ordena pedidos, trancas e lápides por relógio monótono e pela fotografia das
   trancas que existiam ao partir; 404/410 deixam lápide na página e só apagam da cache o que partiu antes; «senha: 2026-10-06»
-  conta como password (a excepção data/hora só com contexto de validade). Testes: `testes/test_t41r5.py`, `testes/test_t41r6.py`.
+  conta como password (a excepção data/hora só com contexto de validade). Testes: `testes/test_ronda5.py`, `testes/test_ronda6.py`.

@@ -16,7 +16,7 @@ from . import config
 from .config import Via
 from .ia import IAIndisponivel, actual as ia
 
-PASTA = Via("real")        # PORTE: antes 3 memórias de projectos fixas (prefixo «tasca:», «root:»); agora só as notas do espaço
+PASTA = Via("real")        # PORTE: antes 3 memórias de projectos fixas (com prefixo de projecto); agora só as notas do espaço
 SAIDA = Via("categorias")
 # PORTE: a lista e as regras de origem eram do dono da memória; estas são genéricas (e substituíveis em [categorias])
 DEF = {

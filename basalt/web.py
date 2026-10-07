@@ -157,7 +157,7 @@ def _hash_no_ledger(nome_md):
 PASSWORD_RX = re.compile(r"(?i)\b(?:password|passwd|senha|palavra[- ]passe)\b[^\n:=]{0,40}[:=][ \t]*"
                          r"(?!https?://|[/~])"
                          r"(?=\S*[0-9!@#$%^&*])(\S{6,})")
-# t41r6 (Astra t41r4 G7): um valor com formato de data/hora («2026-10-06», «06/10/2026», «10:30:59») SÓ deixa de contar como
+# ronda 6 (achado G7 da ronda 4): um valor com formato de data/hora («2026-10-06», «06/10/2026», «10:30:59») SÓ deixa de contar como
 # password quando o contexto fala de validade («validade da senha: 2026-10-06», «a senha expira: 06/10/2026»). Antes a
 # exclusão era cega ao contexto: «senha: 2026-10-06» e «password: 10:30:59» passavam.
 _DATA_HORA_RX = re.compile(r"^(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{1,2}[:h]\d{2}(?::\d{2})?)[.,;:)]*$")

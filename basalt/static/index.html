@@ -1205,11 +1205,11 @@ async function handleRes(res){
 
 async function apiGet(path){
   var res, bloqAntes = BLOQUEIO_ID;
-  var trancasAntes = COPIA_BLOQUEADA ? chavesDe(await trancasNaMarca()) : null;   // t41r6 G5: as trancas que JÁ existiam ao partir (só importa se está trancada)
+  var trancasAntes = COPIA_BLOQUEADA ? chavesDe(await trancasNaMarca()) : null;   // ronda 6 G5: as trancas que JÁ existiam ao partir (só importa se está trancada)
   var inicio = agora();
   try{ res = await fetch(path, {credentials:"same-origin"}); }
   catch(e){ return apiGetFalhaRede(path); }
-  var doSw = res.headers && res.headers.get && res.headers.get("X-Basalt-Inicio");   // t41r6 G5: a hora (monótona) com que o service worker viu partir este pedido
+  var doSw = res.headers && res.headers.get && res.headers.get("X-Basalt-Inicio");   // ronda 6 G5: a hora (monótona) com que o service worker viu partir este pedido
   if(doSw){ viuInstante(doSw); inicio = Number(doSw) || inicio; }
   var daCache = !!(res.headers && res.headers.get && res.headers.get("X-Basalt-From-Cache") === "1");
   if(!daCache) await reagirResposta(res, path, bloqAntes, inicio, trancasAntes);
@@ -1241,8 +1241,8 @@ async function reagirResposta(res, path, bloqAntes, inicio, trancasAntes){
     // só destranca o trancar que já existia quando ESTE pedido partiu (uma resposta boa atrasada, de antes de
     // a sessão expirar, não pode destrancar o que outro pedido/separador acabou de trancar)
     if(res.ok){
-      // t41r5 (auditoria Astra t41r4): um 200 que não seja JSON (a página de login em HTML) não prova que a sessão está boa —
-      // não destranca. O service worker já o evitava (t41r4 G4); a página voltava a destrancar ao receber a mesma resposta.
+      // ronda 5 (auditoria externa, ronda 4): um 200 que não seja JSON (a página de login em HTML) não prova que a sessão está boa —
+      // não destranca. O service worker já o evitava (ronda 4 G4); a página voltava a destrancar ao receber a mesma resposta.
       var tipoOk = (res.headers && res.headers.get && res.headers.get("content-type")) || "";
       if(/json/i.test(tipoOk) && COPIA_BLOQUEADA && BLOQUEIO_ID === bloqAntes) await desbloquearCopiaLocal(bloqAntes, inicio, trancasAntes);
       return;
@@ -1251,7 +1251,7 @@ async function reagirResposta(res, path, bloqAntes, inicio, trancasAntes){
     if(res.status === 403){ await bloquearCopiaLocal(); return; }
     if((res.status === 404 || res.status === 410) && path.indexOf("/api/nota?") === 0){   // o 410 também tira a nota da cópia
       var nomeApagado = new URLSearchParams(path.split("?")[1] || "").get("nome");
-      if(nomeApagado) await marcarApagadaAqui(nomeApagado, inicio);   // t41r6 M8: com lápide — um pacote que partiu antes não a repõe
+      if(nomeApagado) await marcarApagadaAqui(nomeApagado, inicio);   // ronda 6 M8: com lápide — um pacote que partiu antes não a repõe
     }
   }catch(e){}
 }
@@ -1270,7 +1270,7 @@ async function apiSend(method, path, body, opcoes){
     if(e && e.name === "AbortError") throw e;   // cancelado por quem pediu — não é «sem rede»
     return apiSendFalhaRede();
   }
-  // t41r6 (Astra t41r4 M8): um 404/410 a um PUT (a nota foi apagada no servidor com o editor aberto) também a tira da cópia
+  // ronda 6 (achado M8 da ronda 4): um 404/410 a um PUT (a nota foi apagada no servidor com o editor aberto) também a tira da cópia
   // deste aparelho, como no GET. Só isso: um 403 num PUT é «nota de outro projecto», não é a sessão — não tranca nada.
   if((res.status === 404 || res.status === 410) && path.indexOf("/api/nota?") === 0){
     try{
@@ -1298,13 +1298,13 @@ var COPIA_DESLIGADA = lerLocal("basalt-copia-desligada") === "1";
 var MARCA_TRANCADA = "basaltcfg-copia-trancada";     // o service worker não serve cópia enquanto existir
 var BLOQUEIO_ID = lerLocal("basalt-copia-bloqueada") || "";   // cada trancar tem um id ("" = destrancada)
 var COPIA_BLOQUEADA = !!BLOQUEIO_ID;
-var GERACAO_COPIA = Number(lerLocal("basalt-copia-geracao")) || 0;          // sobe a cada «apagar»: um pacote que chegue depois não repõe nada t41r6 G6: persistente (localStorage + meta.geracao na IndexedDB), nunca desce
+var GERACAO_COPIA = Number(lerLocal("basalt-copia-geracao")) || 0;          // sobe a cada «apagar»: um pacote que chegue depois não repõe nada ronda 6 G6: persistente (localStorage + meta.geracao na IndexedDB), nunca desce
 var PACOTE_CONTROLO = null;     // AbortController do pedido /api/pacote em curso
 function lerLocal(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function gravarLocal(k, v){ try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); }catch(e){} }
-/* t41r6 (Astra t41r4 G5): hora monótona para ordenar pedidos, trancas e lápides — nunca desce, mesmo que o relógio ande
+/* ronda 6 (achado G5 da ronda 4): hora monótona para ordenar pedidos, trancas e lápides — nunca desce, mesmo que o relógio ande
    para trás (acerto NTP, mudança de hora). O service worker faz o mesmo e manda a hora do pedido dele em X-Basalt-Inicio,
-   que a página adopta (a mesma régua nos dois). Para mostrar horas ao José continua a usar-se Date.now(). */
+   que a página adopta (a mesma régua nos dois). Para mostrar horas ao utilizador continua a usar-se Date.now(). */
 var ULTIMO_INSTANTE = 0;
 function agora(){ var t = Date.now(); if(t <= ULTIMO_INSTANTE) t = ULTIMO_INSTANTE + 1; ULTIMO_INSTANTE = t; return t; }
 function viuInstante(t){ t = Number(t) || 0; if(t > ULTIMO_INSTANTE) ULTIMO_INSTANTE = t; }
@@ -1317,7 +1317,7 @@ async function apagarCachesApi(){
   }catch(e){}
 }
 async function bloquearCopiaLocal(){
-  var q = agora(), id = q.toString(36) + "-" + Math.random().toString(36).slice(2, 8);   // t41r6 G5: hora monótona
+  var q = agora(), id = q.toString(36) + "-" + Math.random().toString(36).slice(2, 8);   // ronda 6 G5: hora monótona
   COPIA_BLOQUEADA = true; BLOQUEIO_ID = id;
   gravarLocal("basalt-copia-bloqueada", id);                 // os outros separadores sabem pelo evento «storage»
   try{                                                      // 1.º a marca (com a hora), depois apagar ()
@@ -1344,7 +1344,7 @@ async function trancasNaMarca(){
     return out;
   }catch(e){ return [{chave:null, quando:0, id:"antigo"}]; }     // na dúvida, trancada
 }
-// t41r6 G5: a chave (URL) de uma tranca e a fotografia de um conjunto delas — «já existia quando o pedido partiu» sem relógio
+// ronda 6 G5: a chave (URL) de uma tranca e a fotografia de um conjunto delas — «já existia quando o pedido partiu» sem relógio
 function chaveDe(t){ return t && t.chave ? (t.chave.url || String(t.chave)) : ""; }
 function chavesDe(lista){ var s = {}; for(var i = 0; i < lista.length; i++){ var u = chaveDe(lista[i]); if(u) s[u] = true; } return s; }
 async function trancaDoServiceWorker(){
@@ -1354,7 +1354,7 @@ async function trancaDoServiceWorker(){
 /* destranca só se o trancar em vigor ainda é o `id` que a resposta boa provou estar ultrapassado.
    na cache-marca saem só a entrada deste `id` e as anteriores a `inicio` (a hora a que partiu o pedido que
    trouxe a resposta boa) — uma tranca posta no meio, por outro pedido ou separador, fica.
-   t41r6 G5: «anterior» é estar na fotografia das chaves tirada quando o pedido partiu (chavesAntes), que não depende do
+   ronda 6 G5: «anterior» é estar na fotografia das chaves tirada quando o pedido partiu (chavesAntes), que não depende do
    relógio — este pode andar para trás e outra parte pode pôr uma tranca com hora mais baixa. Sem fotografia, a hora. */
 async function desbloquearCopiaLocal(id, inicio, chavesAntes){
   if(id == null) id = BLOQUEIO_ID;
@@ -1381,7 +1381,7 @@ async function desbloquearCopiaLocal(id, inicio, chavesAntes){
     if(lista.length && "caches" in window){
       var c = await caches.open(MARCA_TRANCADA);
       for(var i = 0; i < lista.length; i++){
-        var deAntes = chavesAntes ? !!chavesAntes[chaveDe(lista[i])] : lista[i].quando < inicio;   // t41r6 G5: pela fotografia das chaves (se a há), não pela hora
+        var deAntes = chavesAntes ? !!chavesAntes[chaveDe(lista[i])] : lista[i].quando < inicio;   // ronda 6 G5: pela fotografia das chaves (se a há), não pela hora
         if(lista[i].chave && (lista[i].id === id || deAntes)) await c.delete(lista[i].chave);
       }
     }
@@ -1400,7 +1400,7 @@ window.addEventListener("storage", function(e){
       COPIA_DESLIGADA = true;
       if(PACOTE_CONTROLO){ try{ PACOTE_CONTROLO.abort(); }catch(err){} }
     }else{ COPIA_DESLIGADA = false; }
-  }else if(e.key === "basalt-copia-geracao"){                     // t41r6 G6: a geração que o outro separador gravou (só sobe)
+  }else if(e.key === "basalt-copia-geracao"){                     // ronda 6 G6: a geração que o outro separador gravou (só sobe)
     var gNova = Number(e.newValue) || 0;
     if(gNova > GERACAO_COPIA) GERACAO_COPIA = gNova;
   }
@@ -1592,10 +1592,10 @@ var A_SINCRONIZAR_PACOTE = false;
 async function sincronizarPacote(){
   if(!navigator.onLine || A_SINCRONIZAR_PACOTE || COPIA_DESLIGADA) return false;
   A_SINCRONIZAR_PACOTE = true;
-  var geracao = await geracaoActual();                     // t41r6 G6: a geração persistente (e a deste separador posta em dia)
+  var geracao = await geracaoActual();                     // ronda 6 G6: a geração persistente (e a deste separador posta em dia)
   var inicio = agora();                                  // a hora a que o pedido partiu — destranca só o que é anterior
   var bloqAntes = await marcaPersistente("bloqueada");      // o trancar que já existia quando o pedido partiu
-  var trancasAntes = (COPIA_BLOQUEADA || bloqAntes) ? chavesDe(await trancasNaMarca()) : null;   // t41r6 G5: fotografia das trancas ao partir
+  var trancasAntes = (COPIA_BLOQUEADA || bloqAntes) ? chavesDe(await trancasNaMarca()) : null;   // ronda 6 G5: fotografia das trancas ao partir
   var controlo = (typeof AbortController !== "undefined") ? new AbortController() : null;
   PACOTE_CONTROLO = controlo;
   try{
@@ -1629,7 +1629,7 @@ function guardarPacoteLocal(notas, gerado, geracao, bloqAntes, inicio){
       if(COPIA_DESLIGADA || geracao !== GERACAO_COPIA){ resolve(false); return; }
       var tx = db.transaction(["notas", "meta"], "readwrite"), recusado = false, sg = {};
       var loja = tx.objectStore("notas"), meta = tx.objectStore("meta");
-      // T41R2 G5: as marcas lêem-se DENTRO da transacção — «apagar cópia» noutro separador (transacção sobre as mesmas
+      // ronda 2 G5: as marcas lêem-se DENTRO da transacção — «apagar cópia» noutro separador (transacção sobre as mesmas
       // lojas) ou fica antes (e aqui vê-se a marca) ou depois (e apaga isto); nunca no meio
       var gd = meta.get("copiaDesligada");
       gd.onsuccess = function(){
@@ -1639,7 +1639,7 @@ function guardarPacoteLocal(notas, gerado, geracao, bloqAntes, inicio){
           var actual = gb.result && gb.result.valor ? (gb.result.id || "antigo") : "";
           if(actual && actual !== (bloqAntes || "")){ recusado = true; return; }     // trancou-se durante o pedido
           if(COPIA_DESLIGADA || geracao !== GERACAO_COPIA){ recusado = true; return; }
-          // t41r6 (Astra t41r4 G6): a geração PERSISTENTE compara-se aqui dentro — outro separador pode ter apagado e religado
+          // ronda 6 (achado G6 da ronda 4): a geração PERSISTENTE compara-se aqui dentro — outro separador pode ter apagado e religado
           // sem este saber (sem localStorage, ou com este pedido já em curso). M8: as lápides de notas apagadas DEPOIS de este
           // pacote partir protegem-nas de voltar; as anteriores a ele saem (se a nota foi recriada, este pacote traz-a).
           seGeracaoIgual(tx, sg, geracao, function(){
@@ -1662,7 +1662,7 @@ function guardarPacoteLocal(notas, gerado, geracao, bloqAntes, inicio){
     });
   });
 }
-/* t41r6 (Astra t41r4 M8): a nota sai da cópia E fica uma lápide em «meta» (apagada:<nome> = hora a que partiu o pedido que
+/* ronda 6 (achado M8 da ronda 4): a nota sai da cópia E fica uma lápide em «meta» (apagada:<nome> = hora a que partiu o pedido que
    trouxe o 404/410, monótona). Um pacote que tenha partido ANTES dessa hora (atrasado) já não a repõe; um pacote posterior
    limpa as lápides anteriores a ele. */
 function marcarApagadaAqui(nome, inicio){
@@ -1676,7 +1676,7 @@ function marcarApagadaAqui(nome, inicio){
     };
   });
 }
-/* t41r6 (Astra t41r4 G6): a geração da cópia lê-se DENTRO da transacção que escreve — se já não é a que o pedido capturou,
+/* ronda 6 (achado G6 da ronda 4): a geração da cópia lê-se DENTRO da transacção que escreve — se já não é a que o pedido capturou,
    alguém apagou (e religou) a cópia entretanto e nada se escreve (saida.valor = "desligada"). Uma geração persistente acima
    da que este separador conhece (outro separador apagou, sem localStorage) passa a ser a dele. geracao == null: só isso. */
 function seGeracaoIgual(tx, saida, geracao, fn){
@@ -1688,7 +1688,7 @@ function seGeracaoIgual(tx, saida, geracao, fn){
     fn();
   };
 }
-/* t41r6 G6: a geração que vale AGORA — a persistente, posta em dia com a deste separador nos dois sentidos (a IndexedDB
+/* ronda 6 G6: a geração que vale AGORA — a persistente, posta em dia com a deste separador nos dois sentidos (a IndexedDB
    pode ter sido limpa pelo browser e o localStorage não, ou o contrário). É o que cada pedido captura antes de partir. */
 function geracaoActual(){
   return transacao(["meta"], function(tx, saida){
@@ -1762,7 +1762,7 @@ function confirmarEnvioFila(nome, rev, textoEnviado, textoServidor, hash, geraca
   return transacao(["fila", "notas", "meta"], function(tx, saida){
     var fila = tx.objectStore("fila"), notas = tx.objectStore("notas");
     saida.valor = "removida";
-    seCopiaLigada(tx, saida, function(){ seGeracaoIgual(tx, saida, geracao, function(){   // t41r6 G6
+    seCopiaLigada(tx, saida, function(){ seGeracaoIgual(tx, saida, geracao, function(){   // ronda 6 G6
       var g = fila.get(nome);
       g.onsuccess = function(){
         var item = g.result, maisNova = !!(item && item.rev !== rev);
@@ -1785,7 +1785,7 @@ function confirmarEnvioFila(nome, rev, textoEnviado, textoServidor, hash, geraca
 function registarConflitoFila(nome, rev, d, geracao){
   return transacao(["fila", "conflitos", "meta"], function(tx, saida){
     var fila = tx.objectStore("fila"), conflitos = tx.objectStore("conflitos");
-    seCopiaLigada(tx, saida, function(){ seGeracaoIgual(tx, saida, geracao, function(){   // t41r6 G6
+    seCopiaLigada(tx, saida, function(){ seGeracaoIgual(tx, saida, geracao, function(){   // ronda 6 G6
       var g = fila.get(nome);
       g.onsuccess = function(){
         var item = g.result, maisNova = !!(item && item.rev !== rev);
@@ -1808,7 +1808,7 @@ function confirmarGravacaoComRede(nome, revIncluida, texto, hash, geracao){
   return transacao(["fila", "notas", "meta"], function(tx, saida){
     var fila = tx.objectStore("fila"), notas = tx.objectStore("notas");
     saida.valor = "sem-fila";
-    // t41r6 (Astra t41r4 G6): a cópia apagada — ou apagada E religada (geração diferente) — enquanto o PUT corria: não se
+    // ronda 6 (achado G6 da ronda 4): a cópia apagada — ou apagada E religada (geração diferente) — enquanto o PUT corria: não se
     // escreve nela (saida.valor = "desligada"); a verificação é DENTRO da transacção, não antes de a abrir
     seCopiaLigada(tx, saida, function(){ seGeracaoIgual(tx, saida, geracao, function(){
     var g = fila.get(nome);
@@ -1832,7 +1832,7 @@ function alterarConflitoSeIgual(nome, quando, alterar, geracao){
   return transacao(["conflitos", "meta"], function(tx, saida){
     var loja = tx.objectStore("conflitos");
     saida.valor = false;
-    seGeracaoIgual(tx, saida, geracao, function(){                 // t41r6 G6 (geracao opcional)
+    seGeracaoIgual(tx, saida, geracao, function(){                 // ronda 6 G6 (geracao opcional)
       var g = loja.get(nome);
       g.onsuccess = function(){
         if(!g.result || g.result.quando !== quando) return;
@@ -1845,7 +1845,7 @@ function alterarConflitoSeIgual(nome, quando, alterar, geracao){
 function apagarConflitoSeIgual(nome, quando, geracao){
   return transacao(["conflitos", "meta"], function(tx, saida){
     var loja = tx.objectStore("conflitos");
-    seGeracaoIgual(tx, saida, geracao, function(){                 // t41r6 G6 (geracao opcional)
+    seGeracaoIgual(tx, saida, geracao, function(){                 // ronda 6 G6 (geracao opcional)
       var g = loja.get(nome);
       g.onsuccess = function(){ if(g.result && g.result.quando === quando) loja.delete(nome); };
     });
@@ -1885,7 +1885,7 @@ function sincronizarFila(){
 }
 async function sincronizarFilaAqui(){
   if(A_SINCRONIZAR_FILA || COPIA_DESLIGADA) return;
-  var pendentes, geracao = await geracaoActual();          // t41r6 G6: a geração persistente
+  var pendentes, geracao = await geracaoActual();          // ronda 6 G6: a geração persistente
   try{ pendentes = await idbGetAll("fila"); }catch(e){ return; }
   if(!pendentes.length) return;
   A_SINCRONIZAR_FILA = true;
@@ -2072,10 +2072,10 @@ async function desligarCopiaLocal(){
   COPIA_DESLIGADA = true;
   GERACAO_COPIA++;
   gravarLocal("basalt-copia-desligada", "1");
-  gravarLocal("basalt-copia-geracao", String(GERACAO_COPIA));   // t41r6 G6: os outros separadores sobem a geração por aqui
+  gravarLocal("basalt-copia-geracao", String(GERACAO_COPIA));   // ronda 6 G6: os outros separadores sobem a geração por aqui
   if(PACOTE_CONTROLO){ try{ PACOTE_CONTROLO.abort(); }catch(e){} }
   // marca + limpeza numa SÓ transacção (um pacote de outro separador não entra no meio)
-  // t41r6 (Astra t41r4 G6): a geração fica também em «meta», na mesma transacção, sempre acima da que lá estava — quem
+  // ronda 6 (achado G6 da ronda 4): a geração fica também em «meta», na mesma transacção, sempre acima da que lá estava — quem
   // escreve na cópia compara-a DENTRO da sua transacção (mesmo sem localStorage, ou com o pedido já em curso)
   var nova = await transacao(["notas", "fila", "meta", "conflitos"], function(tx, saida){
     var meta = tx.objectStore("meta"), g = meta.get("geracao");
@@ -2111,7 +2111,7 @@ async function iniciarOffline(){
   try{
     var md = await idbGet("meta", "copiaDesligada");
     if(md && md.valor){ COPIA_DESLIGADA = true; gravarLocal("basalt-copia-desligada", "1"); }
-    await geracaoActual();                                     // t41r6 G6: a geração persistente passa a ser a deste separador
+    await geracaoActual();                                     // ronda 6 G6: a geração persistente passa a ser a deste separador
     var mb = await idbGet("meta", "bloqueada");
     if(mb && mb.valor){ COPIA_BLOQUEADA = true; BLOQUEIO_ID = mb.id || BLOQUEIO_ID || "antigo"; gravarLocal("basalt-copia-bloqueada", BLOQUEIO_ID); }
     if(!COPIA_BLOQUEADA) await copiaTrancadaAqui();            // a tranca que só o service worker pôs passa a ser da página
@@ -3504,9 +3504,9 @@ function renderConflito(nota, conflito, centro, contexto){
       : "");
   function reabrir(){ if(NOTAS_SHELL) NOTAS_SHELL.abrir({tipo:"nota", nome: nota.nome}); }
   async function gravarEscolha(texto, baseHash, msgOk, aoMudar){
-    // t41r5 (auditoria Astra t41r4): se a cópia deste aparelho for apagada (e religada) enquanto o PUT corre, a confirmação
-    // que chega depois já não lhe toca — o editor já fazia isto (t41r4 G5); os botões do conflito ainda não.
-    var geracao = await geracaoActual();                       // t41r6 G6: a persistente
+    // ronda 5 (auditoria externa, ronda 4): se a cópia deste aparelho for apagada (e religada) enquanto o PUT corre, a confirmação
+    // que chega depois já não lhe toca — o editor já fazia isto (ronda 4 G5); os botões do conflito ainda não.
+    var geracao = await geracaoActual();                       // ronda 6 G6: a persistente
     function copiaMudou(){ return COPIA_DESLIGADA || geracao !== GERACAO_COPIA; }
     try{
       var res = await apiSend("PUT", "/api/nota?nome=" + encodeURIComponent(nota.nome), {texto: texto, base_hash: baseHash});
@@ -3516,7 +3516,7 @@ function renderConflito(nota, conflito, centro, contexto){
         return;
       }
       var fila = await confirmarGravacaoComRede(nota.nome, null, texto, res.hash, geracao);
-      if(fila === "desligada"){                                  // t41r6 G6: a transacção viu a geração mudar — nada se escreveu
+      if(fila === "desligada"){                                  // ronda 6 G6: a transacção viu a geração mudar — nada se escreveu
         showToast(msgOk + " " + t("A cópia deste aparelho foi apagada entretanto — não lhe toquei."));
         reabrir();
         return;
@@ -3528,7 +3528,7 @@ function renderConflito(nota, conflito, centro, contexto){
       reabrir();
     }catch(e){
       if(e.status === 409){
-        if(aoMudar && !copiaMudou()) await aoMudar();   // t41r5: a cópia apagada entretanto fica sem mexer
+        if(aoMudar && !copiaMudou()) await aoMudar();   // ronda 5: a cópia apagada entretanto fica sem mexer
         showToast(t("a nota mudou outra vez no servidor — vê a versão nova e escolhe de novo."));
         reabrir();                          // volta a pedir a nota ao servidor: o conflito fica com o texto+hash novos
       }else{
@@ -3973,7 +3973,7 @@ function renderNotaCompleta(nota, centro, contexto){
           await confirmarGravacaoComRede(nota.nome, null, textoActual, res.hash, geracao).catch(function(){ return ""; });
         atualizarContadorFila();
         if(filaDepois === "ficou") showToast(t("há outra alteração deste aparelho por enviar nesta nota — vai ser juntada a seguir."));
-        if(filaDepois === "desligada") showToast(t("a cópia deste aparelho foi apagada entretanto — a nota ficou gravada no servidor, não lhe toquei aqui."));   // t41r6 G6
+        if(filaDepois === "desligada") showToast(t("a cópia deste aparelho foi apagada entretanto — a nota ficou gravada no servidor, não lhe toquei aqui."));   // ronda 6 G6
         if(nota.resolveConflito){ nota.resolveConflito = false; nota.baseFila = null; if(geracao === GERACAO_COPIA) await apagarConflitoSeIgual(nota.nome, nota.conflitoQuando, geracao).catch(function(){}); }   // 
         banner.innerHTML = "";
         showToast(t("nota gravada."));

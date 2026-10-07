@@ -1,4 +1,4 @@
-"""t41r5 (07/10/2026) — o que ficou da auditoria Astra «basalt-t41r4», portado do Basalt de produção:
+"""ronda 5 (07/10/2026) — o que ficou da auditoria externa (ronda 4), portado da instalação de origem:
   recuo da fusão (basalt.unir._recuar) diz, nota a nota, o que NÃO voltou ao texto de antes e onde ficou guardado
     (antes anunciava sempre «recuei tudo», mesmo quando uma troca de volta falhava);
   página: os botões do ecrã de conflito têm a mesma guarda de geração da cópia que o editor já tinha (apagar a cópia e

@@ -15,7 +15,7 @@ var MARCA_TRANCADA = "basaltcfg-copia-trancada";
 // PARTIDO antes dessa hora (pedido atrasado) já não entra na cache. Não começa por "basalt-": sobrevive ao activate.
 var MARCA_APAGADAS = "basaltcfg-apagadas";
 var LAPIDE_DIAS = 30;
-// t41r6 (Astra t41r4 G5): o relógio pode andar PARA TRÁS (acerto NTP, mudança de hora) — as horas com que se ordenam
+// ronda 6 (achado G5 da ronda 4): o relógio pode andar PARA TRÁS (acerto NTP, mudança de hora) — as horas com que se ordenam
 // pedidos, trancas e lápides vêm daqui e nunca descem: cada uma é pelo menos 1 ms acima da última vista (também das já
 // guardadas nas marcas e na cache, que viuInstante regista ao lê-las). Antes vinham directas de Date.now(): um 401 recebido
 // com o relógio atrasado punha uma tranca «mais antiga» que um GET já em curso, e a resposta antiga desse GET destrancava-a.
@@ -33,7 +33,7 @@ function viuInstante(t) {
   t = Number(t) || 0;
   if (t > ULTIMO) ULTIMO = t;
 }
-// t41r6 G5: a chave de uma tranca (um Request na cache a sério; uma string nos ensaios) e a fotografia de um conjunto delas
+// ronda 6 G5: a chave de uma tranca (um Request na cache a sério; uma string nos ensaios) e a fotografia de um conjunto delas
 function chaveDe(t) { return t && t.chave ? (t.chave.url || String(t.chave)) : ""; }
 function chavesDe(lista) { var s = {}; for (var i = 0; i < lista.length; i++) { var u = chaveDe(lista[i]); if (u) s[u] = true; } return s; }
 var CACHE_APP = CACHE_VERSAO + "-app";
@@ -172,7 +172,7 @@ async function daCache(pedido) {
 }
 async function trancar() {
   try {                                                          // 1.º a marca (entrada própria, com a hora), depois apagar
-    await trancas();                                             // t41r6 G5: vê as trancas já postas — a nova fica acima de todas
+    await trancas();                                             // ronda 6 G5: vê as trancas já postas — a nova fica acima de todas
     var c = await caches.open(MARCA_TRANCADA);
     var q = agora();
     var id = q.toString(36) + "-" + Math.random().toString(36).slice(2, 8);
@@ -181,7 +181,7 @@ async function trancar() {
   await caches.delete(CACHE_API).catch(function () {});
 }
 // destranca SÓ as entradas que já existiam quando o pedido partiu. Apaga-se entrada a entrada, pela chave —
-// nunca a cache inteira: uma tranca posta no meio fica. t41r6 G5: «já existia» é estar na fotografia das chaves tirada ao
+// nunca a cache inteira: uma tranca posta no meio fica. ronda 6 G5: «já existia» é estar na fotografia das chaves tirada ao
 // partir (quem chama só chega aqui quando TODAS estão), não «hora < inicio» — o relógio pode ter andado para trás.
 async function destrancar(lista) {
   try {
@@ -194,7 +194,7 @@ async function destrancar(lista) {
 async function marcarApagada(pedido, inicio) {
   try {
     var c = await caches.open(MARCA_APAGADAS), q = agora();
-    // t41r6 (Astra t41r4 M9): a lápide leva a hora a que o pedido do 404/410 PARTIU (a cópia leva a do seu pedido — é a
+    // ronda 6 (achado M9 da ronda 4): a lápide leva a hora a que o pedido do 404/410 PARTIU (a cópia leva a do seu pedido — é a
     // mesma régua) e nunca desce: uma lápide mais nova já posta fica
     var marca = inicio || q, ja = await c.match(pedido.url);
     if (ja) marca = Math.max(marca, Number(await ja.text()) || 0);
@@ -227,7 +227,7 @@ function comInicio(resposta, inicio) {
   cabecalhos.set("X-Basalt-Inicio", String(inicio));
   return new Response(resposta.body, { status: resposta.status, statusText: resposta.statusText, headers: cabecalhos });
 }
-// t41r5 (auditoria Astra t41r4): o «ver se há mais nova» e o «guardar» eram duas operações separadas — duas respostas à
+// ronda 5 (auditoria externa, ronda 4): o «ver se há mais nova» e o «guardar» eram duas operações separadas — duas respostas à
 // mesma nota a chegar quase juntas viam as duas a cache vazia e a mais ANTIGA podia ficar por cima. Agora, por URL, cada
 // guardar espera pelo anterior (match+put em fila) e a comparação vale mesmo.
 var GUARDAR_FILA = {};
@@ -249,7 +249,7 @@ function guardarSeMaisNova(c, pedido, copia, inicio) {
     return true;
   });
 }
-// t41r6 (Astra t41r4 M9): um 404/410 só apaga da cache o que lá está se isso partiu ANTES dele — a mesma ordenação dos 200.
+// ronda 6 (achado M9 da ronda 4): um 404/410 só apaga da cache o que lá está se isso partiu ANTES dele — a mesma ordenação dos 200.
 // Um 404/410 atrasado (a nota foi apagada, recriada, e um GET mais novo já guardou a recriada) não apaga nada nem põe lápide.
 // Na mesma fila por URL que o guardar, para a comparação valer mesmo.
 function apagarSeMaisAntiga(c, pedido, inicio) {
@@ -258,7 +258,7 @@ function apagarSeMaisAntiga(c, pedido, inicio) {
     var q = ja ? Number(ja.headers.get("X-Basalt-Inicio")) || 0 : 0;
     viuInstante(q);
     if (ja && q > inicio) return false;
-    await marcarApagada(pedido, inicio);                           // t41r4 G9: 1.º a lápide (com a hora), depois apagar
+    await marcarApagada(pedido, inicio);                           // ronda 4 G9: 1.º a lápide (com a hora), depois apagar
     await c.delete(pedido);
     return true;
   });
@@ -277,7 +277,7 @@ function respostaLogin() {
 // (401/403), a dizer que a nota já não existe (404/410) ou a mandar para o login (redireccionamento) — essa
 // resposta ganha sempre: nunca se transforma uma recusa num 200 com dados privados guardados.
 async function tratarApi(pedido) {
-  var resp, antes = chavesDe(await trancas()), inicio = agora();   // t41r6 G5: as trancas que JÁ existiam quando este pedido partiu
+  var resp, antes = chavesDe(await trancas()), inicio = agora();   // ronda 6 G5: as trancas que JÁ existiam quando este pedido partiu
   try {
     // redirect "manual": o 302 para o login chega como "opaqueredirect" em vez de ser seguido para outro domínio e
     // falhar como se fosse falta de rede (era assim que a sessão expirada passava por "sem rede").
@@ -292,12 +292,12 @@ async function tratarApi(pedido) {
     return resp.type === "opaqueredirect" ? respostaLogin() : resp;
   }
   if (resp.status === 404 || resp.status === 410) {
-    try {                                                          // t41r6 M9: só apaga o que partiu antes deste pedido (e põe a lápide)
+    try {                                                          // ronda 6 M9: só apaga o que partiu antes deste pedido (e põe a lápide)
       await apagarSeMaisAntiga(await caches.open(CACHE_API), pedido, inicio);
     } catch (e) {
       await marcarApagada(pedido, inicio);
     }
-    return comInicio(resp, inicio);                                // t41r6 G5: a página ordena com a MESMA hora deste pedido
+    return comInicio(resp, inicio);                                // ronda 6 G5: a página ordena com a MESMA hora deste pedido
   }
   if (resp.status === 502 || resp.status === 503 || resp.status === 504) {
     // o servidor do Basalt não está a responder (reinício, queda) — é como estar sem rede
@@ -311,7 +311,7 @@ async function tratarApi(pedido) {
     if (tipo.indexOf("application/json") === -1) return resp;
     var lista = await trancas();
     // pedido feito ANTES de trancar (resposta atrasada): não destranca nem se guarda. Feito depois: a sessão voltou.
-    // t41r6 G5: decide-se pelas CHAVES que já existiam ao partir (fotografia), não pela hora; uma tranca ilegível conta como nova.
+    // ronda 6 G5: decide-se pelas CHAVES que já existiam ao partir (fotografia), não pela hora; uma tranca ilegível conta como nova.
     for (var i = 0; i < lista.length; i++) if (!antes[chaveDe(lista[i])]) return resp;
     if (lista.length) await destrancar(lista);
     // pedido que partiu ANTES de a nota dar 404/410 (resposta atrasada) — não volta a guardá-la
@@ -325,7 +325,7 @@ async function tratarApi(pedido) {
         .then(function (marca) { if (marca) return caches.delete(CACHE_API); })   // apagada/trancada a meio → fora
         .catch(function () {});
     }
-    return comInicio(resp, inicio);                                // t41r6 G5: a página ordena com a MESMA hora deste pedido
+    return comInicio(resp, inicio);                                // ronda 6 G5: a página ordena com a MESMA hora deste pedido
   }
   return resp;
 }

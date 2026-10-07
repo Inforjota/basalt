@@ -1,4 +1,4 @@
-"""t41r6 (07/10/2026) — a ronda seguinte da auditoria Astra «basalt-t41r4» (7 GRAVES + 2 MENORES), portada do Basalt de produção:
+"""ronda 6 (07/10/2026) — a ronda seguinte da auditoria externa (ronda 4: 7 GRAVES + 2 MENORES), portada da instalação de origem:
   servidor (basalt.unir, basalt.web)
     A1 (G1) o recuo da fusão apagava o inode que SAIU de B sem esperar qualquer graça: quem tinha B aberta perdia a escrita, sem
             ela ir para SALVOS;

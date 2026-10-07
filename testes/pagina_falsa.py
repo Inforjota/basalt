@@ -121,7 +121,7 @@ class Servidor(BaseHTTPRequestHandler):
             return self._envia(302, b"", "text/html", {"Location": "http://localhost:9/oauth2/sign_in"})
         if modo == "403":
             return self._envia(403, {"erro": "Acesso só para geral@exemplo.pt."})
-        if modo == "html":                                    # t41r5: a sessão caiu e o proxy devolve a página de login com 200
+        if modo == "html":                                    # ronda 5: a sessão caiu e o proxy devolve a página de login com 200
             return self._envia(200, b"<!doctype html><title>Entrar</title><p>Entra com a tua conta.</p>", "text/html; charset=utf-8")
         if modo == "404" and u.path == "/api/nota":
             return self._envia(404, {"erro": "Nota não encontrada (ou reservada por ter dados sensíveis)."})
@@ -133,7 +133,7 @@ class Servidor(BaseHTTPRequestHandler):
             if ESTADO["put_falha_rede"]:                      # …e acaba como falha de rede (ligação cortada sem resposta)
                 self.close_connection = True
                 return
-            if ESTADO["nota_status"] != 200:                  # t41r6 M8: a nota já não existe quando o PUT chega
+            if ESTADO["nota_status"] != 200:                  # ronda 6 M8: a nota já não existe quando o PUT chega
                 return self._envia(ESTADO["nota_status"], {"erro": "a nota já não existe"})
             if corpo.get("base_hash") == ESTADO["nota_hash"]:
                 ESTADO["nota_texto"], ESTADO["nota_hash"] = corpo.get("texto", ""), "H3"
