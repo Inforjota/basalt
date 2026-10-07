@@ -54,6 +54,7 @@ TRINCO_ESPERA = 20          # segundos; o vigia segura-o só durante um ciclo (n
 _estado_g = threading.Lock()
 _trincos = {}
 _excls = {}
+_excl_lock = threading.Lock()       # PORTE: a 1.ª lista de excluídas de um espaço calcula-se uma vez só, mesmo com 3 pedidos em simultâneo
 _job_lock = threading.Lock()        # PORTE: uma fusão de cada vez por servidor (não por espaço): a IA é um recurso único
 _ia_lock = threading.Lock()          # protege as listas de uso por hora
 _ia_editor_lock = threading.Lock()  # um pedido de cada vez à IA do editor
@@ -138,7 +139,8 @@ def refazer_exclusao():
         if p.name not in IGNORA and ".bak" not in p.name and p.name not in copia:
             novo.add(p.stem)
     EXCL.parent.mkdir(parents=True, exist_ok=True)
-    tmp = EXCL.with_suffix(".tmp")
+    # temporário único por processo e fio: duas escritas simultâneas (pedido da página + vigia) nunca se pisam
+    tmp = EXCL.with_name(f".{EXCL.name}.{os.getpid()}-{threading.get_ident()}.tmp")
     tmp.write_text("".join(f"{n}\n" for n in sorted(novo)), encoding="utf-8")
     tmp.replace(EXCL)
     with _estado_g:
@@ -149,7 +151,9 @@ def excl():
     """as notas excluídas do espaço activo (calculadas na 1.ª vez que se pedem; depois o vigia refaz de 5 em 5 min)."""
     nome = config.actual().nome
     if nome not in _excls:
-        refazer_exclusao()
+        with _excl_lock:                  # a verificação e o cálculo no mesmo trinco: só o 1.º fio calcula, os outros esperam e reutilizam
+            if nome not in _excls:
+                refazer_exclusao()
     return _excls[nome]
 
 
