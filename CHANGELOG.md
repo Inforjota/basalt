@@ -19,4 +19,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 - Editor: colar ou largar ficheiros guarda-os em `memoria/anexos/` e insere `![[nome]]` (`POST /api/anexos?nome=`, `GET /anexos/<nome>`;
   máximo 25 MiB; o mesmo conteúdo fica com o mesmo nome, conteúdo diferente ganha `_2`); autocompletar de `#etiquetas` a partir das
   notas (`GET /api/etiquetas`); o pedido à IA pode ser cancelado a meio (o texto fica como estava).
+- Interface em inglês (`[basalt] idioma = "pt" | "en" | "auto"`, ou `BASALT_IDIOMA`): o português fica byte a byte igual; em `auto` o
+  servidor escolhe pelo `Accept-Language` (com `Vary: Accept-Language`). A página traduz tudo o que mostra (dicionário `EN`, `t()`/`tf()`);
+  depois de mudar o `idioma` é preciso recarregar a página (service worker). Limitações: as mensagens de erro da API do servidor, o
+  ecrã de entrada (`/entrar`) e o prefixo `guarda:` da barra de comandos ficam em português. Testes em `testes/test_idioma.py`.
 - Sem rasto do autor original: nenhum nome, domínio, IP ou caminho da instalação de origem no código (teste `test_sem_rasto`).

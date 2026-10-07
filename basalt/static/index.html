@@ -726,6 +726,422 @@ body.modo-notas .obsidian-shell{
 "use strict";
 
 /* ========================================================================
+   Idioma da interface — o servidor põe lang="en" em <html> (basalt.toml: [basalt] idioma = "pt" | "en" | "auto").
+   O português é a origem: t(«texto em português») devolve o mesmo texto, ou a tradução de EN em inglês.
+   ==================================================================== */
+
+const IDIOMA = document.documentElement.lang.toLowerCase().startsWith("en") ? "en" : "pt";
+const LOCALE = IDIOMA === "en" ? "en-GB" : "pt-PT";
+const EN = {
+  "erro {status}": "error {status}",
+  "a cópia deste aparelho está trancada até voltares a entrar (a sessão tinha expirado)": "this device's copy is locked until you sign in again (the session had expired)",
+  "a sincronizar…": "syncing…",
+  "sem rede": "offline",
+  "cópia das {hora}": "local copy from {hora}",
+  "{n} alteração por enviar": "{n} pending change",
+  "{n} alterações por enviar": "{n} pending changes",
+  "A sessão expirou": "Your session has expired",
+  "Precisas de entrar outra vez. As alterações por enviar não se perdem; a cópia das notas neste aparelho fica trancada até entrares.": "You need to sign in again. Pending changes are not lost; the local copy of your notes on this device stays locked until you sign in.",
+  "Entrar": "Sign in",
+  "a sessão expirou": "the session has expired",
+  "precisa de rede": "needs a network connection",
+  "sem ligação ao servidor": "no connection to the server",
+  "IndexedDB indisponível": "IndexedDB is unavailable",
+  "falha a abrir a base de dados local": "failed to open the local database",
+  "🪨 Basalt": "🪨 Basalt",
+  "Início": "Home",
+  "Notas": "Notes",
+  "Grafo": "Graph",
+  "Entrada": "Inbox",
+  "Arrumar": "Tidy up",
+  "Recentes": "Recent",
+  "Diário": "Journal",
+  "Pesquisar, perguntar (?) ou guarda: uma ideia… (Ctrl+K)": "Search, ask (?) or guarda: an idea to save it… (Ctrl+K)",
+  "Saltar para nota (Ctrl+O)": "Jump to note (Ctrl+O)",
+  "Saltar para nota": "Jump to note",
+  "Alternar tema": "Toggle theme",
+  "Ajuda desta página": "Help for this page",
+  "Terminar sessão": "Sign out",
+  "offline — a mostrar a última versão": "offline — showing the last version",
+  "transacção abortada": "transaction aborted",
+  "a cópia deste aparelho está apagada — não guardo edições aqui até voltares a ligar a cópia (no Início)": "this device's copy has been deleted — I won't save edits here until you turn the copy back on (on the Home page)",
+  "sem perdas detectadas": "no losses detected",
+  "a tua edição de «{nome}» foi juntada: {resumo}.": "Your edit of “{nome}” was merged: {resumo}.",
+  "conflito em «{nome}» — resolve na nota.": "Conflict in “{nome}” — resolve it in the note.",
+  "Nota não encontrada na cópia deste aparelho.": "Note not found in this device's copy.",
+  "pesquisa sem rede — só texto": "offline search — text only",
+  "neste aparelho": "on this device",
+  "⚠️ Tens {n} alteração por enviar — vais perdê-la(s) se apagares agora.": "⚠️ You have {n} pending change — you will lose it if you delete now.",
+  "⚠️ Tens {n} alterações por enviar — vais perdê-la(s) se apagares agora.": "⚠️ You have {n} pending changes — you will lose them if you delete now.",
+  "Isto não apaga nada no servidor — só a cópia guardada neste aparelho para funcionar sem rede. Este aparelho deixa de guardar cópia até voltares a ligar (no Início).": "This does not delete anything on the server — only the copy stored on this device so it can work offline. This device will stop keeping a copy until you turn it back on (on Home).",
+  "Apagar cópia deste aparelho": "Delete this device's copy",
+  "Cancelar": "Cancel",
+  "Apagar": "Delete",
+  "cópia deste aparelho apagada — deixou de guardar cópia até voltares a ligar.": "This device's copy was deleted — it will not keep a copy until you turn it back on.",
+  "falhou a apagar: {erro}": "Failed to delete: {erro}",
+  "este aparelho volta a guardar cópia para funcionar sem rede.": "This device is keeping a copy again so it can work offline.",
+  "(não encontrada)": "(not found)",
+  "falhou a carregar {src}": "failed to load {src}",
+  "diagrama com erro.": "Diagram error.",
+  "a procurar…": "searching…",
+  "nada de confiança; tenta outras palavras.": "nothing reliable found; try other words.",
+  "(sem título)": "(untitled)",
+  "não navegável": "no link",
+  "falhou a procurar: {erro}": "search failed: {erro}",
+  "a pensar… (pode demorar até 15 s)": "thinking… (may take up to 15 s)",
+  "falhou a perguntar: {erro}": "the question failed: {erro}",
+  "a guardar…": "saving…",
+  "precisa de rede para guardar anexos.": "A network connection is needed to save attachments.",
+  "anexo guardado: {nome}": "Attachment saved: {nome}",
+  "anexo não guardado: {erro}": "Attachment not saved: {erro}",
+  "a carregar…": "loading…",
+  "tentar outra vez": "try again",
+  "a carregar o estado da memória…": "loading the state of the memory…",
+  "notas": "notes",
+  "ligações": "links",
+  "na entrada": "in the inbox",
+  "pedaços": "chunks",
+  "Índice": "Index",
+  "{n} gravação": "{n} snapshot",
+  "{n} gravações": "{n} snapshots",
+  "{n} nota nova": "{n} new note",
+  "{n} notas novas": "{n} new notes",
+  "Hoje na memória: {gravacoes} · {novas}": "Today in the memory: {gravacoes} · {novas}",
+  "última fotografia: {valor}": "last snapshot: {valor}",
+  "IA: {modelo}": "AI: {modelo}",
+  "IA desligada neste servidor": "AI is switched off on this server",
+  "Guardar uma ideia": "Save an idea",
+  "Escreve uma ideia rápida…": "Type a quick idea…",
+  "Guardar": "Save",
+  "Últimas alterações": "Latest changes",
+  "sem alterações recentes.": "no recent changes.",
+  "{c} de {n} itens têm sugestão de nota.": "{c} of {n} items have a note suggestion.",
+  "Abrir a entrada →": "Open the inbox →",
+  "Voltar a guardar cópia neste aparelho (para funcionar sem rede)": "Start keeping a copy on this device again (to work offline)",
+  "não consegui carregar o início: {erro}": "couldn't load the home page: {erro}",
+  "falhou: {erro}": "failed: {erro}",
+  "Saltar para uma nota… (nome, título ou descrição)": "Jump to a note… (name, title or description)",
+  "nenhuma nota corresponde.": "no note matches.",
+  "não consegui carregar as notas: {erro}": "couldn't load the notes: {erro}",
+  "Sobre mim": "About me",
+  "Regras e lições": "Rules and lessons",
+  "Projectos": "Projects",
+  "Referências": "References",
+  "Outras": "Other",
+  "Esconder/mostrar o explorador": "Hide/show the explorer",
+  "Filtrar notas…": "Filter notes…",
+  "Categoria": "Category",
+  "Tipo": "Type",
+  "+ Nova nota": "+ New note",
+  "Esconder/mostrar o contexto": "Hide/show the context",
+  "nenhuma entrada corresponde ao filtro.": "no entry matches the filter.",
+  "não consegui carregar o índice: {erro}": "couldn't load the index: {erro}",
+  "nenhuma nota corresponde ao filtro.": "no note matches the filter.",
+  "Sem categoria": "No category",
+  "selecciona uma nota para ver o contexto.": "select a note to see its context.",
+  "a carregar o índice…": "loading the index…",
+  "← voltar": "← back",
+  "Filtrar…": "Filter…",
+  "actualizado em {data}": "updated on {data}",
+  "{a} de {b}": "{a} of {b}",
+  "Categoria: {nome}": "Category: {nome}",
+  "{n} nota nesta categoria.": "{n} note in this category.",
+  "{n} notas nesta categoria.": "{n} notes in this category.",
+  "não consegui carregar a categoria: {erro}": "couldn't load the category: {erro}",
+  "a carregar a nota…": "loading the note…",
+  "não consegui abrir esta nota: {erro}": "couldn't open this note: {erro}",
+  "Resumir": "Summarise",
+  "Reescrever": "Rewrite",
+  "Corrigir": "Fix",
+  "Continuar": "Continue",
+  "esta nota tem um conflito de sincronização por resolver.": "this note has a sync conflict waiting to be resolved.",
+  "⚠️ Conflito em «{nome}»": "⚠️ Conflict in “{nome}”",
+  "Editaste esta nota sem rede e, entretanto, mudou no servidor (outra sessão ou um agente). Escolhe:": "You edited this note offline and it has since changed on the server (another session or an agent). Choose:",
+  "Ficar com a do servidor": "Keep the server's version",
+  "Ficar com a minha": "Keep mine",
+  "Usar a junção automática": "Use the automatic merge",
+  "Usar a proposta da IA": "Use the AI's proposal",
+  "Juntar à mão": "Merge by hand",
+  "Servidor (actual)": "Server (current)",
+  "A tua (sem rede)": "Yours (offline)",
+  "Junção automática (linha a linha, sem IA) — revê antes de usar": "Automatic merge (line by line, no AI) — review before using",
+  "Proposta da IA — revê antes de usar": "AI proposal — review before using",
+  "A cópia deste aparelho foi apagada entretanto — não lhe toquei.": "This device's copy was deleted in the meantime — I did not touch it.",
+  "há outra alteração deste aparelho por enviar nesta nota — vai ser juntada a seguir.": "There is another pending change from this device on this note — it will be merged next.",
+  "a nota mudou outra vez no servidor — vê a versão nova e escolhe de novo.": "The note changed on the server again — look at the new version and choose again.",
+  "ficaste com a versão do servidor — há outra alteração deste aparelho por enviar, que fica.": "You kept the server's version — there is another pending change from this device, which stays.",
+  "ficaste com a versão do servidor.": "You kept the server's version.",
+  "ficaste com a tua versão.": "You kept your version.",
+  "ficou a junção automática.": "The automatic merge was kept.",
+  "ficou a proposta da IA.": "The AI's proposal was kept.",
+  "SERVIDOR (actual)": "SERVER (current)",
+  "A TUA VERSÃO (sem rede)": "YOUR VERSION (offline)",
+  "só leitura": "read-only",
+  "por enviar": "pending",
+  "Editar": "Edit",
+  "↔ largura de leitura": "↔ reading width",
+  "↔ largura total": "↔ full width",
+  "a editar: {nome}": "editing: {nome}",
+  "Cancelar (Esc)": "Cancel (Esc)",
+  "Gravar (Ctrl+S)": "Save (Ctrl+S)",
+  "Ideias de IA para o texto seleccionado": "AI ideas for the selected text",
+  "IA": "AI",
+  "Sugestões de notas para ligar": "Suggestions of notes to link to",
+  "Ligações": "Links",
+  "Pré-visualizar": "Preview",
+  "● por gravar": "● unsaved",
+  "Já existe uma nota muito parecida:": "A very similar note already exists:",
+  "abrir": "open",
+  "precisa de rede para sugerir ligações.": "A network connection is needed to suggest links.",
+  "põe o cursor num parágrafo com texto.": "Put the cursor in a paragraph with text.",
+  "sem sugestões novas.": "no new suggestions.",
+  "precisa de rede para usar a IA.": "A network connection is needed to use the AI.",
+  "selecciona texto ou põe o cursor num parágrafo.": "Select some text or put the cursor in a paragraph.",
+  "a selecção tem {n} caracteres; a IA só trabalha com até {max} — selecciona menos.": "The selection has {n} characters; the AI only works with up to {max} — select less.",
+  "a pensar…": "thinking…",
+  "Original": "Original",
+  "Proposta": "Proposal",
+  "Substituir": "Replace",
+  "Inserir a seguir": "Insert after",
+  "Tens alterações por gravar nesta nota. Sair sem gravar?": "You have unsaved changes in this note. Leave without saving?",
+  "a gravar…": "saving…",
+  "guardado — a juntar com a versão do servidor…": "Saved — merging with the server's version…",
+  "não consegui guardar: {erro}": "couldn't save: {erro}",
+  "nota gravada.": "Note saved.",
+  "gravar outra vez": "save again",
+  "a nota mudou entretanto.": "the note changed in the meantime.",
+  "copiar o meu texto": "copy my text",
+  "recarregar": "reload",
+  "copiado.": "Copied.",
+  "copiado (modo alternativo).": "Copied (fallback mode).",
+  "não consegui copiar automaticamente — selecciona e copia à mão.": "Couldn't copy automatically — select and copy by hand.",
+  "sem rede, e a cópia deste aparelho está apagada (ou foi apagada entretanto) — não guardo aqui. Copia o teu texto ou volta a ligar a cópia (no Início) e grava outra vez.": "offline, and this device's copy is deleted (or was deleted in the meantime) — I'm not saving here. Copy your text or turn the copy back on (on Home) and save again.",
+  "guardado no aparelho; sobe quando houver rede.": "saved on this device; it will upload when there is a connection.",
+  "guardado no aparelho — sem rede.": "Saved on this device — offline.",
+  "não consegui guardar nem no aparelho: {erro}": "couldn't save, not even on this device: {erro}",
+  "falhou a gravar: {erro}": "saving failed: {erro}",
+  "Estrutura": "Outline",
+  "Categorias": "Categories",
+  "Grafo local": "Local graph",
+  "Quem aponta para aqui": "Who links here",
+  "ninguém, por agora.": "nobody, for now.",
+  "Notas parecidas": "Similar notes",
+  "nenhuma semelhança forte.": "no strong similarity.",
+  "Histórico": "History",
+  "sem histórico.": "no history.",
+  "Nova nota": "New note",
+  "Nome (snake_case)": "Name (snake_case)",
+  "ex: project_novo_site": "e.g. project_new_site",
+  "Descrição": "Description",
+  "uma frase a descrever a nota": "a sentence describing the note",
+  "Criar": "Create",
+  "só letras minúsculas, números e _ (ex: minha_nota_2)": "lowercase letters, numbers and _ only (e.g. my_note_2)",
+  "a criar…": "creating…",
+  "Escolher nota… (nome ou título)": "Choose a note… (name or title)",
+  "precisa de rede.": "A network connection is needed.",
+  "a juntar…": "adding…",
+  "junto.": "Added.",
+  "a carregar a entrada…": "loading the inbox…",
+  "O Basalt arruma sozinho as ideias novas em poucos minutos. Aqui ficam só as que precisam de ti.": "Basalt tidies new ideas on its own within a few minutes. Only the ones that need you stay here.",
+  "Guardar uma ideia…": "Save an idea…",
+  "Para decidires": "To decide",
+  "nada a decidir — o Basalt tratou de tudo sozinho.": "nothing to decide — Basalt took care of everything on its own.",
+  "Arrumadas sozinhas (últimas)": "Tidied automatically (latest)",
+  "a arquivar…": "archiving…",
+  "arquivado.": "Archived.",
+  "Arquivar": "Archive",
+  "Eliminar esta ideia? Não fica em nenhuma nota.": "Delete this idea? It will not be kept in any note.",
+  "a eliminar…": "deleting…",
+  "eliminada.": "Deleted.",
+  "Eliminar": "Delete",
+  "a desfazer…": "undoing…",
+  "desfeito.": "Undone.",
+  "Desfazer": "Undo",
+  "não consegui carregar a entrada: {erro}": "couldn't load the inbox: {erro}",
+  "Juntar a «{nome}»": "Add to “{nome}”",
+  "outra nota…": "another note…",
+  "Criar nota com isto": "Create a note from this",
+  "Juntar a uma nota…": "Add to a note…",
+  "em comum: {lista}": "in common: {lista}",
+  "sem nota certa": "no obvious note",
+  "juntada a": "added to",
+  "🗑 arquivada (teste)": "🗑 archived (test)",
+  "desfeito": "undone",
+  "a analisar a memória…": "analysing the memory…",
+  "Arrumação automática": "Automatic tidy-up",
+  "🔗 unidas": "🔗 merged",
+  "🗄 arquivada": "🗄 archived",
+  "↔ ligadas": "↔ linked",
+  "Se a arrumação automática estiver ligada neste servidor, o Basalt une, liga e arquiva sozinho as notas parecidas, de noite. Tudo pode ser desfeito em «Fusões recentes», mais abaixo.": "If automatic tidy-up is switched on on this server, Basalt merges, links and archives similar notes by itself, overnight. Everything can be undone under “Recent merges”, further down.",
+  "Ainda não correu nenhuma noite.": "It has not run overnight yet.",
+  "Última noite: {data}": "Last night: {data}",
+  "nada a mudar.": "nothing to change.",
+  "sugestão: {sug}": "suggestion: {sug}",
+  "Pendentes esquecidos": "Forgotten pending items",
+  "há {n} dias": "{n} days ago",
+  "nenhum por agora.": "none for now.",
+  "hoje: {c} commits · {n} notas": "today: {c} commits · {n} notes",
+  "Fusões recentes": "Recent merges",
+  "não consegui analisar: {erro}": "couldn't analyse: {erro}",
+  "ainda não houve nenhuma.": "there have not been any yet.",
+  "falhou desfazer: {erro}": "couldn't undo: {erro}",
+  "não consegui carregar as fusões: {erro}": "couldn't load the merges: {erro}",
+  "na_fila": "queued",
+  "a_fundir": "merging",
+  "recusada": "refused",
+  "feita": "done",
+  "falhou": "failed",
+  "desfeita": "undone",
+  "Abrir nota": "Open note",
+  "Unir notas": "Merge notes",
+  "a carregar as duas notas…": "loading the two notes…",
+  "Caracteres": "Characters",
+  "Quem aponta": "Linked from",
+  "Última alteração": "Last changed",
+  "A outra desaparece: o conteúdo junta-se nesta, as ligações [[…]] nas outras notas passam a apontar para esta e o índice é actualizado. Fica uma fotografia antes e podes desfazer.": "The other one disappears: its content is merged into this one, the [[…]] links in other notes will point to this one, and the index is updated. A snapshot is taken first, and you can undo it.",
+  "Unir": "Merge",
+  "escolhe qual fica.": "Choose which one to keep.",
+  "já há uma fusão a correr — espera que acabe.": "A merge is already running — wait for it to finish.",
+  "A unir…": "Merging…",
+  "Fechar": "Close",
+  "falhou a acompanhar a fusão: {erro}": "couldn't follow the merge: {erro}",
+  "não consegui carregar: {erro}": "couldn't load: {erro}",
+  "a carregar o dia…": "loading the day…",
+  "← dia anterior": "← previous day",
+  "dia seguinte →": "next day →",
+  "hoje": "today",
+  "nada neste dia.": "nothing on this day.",
+  "Notas novas": "New notes",
+  "Notas alteradas": "Changed notes",
+  "Gravações na memória": "Saves to the memory",
+  "Entrou na caixa": "Came into the inbox",
+  "não consegui carregar o diário: {erro}": "couldn't load the journal: {erro}",
+  "grafo indisponível.": "graph unavailable.",
+  "2 saltos": "2 hops",
+  "clica num nó para abrir a nota": "click a node to open the note",
+  "não encontrada.": "not found.",
+  "realçar por nome…": "highlight by name…",
+  "a carregar o grafo…": "loading the graph…",
+  "os scripts do grafo (d3) não carregaram.": "the graph scripts (d3) did not load.",
+  "não consegui carregar o grafo: {erro}": "couldn't load the graph: {erro}",
+  "Vai para o ecrã principal: o estado geral da memória e o atalho para guardares uma ideia rápida.": "Goes to the main screen: the overall state of the memory and the shortcut for saving a quick idea.",
+  "Abre a lista de notas, para procurares, filtrares e editares.": "Opens the list of notes, so you can search, filter and edit.",
+  "Mostra o mapa visual das notas e das ligações entre elas.": "Shows the visual map of the notes and the links between them.",
+  "Abre a caixa das ideias por decidir — o resto, o Basalt já arrumou sozinho.": "Opens the box of ideas still to be decided — Basalt has already tidied up the rest by itself.",
+  "Mostra o que o Basalt arrumou sozinho de noite e o que falta decidir.": "Shows what Basalt tidied up by itself overnight and what is left to decide.",
+  "Lista as últimas alterações feitas na memória.": "Lists the latest changes made to the memory.",
+  "Mostra o que mudou na memória num dia — hoje ou outro à escolha.": "Shows what changed in the memory on a given day — today or another of your choice.",
+  "O logótipo. Leva-te sempre ao Início.": "The logo. It always takes you back to Home.",
+  "Pesquisar": "Search",
+  "Escreve para procurares nas notas. Termina a frase com ? para perguntares à IA (responde com as notas como fonte). Começa por guarda: para mandares uma ideia rápida para a Entrada. Atalhos: Ctrl+K ou / trazem-te aqui.": "Type to search the notes. End the sentence with ? to ask the AI (it answers using the notes as its source). Start with guarda: (a Portuguese keyword) to send a quick idea to the Inbox. Shortcuts: Ctrl+K or / bring you here.",
+  "Pesquisa rápida para saltares direto para qualquer nota, sem tirar as mãos do teclado (Ctrl+O).": "Quick search to jump straight to any note without taking your hands off the keyboard (Ctrl+O).",
+  "Tema": "Theme",
+  "Alterna entre tema claro e escuro. Fica guardado neste aparelho.": "Switches between the light and dark theme. The choice is kept on this device.",
+  "Ajuda": "Help",
+  "Esta ajuda — mostra o que cada coisa desta página faz.": "This help — it shows what each thing on this page does.",
+  "Números-resumo": "Summary figures",
+  "Quantas notas tens, quantas ligações entre elas, quantas ideias por arrumar na Entrada e quantos pedaços de texto há para pesquisar.": "How many notes you have, how many links there are between them, how many ideas are waiting to be tidied in the Inbox and how many pieces of text there are to search.",
+  "Atalho para o Índice das notas.": "Shortcut to the notes Index.",
+  "Hoje na memória": "Today in the memory",
+  "Atalho para o que mudou hoje na memória.": "Shortcut to what changed in the memory today.",
+  "Guarda uma ideia rápida sem saíres desta página — fica à espera na Entrada.": "Saves a quick idea without leaving this page — it waits in the Inbox.",
+  "As últimas gravações feitas na memória.": "The latest saves made to the memory.",
+  "Quantas ideias da Entrada já têm sugestão de nota, e atalho para as abrires.": "How many Inbox ideas already have a suggested note, and a shortcut to open them.",
+  "Apaga a cópia local das notas guardada neste aparelho e deixa de a guardar até voltares a ligar (no mesmo sítio). Não apaga nada no servidor — só a cópia para funcionar sem rede.": "Deletes the local copy of the notes stored on this device and stops keeping it until you turn it back on (in the same place). It does not delete anything on the server — only the copy used to work offline.",
+  "Filtrar notas": "Filter notes",
+  "Filtra a lista de notas pelo título ou pela descrição.": "Filters the list of notes by title or description.",
+  "Agrupar": "Group",
+  "Muda como a lista está organizada: por índice, categoria, tipo ou A–Z.": "Changes how the list is organised: by index, category, type or A–Z.",
+  "Cria uma nota nova — escolhes o nome, o tipo e uma descrição.": "Creates a new note — you choose the name, the type and a description.",
+  "Lista de notas": "Note list",
+  "Toca numa nota para a abrires.": "Tap a note to open it.",
+  "Esconder a lista": "Hide the list",
+  "Esconde ou mostra a lista de notas, para ganhares espaço de leitura.": "Hides or shows the note list, to give you more room to read.",
+  "Esconder o contexto": "Hide the context",
+  "Esconde ou mostra a coluna de contexto, ao lado.": "Hides or shows the context column alongside.",
+  "Contexto da nota": "Note context",
+  "Tudo à volta desta nota: a estrutura (para saltares para uma secção), categorias, um mini-grafo, quem aponta para aqui, notas parecidas e o histórico de alterações.": "Everything around this note: the outline (to jump to a section), categories, a mini graph, what links here, similar notes and the change history.",
+  "Abre esta nota em modo de edição.": "Opens this note in edit mode.",
+  "Largura": "Width",
+  "Alterna entre largura de leitura (mais estreita) e largura total do ecrã.": "Switches between reading width (narrower) and full screen width.",
+  "Tipo da nota": "Note type",
+  "O tipo da nota e, se for o caso, se é só de leitura (doutro projecto) ou ainda não foi enviada ao servidor.": "The note's type and, where relevant, whether it is read-only (from another project) or has not been sent to the server yet.",
+  "As categorias desta nota. Toca numa para veres as outras notas da mesma categoria.": "This note's categories. Tap one to see the other notes in the same category.",
+  "Gravar": "Save",
+  "Grava as alterações (Ctrl+S).": "Saves your changes (Ctrl+S).",
+  "Sai da edição sem gravar (Esc). Se tiveres alterações por gravar, pergunta antes de saíres.": "Leaves edit mode without saving (Esc). If you have unsaved changes, it asks before you leave.",
+  "Pede à IA para resumir, reescrever, corrigir ou continuar o texto que tiveres seleccionado.": "Asks the AI to summarise, rewrite, correct or continue the text you have selected.",
+  "Sugere notas para ligares ao trecho seleccionado — escolhes uma e insere-se como [[ligação]].": "Suggests notes to link to the selected passage — you pick one and it is inserted as a [[link]].",
+  "Nota parecida": "Similar note",
+  "Avisa se já existir outra nota muito parecida com o que estás a escrever (só na primeira edição de uma nota acabada de criar).": "Warns you if another note very similar to what you are writing already exists (only on the first edit of a newly created note).",
+  "Texto da nota": "Note text",
+  "Aqui escreves o texto em Markdown. Escreve [[ para ligares a outra nota — aparecem sugestões automáticas.": "This is where you write the text, in Markdown. Type [[ to link to another note — suggestions appear automatically.",
+  "Sem rede": "Offline",
+  "Aparece quando não há rede — a IA e as sugestões de ligação ficam indisponíveis.": "Shown when there is no connection — the AI and link suggestions are unavailable.",
+  "Realçar": "Highlight",
+  "Escreve um nome para realçares esse ponto e o que liga a ele; os outros ficam esbatidos.": "Type a name to highlight that point and what connects to it; the others are dimmed.",
+  "Filtros": "Filters",
+  "Mostra ou esconde tipos de nota no grafo. Toca para ligar/desligar cada um.": "Shows or hides note types in the graph. Tap to switch each one on or off.",
+  "O grafo": "The graph",
+  "Cada ponto é uma nota (a cor é o tipo, o tamanho é quantas ligações tem); cada linha é uma ligação [[…]] entre duas notas. Arrasta para mover, roda a roda do rato para ampliar.": "Each point is a note (the colour is the type, the size is how many links it has); each line is a [[…]] link between two notes. Drag to move, scroll the mouse wheel to zoom.",
+  "As ideias que mandas pela barra de cima com \"guarda: …\", por esta caixa ou pelos teus agentes são arrumadas sozinhas em poucos minutos: juntadas à nota certa (com a data) ou arquivadas se forem só um teste. Tudo tem Desfazer. Aqui ficam só as que o Basalt não soube onde pôr.": "The ideas you send through the top bar with \"guarda: …\", through this box or through your agents are tidied up by themselves within a few minutes: added to the right note (with the date) or archived if they are just a test. Everything has an Undo. Only the ones Basalt did not know where to put stay here.",
+  "Escreve aqui uma ideia rápida — entra na Entrada tal como por guarda: na pesquisa.": "Type a quick idea here — it goes into the Inbox just as it does with guarda: in the search.",
+  "Juntar a «nota»": "Add to “note”",
+  "Acrescenta esta ideia no fim da nota sugerida, com a data de hoje.": "Appends this idea to the end of the suggested note, with today's date.",
+  "Outra nota": "Another note",
+  "Escolhe outra nota tua (editável) para lhe acrescentares esta ideia.": "Pick another note of yours (editable) to add this idea to.",
+  "Abre «Nova nota» já com o texto desta ideia — só escolhes o nome.": "Opens “New note” already filled with this idea's text — you only choose the name.",
+  "Tira esta ideia da Entrada sem a pôr em nenhuma nota.": "Takes this idea out of the Inbox without putting it in any note.",
+  "Apaga esta ideia de vez (pede confirmação). Não fica em nenhuma nota.": "Deletes this idea for good (asks for confirmation). It does not end up in any note.",
+  "Arrumadas sozinhas": "Tidied up automatically",
+  "As últimas ideias que o Basalt já juntou ou arquivou sozinho. Podes desfazer, se mudares de ideias.": "The latest ideas Basalt has already added or archived by itself. You can undo it if you change your mind.",
+  "Desfaz o que o Basalt fez sozinho a esta ideia: tira-a da nota (se já lá estava) e devolve-a à Entrada.": "Undoes what Basalt did by itself with this idea: removes it from the note (if it was already there) and returns it to the Inbox.",
+  "O que o Basalt uniu, ligou ou arquivou sozinho a noite passada, às 04:10. Pode ser desfeito nas Fusões recentes, mais abaixo.": "What Basalt merged, linked or archived by itself last night, at 04:10. It can be undone under Recent merges, further down.",
+  "Tarefas paradas": "Stalled tasks",
+  "Tarefas que estão há dias sem mexer.": "Tasks that have not been touched for days.",
+  "Coisas por fazer, escritas nalguma nota, que ainda ninguém marcou como feitas.": "Things to do, written in some note, that nobody has marked as done yet.",
+  "As últimas fusões de notas, automáticas ou manuais. Dá para desfazer uma fusão feita, dentro do prazo.": "The latest note merges, automatic or manual. A completed merge can be undone, within the time limit.",
+  "As últimas alterações feitas na memória, mais recentes primeiro.": "The latest changes made to the memory, most recent first.",
+  "Navegar por dias": "Browse by day",
+  "Seta para trás/à frente, ou escolhe uma data. «hoje» volta ao dia actual.": "Go back/forward with the arrows, or pick a date. “today” returns to the current day.",
+  "Notas criadas neste dia.": "Notes created on this day.",
+  "Notas que foram alteradas neste dia.": "Notes that were changed on this day.",
+  "Gravações feitas na memória nesse dia, com os ficheiros tocados em cada uma.": "Saves made to the memory on that day, with the files touched in each one.",
+  "Ideias que entraram na Entrada neste dia.": "Ideas that came into the Inbox on this day.",
+  "nada para explicar aqui.": "Nothing to explain here.",
+  "Terminar sessão ({quem})": "Sign out ({quem})"
+};
+function t(s){ return IDIOMA === "en" && Object.prototype.hasOwnProperty.call(EN, s) ? EN[s] : s; }
+function tf(s, vars){ return t(s).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)); }
+window.basaltT = t; window.basaltTf = tf;       // o 2.º <script> (botão de terminar sessão) usa-os
+
+/* a marcação estática do HTML está em português: no arranque, em inglês, traduz-se de uma vez (nós de texto e atributos) */
+function traduzirMarcacao(){
+  var espacos = /^(\s*)([\s\S]*?)(\s*)$/;
+  function traduzir(s){ var m = espacos.exec(s); return m[2] ? m[1] + t(m[2]) + m[3] : s; }
+  var ignorar = {SCRIPT:1, STYLE:1, NOSCRIPT:1};
+  var w = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {acceptNode: function(n){
+    return n.parentNode && !ignorar[n.parentNode.nodeName] ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+  }});
+  var nos = [];
+  while(w.nextNode()) nos.push(w.currentNode);
+  nos.forEach(function(n){ var v = traduzir(n.nodeValue); if(v !== n.nodeValue) n.nodeValue = v; });
+  document.querySelectorAll("[placeholder],[title],[aria-label],[alt]").forEach(function(el){
+    ["placeholder", "title", "aria-label", "alt"].forEach(function(a){
+      var v = el.getAttribute(a);
+      if(v) el.setAttribute(a, traduzir(v));
+    });
+  });
+  document.querySelectorAll("button[value],input[type=button][value],input[type=submit][value]").forEach(function(el){
+    el.setAttribute("value", traduzir(el.getAttribute("value")));
+  });
+  document.title = traduzir(document.title);
+  var desc = document.querySelector('meta[name="description"]');
+  if(desc && desc.content) desc.content = traduzir(desc.content);
+}
+if(IDIOMA === "en") traduzirMarcacao();
+
+/* ========================================================================
    Utilitários
    ==================================================================== */
 
@@ -746,8 +1162,8 @@ function debounce(fn, ms){
 
 function fmtDataCurta(d){
   try{
-    return d.toLocaleDateString("pt-PT",{day:"2-digit",month:"2-digit",year:"numeric"}) + " " +
-           d.toLocaleTimeString("pt-PT",{hour:"2-digit",minute:"2-digit"});
+    return d.toLocaleDateString(LOCALE,{day:"2-digit",month:"2-digit",year:"numeric"}) + " " +
+           d.toLocaleTimeString(LOCALE,{hour:"2-digit",minute:"2-digit"});
   }catch(e){ return d.toString(); }
 }
 
@@ -777,7 +1193,7 @@ async function handleRes(res){
   var data = null;
   try{ data = await res.json(); }catch(e){}
   if(!res.ok){
-    var msg = (data && data.erro) ? data.erro : ("erro " + res.status);
+    var msg = (data && data.erro) ? data.erro : tf("erro {status}", {status: res.status});
     var err = new Error(msg);
     err.status = res.status;
     err.data = data;
@@ -808,7 +1224,7 @@ async function copiaTrancadaAqui(){
   return true;
 }
 function erroCopiaTrancada(){
-  var trancada = new Error("a cópia deste aparelho está trancada até voltares a entrar (a sessão tinha expirado)");
+  var trancada = new Error(t("a cópia deste aparelho está trancada até voltares a entrar (a sessão tinha expirado)"));
   trancada.sessaoExpirada = true;
   return trancada;
 }
@@ -963,7 +1379,7 @@ window.addEventListener("storage", function(e){
 
 function fmtHoraCurta(ms){
   if(!ms) return "";
-  try{ return new Date(ms).toLocaleTimeString("pt-PT", {hour:"2-digit", minute:"2-digit"}); }
+  try{ return new Date(ms).toLocaleTimeString(LOCALE, {hour:"2-digit", minute:"2-digit"}); }
   catch(e){ return ""; }
 }
 
@@ -971,9 +1387,9 @@ function atualizarIndicador(){
   var el = document.getElementById("offline-aviso");
   if(!el) return;
   var partes = [];
-  if(OFFLINE_ESTADO.aSincronizar) partes.push("a sincronizar…");
-  if(OFFLINE_ESTADO.semRede) partes.push("sem rede" + (OFFLINE_ESTADO.quando ? " · cópia das " + fmtHoraCurta(OFFLINE_ESTADO.quando) : ""));
-  if(OFFLINE_ESTADO.fila > 0) partes.push(OFFLINE_ESTADO.fila + (OFFLINE_ESTADO.fila === 1 ? " alteração por enviar" : " alterações por enviar"));
+  if(OFFLINE_ESTADO.aSincronizar) partes.push(t("a sincronizar…"));
+  if(OFFLINE_ESTADO.semRede) partes.push(t("sem rede") + (OFFLINE_ESTADO.quando ? " · " + tf("cópia das {hora}", {hora: fmtHoraCurta(OFFLINE_ESTADO.quando)}) : ""));
+  if(OFFLINE_ESTADO.fila > 0) partes.push(OFFLINE_ESTADO.fila === 1 ? tf("{n} alteração por enviar", {n: OFFLINE_ESTADO.fila}) : tf("{n} alterações por enviar", {n: OFFLINE_ESTADO.fila}));
   if(!partes.length){ el.classList.remove("mostrar"); return; }
   el.textContent = partes.join(" · ");
   el.classList.add("mostrar");
@@ -1009,9 +1425,9 @@ function mostrarSessaoExpirada(){
   root.innerHTML =
     '<div class="modal-backdrop" id="sessao-expirada-backdrop">' +
       '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="sessao-expirada-titulo">' +
-        '<h2 id="sessao-expirada-titulo">A sessão expirou</h2>' +
-        '<p class="dim-note">Precisas de entrar outra vez. As alterações por enviar não se perdem; a cópia das notas neste aparelho fica trancada até entrares.</p>' +
-        '<button id="sessao-expirada-entrar" class="btn btn-primary" type="button">Entrar</button>' +
+        '<h2 id="sessao-expirada-titulo">' + t("A sessão expirou") + '</h2>' +
+        '<p class="dim-note">' + t("Precisas de entrar outra vez. As alterações por enviar não se perdem; a cópia das notas neste aparelho fica trancada até entrares.") + '</p>' +
+        '<button id="sessao-expirada-entrar" class="btn btn-primary" type="button">' + t("Entrar") + '</button>' +
       "</div></div>";
   document.getElementById("sessao-expirada-entrar").addEventListener("click", function(){ location.reload(); });
 }
@@ -1020,7 +1436,7 @@ async function apiGetFalhaRede(path){
   var tipo = await diagnosticarFalha();
   if(tipo === "sessao-expirada"){
     mostrarSessaoExpirada();
-    var er = new Error("a sessão expirou");
+    var er = new Error(t("a sessão expirou"));
     er.sessaoExpirada = true;
     throw er;
   }
@@ -1031,11 +1447,11 @@ async function apiGetFalhaRede(path){
       atualizarIndicador();
       return dados;
     }
-    var erSemSuporte = new Error("precisa de rede");
+    var erSemSuporte = new Error(t("precisa de rede"));
     erSemSuporte.semRede = true;
     throw erSemSuporte;
   }
-  var erTransitorio = new Error("sem ligação ao servidor");
+  var erTransitorio = new Error(t("sem ligação ao servidor"));
   erTransitorio.semRede = true;
   throw erTransitorio;
 }
@@ -1044,11 +1460,11 @@ async function apiSendFalhaRede(){
   var tipo = await diagnosticarFalha();
   if(tipo === "sessao-expirada"){
     mostrarSessaoExpirada();
-    var er = new Error("a sessão expirou");
+    var er = new Error(t("a sessão expirou"));
     er.sessaoExpirada = true;
     throw er;
   }
-  var erRede = new Error(tipo === "offline" ? "precisa de rede" : "sem ligação ao servidor");
+  var erRede = new Error(tipo === "offline" ? t("precisa de rede") : t("sem ligação ao servidor"));
   erRede.semRede = true;
   throw erRede;
 }
@@ -1059,7 +1475,7 @@ var DB_PROMESSA = null;
 function abrirDB(){
   if(DB_PROMESSA) return DB_PROMESSA;
   DB_PROMESSA = new Promise(function(resolve, reject){
-    if(!window.indexedDB){ reject(new Error("IndexedDB indisponível")); return; }
+    if(!window.indexedDB){ reject(new Error(t("IndexedDB indisponível"))); return; }
     var req = indexedDB.open(DB_NOME, DB_VERSAO);
     req.onupgradeneeded = function(e){
       var db = e.target.result;
@@ -1069,7 +1485,7 @@ function abrirDB(){
       if(!db.objectStoreNames.contains("conflitos")) db.createObjectStore("conflitos", {keyPath:"nome"});
     };
     req.onsuccess = function(e){ resolve(e.target.result); };
-    req.onerror = function(){ reject(req.error || new Error("falha a abrir a base de dados local")); };
+    req.onerror = function(){ reject(req.error || new Error(t("falha a abrir a base de dados local"))); };
   });
   return DB_PROMESSA;
 }
@@ -1201,7 +1617,7 @@ function guardarPacoteLocal(notas, gerado, geracao, bloqAntes){
       };
       tx.oncomplete = function(){ resolve(!recusado); };
       tx.onerror = function(){ reject(tx.error); };
-      tx.onabort = function(){ reject(tx.error || new Error("transacção abortada")); };
+      tx.onabort = function(){ reject(tx.error || new Error(t("transacção abortada"))); };
     });
   });
 }
@@ -1218,7 +1634,7 @@ function transacao(lojas, fn){
       fn(tx, saida);
       tx.oncomplete = function(){ resolve(saida.valor); };
       tx.onerror = function(){ reject(tx.error); };
-      tx.onabort = function(){ reject(tx.error || new Error("transacção abortada")); };
+      tx.onabort = function(){ reject(tx.error || new Error(t("transacção abortada"))); };
     });
   });
 }
@@ -1226,7 +1642,7 @@ function transacao(lojas, fn){
 /* nenhum destes escritores (fila/conflitos/notas) escreve com a cópia apagada — a marca lê-se DENTRO da
    transacção, como no pacote: «apagar cópia» ou fica antes (e vê-se a marca) ou depois (e limpa isto), nunca no meio. */
 function erroCopiaDesligada(){
-  return new Error("a cópia deste aparelho está apagada — não guardo edições aqui até voltares a ligar a cópia (no Início)");
+  return new Error(t("a cópia deste aparelho está apagada — não guardo edições aqui até voltares a ligar a cópia (no Início)"));
 }
 function seCopiaLigada(tx, saida, fn){
   var gd = tx.objectStore("meta").get("copiaDesligada");
@@ -1397,13 +1813,13 @@ async function sincronizarFilaAqui(){
           await confirmarEnvioFila(item.nome, item.rev, item.texto, item.texto, res.hash);
         }else if(res.estado === "juntado"){
           await confirmarEnvioFila(item.nome, item.rev, item.texto, res.texto, res.hash);
-          showToast('a tua edição de «' + item.nome + '» foi juntada: ' + (res.resumo || "sem perdas detectadas") + ".");
+          showToast(tf("a tua edição de «{nome}» foi juntada: {resumo}.", {nome: item.nome, resumo: res.resumo || t("sem perdas detectadas")}));
         }
       }catch(e){
         if(apagada()) break;
         if(e.status === 409 && e.data && e.data.estado === "conflito"){
           await registarConflitoFila(item.nome, item.rev, e.data);
-          showToast('conflito em «' + item.nome + '» — resolve na nota.');
+          showToast(tf("conflito em «{nome}» — resolve na nota.", {nome: item.nome}));
         }else if(e.status === 503 || e.status === 429){
           break;          // servidor ocupado: fica tudo na fila e tenta-se no próximo ciclo
         }
@@ -1430,7 +1846,7 @@ function offlineNota(nome){
   return idbGetAll("notas").then(function(todas){
     var alvo = null;
     for(var i = 0; i < todas.length; i++){ if(todas[i].nome === nome){ alvo = todas[i]; break; } }
-    if(!alvo){ var e = new Error("Nota não encontrada na cópia deste aparelho."); e.status = 404; throw e; }
+    if(!alvo){ var e = new Error(t("Nota não encontrada na cópia deste aparelho.")); e.status = 404; throw e; }
     var alvoBase = nome.indexOf(":") !== -1 ? nome.split(":").slice(1).join(":") : nome;
     var rx = new RegExp("\\[\\[" + escaparRegex(alvoBase) + "(?:[#|][^\\]]*)?\\]\\]");
     var backlinks = [];
@@ -1499,7 +1915,7 @@ function extrairTrecho(texto, q){
 }
 function offlineProcura(q, n){
   return idbGetAll("notas").then(function(todas){
-    var out = [{titulo: "pesquisa sem rede — só texto", trecho: "", fonte: ""}];
+    var out = [{titulo: t("pesquisa sem rede — só texto"), trecho: "", fonte: ""}];
     var qn = normalizarBusca(q || "");
     if(!qn) return out;
     var achados = [];
@@ -1508,7 +1924,7 @@ function offlineProcura(q, n){
       var pos = alvo.indexOf(qn);
       if(pos === -1) return;
       var origem = String(o.texto || o.desc || o.titulo || "");
-      achados.push({nome: o.nome, titulo: o.titulo, trecho: extrairTrecho(origem, q), fonte: "neste aparelho", sim: pos === 0 ? 1 : 0.7});
+      achados.push({nome: o.nome, titulo: o.titulo, trecho: extrairTrecho(origem, q), fonte: t("neste aparelho"), sim: pos === 0 ? 1 : 0.7});
     });
     achados.sort(function(a, b){ return b.sim - a.sim; });
     return out.concat(achados.slice(0, n || 10));
@@ -1535,16 +1951,16 @@ function abrirApagarCopiaModal(){
   idbGetAll("fila").then(function(pendentes){
     var root = document.getElementById("modal-root");
     var aviso = pendentes.length
-      ? '<p class="state-error">⚠️ Tens ' + pendentes.length + (pendentes.length === 1 ? " alteração" : " alterações") +
-        " por enviar — vais perdê-la(s) se apagares agora.</p>"
-      : '<p class="dim-note">Isto não apaga nada no servidor — só a cópia guardada neste aparelho para funcionar sem rede. ' +
-        "Este aparelho deixa de guardar cópia até voltares a ligar (no Início).</p>";
+      ? '<p class="state-error">' + (pendentes.length === 1
+          ? tf("⚠️ Tens {n} alteração por enviar — vais perdê-la(s) se apagares agora.", {n: pendentes.length})
+          : tf("⚠️ Tens {n} alterações por enviar — vais perdê-la(s) se apagares agora.", {n: pendentes.length})) + "</p>"
+      : '<p class="dim-note">' + t("Isto não apaga nada no servidor — só a cópia guardada neste aparelho para funcionar sem rede. Este aparelho deixa de guardar cópia até voltares a ligar (no Início).") + "</p>";
     root.innerHTML =
       '<div class="modal-backdrop" id="apagar-copia-backdrop">' +
-        '<div class="modal" role="dialog" aria-modal="true"><h2>Apagar cópia deste aparelho</h2>' + aviso +
+        '<div class="modal" role="dialog" aria-modal="true"><h2>' + t("Apagar cópia deste aparelho") + '</h2>' + aviso +
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
-            '<button id="apagar-copia-cancelar" class="btn" type="button">Cancelar</button>' +
-            '<button id="apagar-copia-confirmar" class="btn btn-primary" type="button">Apagar</button>' +
+            '<button id="apagar-copia-cancelar" class="btn" type="button">' + t("Cancelar") + '</button>' +
+            '<button id="apagar-copia-confirmar" class="btn btn-primary" type="button">' + t("Apagar") + '</button>' +
           "</div></div></div>";
     var backdrop = document.getElementById("apagar-copia-backdrop");
     function fechar(){ root.innerHTML = ""; }
@@ -1554,9 +1970,9 @@ function abrirApagarCopiaModal(){
       try{
         await desligarCopiaLocal();
         fechar();
-        gravarLocal("basalt-aviso-pos-recarga", "cópia deste aparelho apagada — deixou de guardar cópia até voltares a ligar.");
+        gravarLocal("basalt-aviso-pos-recarga", t("cópia deste aparelho apagada — deixou de guardar cópia até voltares a ligar."));
         location.reload();
-      }catch(e){ showToast("falhou a apagar: " + e.message); }
+      }catch(e){ showToast(tf("falhou a apagar: {erro}", {erro: e.message})); }
     });
   });
 }
@@ -1584,7 +2000,7 @@ async function religarCopiaLocal(){
   gravarLocal("basalt-copia-desligada", null);
   try{ await idbDelete("meta", "copiaDesligada"); }catch(e){}
   try{ if("caches" in window) await caches.delete(MARCA_DESLIGADA); }catch(e){}
-  showToast("este aparelho volta a guardar cópia para funcionar sem rede.");
+  showToast(t("este aparelho volta a guardar cópia para funcionar sem rede."));
   await sincronizarPacote();
   if(location.hash === "" || location.hash === "#/") route();
 }
@@ -1722,7 +2138,7 @@ function renderEmbed(nome, profundidade){
   }
   var registo = EMBED_CACHE.hasOwnProperty(nome) ? EMBED_CACHE[nome] : null;
   if(!registo || !registo.texto){
-    return '<div class="embed-nota embed-nota-link">📎 ' + tituloHtml + ' <span class="dim-note">(não encontrada)</span></div>';
+    return '<div class="embed-nota embed-nota-link">📎 ' + tituloHtml + ' <span class="dim-note">' + t("(não encontrada)") + '</span></div>';
   }
   var htmlEmbutido = renderMarkdown(stripFrontmatter(registo.texto), profundidade + 1);
   return '<div class="embed-nota"><div class="embed-nota-titulo">' + tituloHtml + "</div>" +
@@ -1929,13 +2345,13 @@ function carregarScriptUmaVez(src){
     if(existente){
       if(existente.getAttribute("data-carregado") === "1") return resolve();
       existente.addEventListener("load", function(){ resolve(); });
-      existente.addEventListener("error", function(){ reject(new Error("falhou a carregar " + src)); });
+      existente.addEventListener("error", function(){ reject(new Error(tf("falhou a carregar {src}", {src: src}))); });
       return;
     }
     var s = document.createElement("script");
     s.src = src;
     s.onload = function(){ s.setAttribute("data-carregado", "1"); resolve(); };
-    s.onerror = function(){ reject(new Error("falhou a carregar " + src)); };
+    s.onerror = function(){ reject(new Error(tf("falhou a carregar {src}", {src: src}))); };
     document.body.appendChild(s);
   });
 }
@@ -2012,7 +2428,7 @@ async function processarMermaidEm(container){
       el.classList.add("mermaid-erro");
       var aviso = document.createElement("p");
       aviso.className = "dim-note mermaid-erro-msg";
-      aviso.textContent = "diagrama com erro.";
+      aviso.textContent = t("diagrama com erro.");
       el.appendChild(aviso);
       var perdido = document.getElementById(id);
       if(perdido && perdido.parentNode) perdido.parentNode.removeChild(perdido);
@@ -2073,37 +2489,37 @@ function linkifyCitations(escapedText, fontes){
 
 async function executarProcura(q){
   if(!q || !q.trim()){ closePanel(); return; }
-  openPanel('<div class="cmd-loading"><span class="spinner"></span>a procurar…</div>');
+  openPanel('<div class="cmd-loading"><span class="spinner"></span>' + t("a procurar…") + '</div>');
   try{
     var results = await apiGet("/api/procura?q=" + encodeURIComponent(q) + "&n=10");
     if(!results.length){
-      openPanel('<div class="cmd-empty">nada de confiança; tenta outras palavras.</div>');
+      openPanel('<div class="cmd-empty">' + t("nada de confiança; tenta outras palavras.") + '</div>');
       return;
     }
     var rows = results.map(function(r){
       var pct = Math.round((r.sim||0) * 100);
       if(r.nome){
         return '<a class="cmd-result" href="#/nota/' + r.nome + '">' +
-          '<div class="cmd-result-top"><span class="cmd-result-titulo">' + escapeHtml(r.titulo || "(sem título)") +
+          '<div class="cmd-result-top"><span class="cmd-result-titulo">' + escapeHtml(r.titulo || t("(sem título)")) +
           '</span><span class="cmd-result-sim">' + pct + '%</span></div>' +
           '<div class="cmd-result-trecho">' + escapeHtml(r.trecho || "") + '</div>' +
           '<div class="cmd-result-fonte">' + escapeHtml(r.fonte) + '</div></a>';
       }
       return '<div class="cmd-result cmd-result-static">' +
-        '<div class="cmd-result-top"><span class="cmd-result-titulo">' + escapeHtml(r.titulo || "(sem título)") +
+        '<div class="cmd-result-top"><span class="cmd-result-titulo">' + escapeHtml(r.titulo || t("(sem título)")) +
         '</span><span class="cmd-result-sim">' + pct + '%</span></div>' +
         '<div class="cmd-result-trecho">' + escapeHtml(r.trecho || "") + '</div>' +
-        '<div class="cmd-result-fonte">' + escapeHtml(r.fonte) + " · não navegável</div></div>";
+        '<div class="cmd-result-fonte">' + escapeHtml(r.fonte) + " · " + t("não navegável") + "</div></div>";
     }).join("");
     openPanel(rows);
   }catch(e){
-    openPanel('<div class="cmd-error">falhou a procurar: ' + escapeHtml(e.message) + "</div>");
+    openPanel('<div class="cmd-error">' + tf("falhou a procurar: {erro}", {erro: escapeHtml(e.message)}) + "</div>");
   }
 }
 var procuraDebounced = debounce(executarProcura, 400);
 
 async function executarPergunta(q){
-  openPanel('<div class="cmd-loading"><span class="spinner"></span>a pensar… (pode demorar até 15 s)</div>');
+  openPanel('<div class="cmd-loading"><span class="spinner"></span>' + t("a pensar… (pode demorar até 15 s)") + '</div>');
   try{
     var res = await apiSend("POST", "/api/pergunta", {q: q});
     var chips = (res.fontes || []).map(function(f){
@@ -2115,12 +2531,12 @@ async function executarPergunta(q){
     openPanel('<div class="cmd-resposta">' + linkifyCitations(escapeHtml(res.resposta), res.fontes) +
       '</div><div class="cmd-fontes">' + chips + "</div>");
   }catch(e){
-    openPanel('<div class="cmd-error">falhou a perguntar: ' + escapeHtml(e.message) + "</div>");
+    openPanel('<div class="cmd-error">' + tf("falhou a perguntar: {erro}", {erro: escapeHtml(e.message)}) + "</div>");
   }
 }
 
 async function executarGuarda(texto){
-  openPanel('<div class="cmd-loading"><span class="spinner"></span>a guardar…</div>');
+  openPanel('<div class="cmd-loading"><span class="spinner"></span>' + t("a guardar…") + '</div>');
   try{
     var res = await apiSend("POST", "/api/guarda", {texto: texto});
     openPanel('<div class="cmd-ok">' + escapeHtml(res.mensagem) + "</div>");
@@ -2228,13 +2644,13 @@ function ligarAnexosNoEditor(alvo, obterEditor){
     for(i = 0; i < lista.length; i++){ if(lista[i] && lista[i].size > 0) fich.push(lista[i]); }
     if(!fich.length) return;
     e.preventDefault(); e.stopPropagation();
-    if(!navigator.onLine){ showToast("precisa de rede para guardar anexos."); return; }
+    if(!navigator.onLine){ showToast(t("precisa de rede para guardar anexos.")); return; }
     fich.forEach(function(f){
       enviarAnexo(f).then(function(r){
         var ed = obterEditor();
         if(ed && r && r.nome) ed.inserirNoCursor("![[" + r.nome + "]]");
-        showToast("anexo guardado: " + r.nome);
-      }).catch(function(er){ showToast("anexo não guardado: " + ((er && er.message) || er)); });
+        showToast(tf("anexo guardado: {nome}", {nome: r.nome}));
+      }).catch(function(er){ showToast(tf("anexo não guardado: {erro}", {erro: (er && er.message) || er})); });
     });
   }
   alvo.addEventListener("paste", function(e){ var cd = e.clipboardData; if(cd && cd.files && cd.files.length) tratar(e, cd.files); }, true);
@@ -2265,11 +2681,11 @@ function renderShell(titulo, extraHtml){
     (extraHtml || "") + '</div><div class="view-body"></div></div>';
 }
 function renderLoading(container, msg){
-  container.innerHTML = '<div class="state-loading"><span class="spinner"></span>' + escapeHtml(msg || "a carregar…") + "</div>";
+  container.innerHTML = '<div class="state-loading"><span class="spinner"></span>' + escapeHtml(msg || t("a carregar…")) + "</div>";
 }
 function renderErrorBox(container, msg, retry){
   container.innerHTML = '<div class="state-error"><p>⚠️ ' + escapeHtml(msg) + "</p>" +
-    (retry ? '<button class="btn" id="retry-btn">tentar outra vez</button>' : "") + "</div>";
+    (retry ? '<button class="btn" id="retry-btn">' + t("tentar outra vez") + '</button>' : "") + "</div>";
   if(retry){
     var btn = container.querySelector("#retry-btn");
     if(btn) btn.addEventListener("click", retry);
@@ -2334,9 +2750,9 @@ async function route(){
    ==================================================================== */
 
 async function viewHome(main){
-  main.innerHTML = renderShell("Início");
+  main.innerHTML = renderShell(t("Início"));
   var body = main.querySelector(".view-body");
-  renderLoading(body, "a carregar o estado da memória…");
+  renderLoading(body, t("a carregar o estado da memória…"));
   try{
     var res = await Promise.all([
       apiGet("/api/estado"),
@@ -2349,36 +2765,33 @@ async function viewHome(main){
     var comSugestao = entrada.filter(function(e){ return !!e.sugestao; }).length;
     body.innerHTML =
       '<div class="cards-grid">' +
-        statCard(estado.notas, "notas") + statCard(estado.ligacoes, "ligações") +
-        statCard(estado.entrada, "na entrada") + statCard(estado.pedacos, "pedaços") +
+        statCard(estado.notas, t("notas")) + statCard(estado.ligacoes, t("ligações")) +
+        statCard(estado.entrada, t("na entrada")) + statCard(estado.pedacos, t("pedaços")) +
       "</div>" +
-      '<a class="chip indice-atalho" href="#/notas">📑 Índice (' + escapeHtml(indice.notas != null ? indice.notas : "?") + ')</a>' +
-      (diario ? '<a class="chip indice-atalho" href="#/diario">📅 Hoje na memória: ' + diario.commits.length +
-        ' gravaç' + (diario.commits.length === 1 ? "ão" : "ões") + " · " + diario.notas_novas.length +
-        " nota" + (diario.notas_novas.length === 1 ? "" : "s") + " nova" + (diario.notas_novas.length === 1 ? "" : "s") + "</a>" : "") +
-      '<p class="dim-note">última fotografia: ' + escapeHtml(estado.ultima_foto) +
-        " · " + (estado.ia && estado.ia.chat !== "nenhum" ? "IA: " + escapeHtml(estado.modelo || estado.ia.chat) : "IA desligada neste servidor") + "</p>" +
-      '<div class="quick-guarda"><h2>Guardar uma ideia</h2>' +
-        '<div class="quick-guarda-row"><input id="quick-guarda-input" type="text" placeholder="Escreve uma ideia rápida…">' +
-        '<button id="quick-guarda-btn" class="btn btn-primary">Guardar</button></div>' +
+      '<a class="chip indice-atalho" href="#/notas">📑 ' + t("Índice") + ' (' + escapeHtml(indice.notas != null ? indice.notas : "?") + ')</a>' +
+      (diario ? '<a class="chip indice-atalho" href="#/diario">📅 ' + tf("Hoje na memória: {gravacoes} · {novas}", {gravacoes: (diario.commits.length === 1 ? tf("{n} gravação", {n: diario.commits.length}) : tf("{n} gravações", {n: diario.commits.length})), novas: (diario.notas_novas.length === 1 ? tf("{n} nota nova", {n: diario.notas_novas.length}) : tf("{n} notas novas", {n: diario.notas_novas.length}))}) + "</a>" : "") +
+      '<p class="dim-note">' + tf("última fotografia: {valor}", {valor: escapeHtml(estado.ultima_foto)}) +
+        " · " + (estado.ia && estado.ia.chat !== "nenhum" ? tf("IA: {modelo}", {modelo: escapeHtml(estado.modelo || estado.ia.chat)}) : t("IA desligada neste servidor")) + "</p>" +
+      '<div class="quick-guarda"><h2>' + t("Guardar uma ideia") + '</h2>' +
+        '<div class="quick-guarda-row"><input id="quick-guarda-input" type="text" placeholder="' + t("Escreve uma ideia rápida…") + '">' +
+        '<button id="quick-guarda-btn" class="btn btn-primary">' + t("Guardar") + '</button></div>' +
         '<div id="quick-guarda-msg"></div></div>' +
       '<div class="home-grid">' +
-        '<section class="panel"><h2>Últimas alterações</h2><ul class="timeline">' +
-          (recentes.map(renderRecenteItem).join("") || '<li class="dim-note">sem alterações recentes.</li>') +
+        '<section class="panel"><h2>' + t("Últimas alterações") + '</h2><ul class="timeline">' +
+          (recentes.map(renderRecenteItem).join("") || '<li class="dim-note">' + t("sem alterações recentes.") + '</li>') +
         "</ul></section>" +
-        '<section class="panel"><h2>Entrada</h2><p>' + comSugestao + " de " + entrada.length +
-          " itens têm sugestão de nota.</p>" +
-          '<a class="btn" href="#/entrada">Abrir a entrada →</a></section>' +
+        '<section class="panel"><h2>' + t("Entrada") + '</h2><p>' + tf("{c} de {n} itens têm sugestão de nota.", {c: comSugestao, n: entrada.length}) + "</p>" +
+          '<a class="btn" href="#/entrada">' + t("Abrir a entrada →") + '</a></section>' +
       "</div>" +
       '<p class="dim-note" style="margin-top:24px"><a href="#" id="apagar-copia-link">' +
-        (COPIA_DESLIGADA ? "Voltar a guardar cópia neste aparelho (para funcionar sem rede)" : "Apagar cópia deste aparelho") + "</a></p>";
+        (COPIA_DESLIGADA ? t("Voltar a guardar cópia neste aparelho (para funcionar sem rede)") : t("Apagar cópia deste aparelho")) + "</a></p>";
     body.querySelector("#quick-guarda-btn").addEventListener("click", function(){ quickGuarda(body); });
     body.querySelector("#quick-guarda-input").addEventListener("keydown", function(e){
       if(e.key === "Enter") quickGuarda(body);
     });
     body.querySelector("#apagar-copia-link").addEventListener("click", function(e){ e.preventDefault(); abrirApagarCopiaModal(); });
   }catch(e){
-    renderErrorBox(body, "não consegui carregar o início: " + e.message, function(){ viewHome(main); });
+    renderErrorBox(body, tf("não consegui carregar o início: {erro}", {erro: e.message}), function(){ viewHome(main); });
   }
 }
 function statCard(num, label){
@@ -2389,13 +2802,13 @@ async function quickGuarda(body){
   var msg = body.querySelector("#quick-guarda-msg");
   var texto = input.value.trim();
   if(!texto) return;
-  msg.textContent = "a guardar…";
+  msg.textContent = t("a guardar…");
   try{
     var res = await apiSend("POST", "/api/guarda", {texto: texto});
     msg.textContent = res.mensagem;
     input.value = "";
   }catch(e){
-    msg.textContent = "falhou: " + e.message;
+    msg.textContent = tf("falhou: {erro}", {erro: e.message});
   }
 }
 function renderRecenteItem(r){
@@ -2440,7 +2853,7 @@ async function abrirSaltoRapido(){
   root.innerHTML =
     '<div class="modal-backdrop" id="salto-backdrop">' +
       '<div class="modal salto-modal" role="dialog" aria-modal="true">' +
-        '<input id="salto-input" type="text" placeholder="Saltar para uma nota… (nome, título ou descrição)" autocomplete="off">' +
+        '<input id="salto-input" type="text" placeholder="' + t("Saltar para uma nota… (nome, título ou descrição)") + '" autocomplete="off">' +
         '<div id="salto-lista" class="salto-lista"></div>' +
       "</div></div>";
   var backdrop = document.getElementById("salto-backdrop");
@@ -2476,7 +2889,7 @@ async function abrirSaltoRapido(){
             '<span class="salto-meta">' + escapeHtml(meta) + "</span>" +
           "</div>";
         }).join("")
-      : '<p class="dim-note" style="padding:12px">nenhuma nota corresponde.</p>';
+      : '<p class="dim-note" style="padding:12px">' + t("nenhuma nota corresponde.") + '</p>';
     listaEl.querySelectorAll(".salto-item").forEach(function(el){
       el.addEventListener("mouseenter", function(){ selecionado = +el.dataset.i; marcarActivo(); });
       el.addEventListener("click", function(){ abrir(+el.dataset.i); });
@@ -2513,11 +2926,11 @@ async function abrirSaltoRapido(){
   document.addEventListener("keydown", tratarTeclado, true);
 
   input.focus();
-  listaEl.innerHTML = '<div class="state-loading"><span class="spinner"></span>a carregar…</div>';
+  listaEl.innerHTML = '<div class="state-loading"><span class="spinner"></span>' + t("a carregar…") + '</div>';
   try{
     SALTO_NOTAS_CACHE = await apiGet("/api/notas");
   }catch(e){
-    listaEl.innerHTML = '<p class="dim-note">não consegui carregar as notas: ' + escapeHtml(e.message) + "</p>";
+    listaEl.innerHTML = '<p class="dim-note">' + tf("não consegui carregar as notas: {erro}", {erro: escapeHtml(e.message)}) + "</p>";
     return;
   }
   aplicarFiltro();
@@ -2566,11 +2979,11 @@ function construirCartoesIndice(markdown){
 }
 
 var GRUPOS_TIPO_INDICE = [
-  {tipo: "user", titulo: "Sobre mim"},
-  {tipo: "feedback", titulo: "Regras e lições"},
-  {tipo: "project", titulo: "Projectos"},
-  {tipo: "reference", titulo: "Referências"},
-  {tipo: "outros", titulo: "Outras"},
+  {tipo: "user", titulo: t("Sobre mim")},
+  {tipo: "feedback", titulo: t("Regras e lições")},
+  {tipo: "project", titulo: t("Projectos")},
+  {tipo: "reference", titulo: t("Referências")},
+  {tipo: "outros", titulo: t("Outras")},
 ];
 
 /* ========================================================================
@@ -2621,23 +3034,23 @@ async function montarNotasShell(main, alvoInicial){
   var ctxAberto = lerBool("basalt-contexto", window.innerWidth >= 1500);
   main.innerHTML =
     '<div class="obsidian-shell" id="obsidian-shell">' +
-      '<button class="explorador-toggle" id="explorador-toggle" type="button" title="Esconder/mostrar o explorador">' +
+      '<button class="explorador-toggle" id="explorador-toggle" type="button" title="' + t("Esconder/mostrar o explorador") + '">' +
         (explAberto ? "⟨" : "⟩") + "</button>" +
       '<aside class="explorador' + (explAberto ? "" : " escondido") + '" id="explorador">' +
         '<div class="explorador-topo">' +
-          '<input id="exp-filtro" type="text" placeholder="Filtrar notas…" autocomplete="off">' +
+          '<input id="exp-filtro" type="text" placeholder="' + t("Filtrar notas…") + '" autocomplete="off">' +
           '<select id="exp-agrupar">' +
-            '<option value="indice">📑 Índice</option>' +
-            '<option value="categoria">Categoria</option>' +
-            '<option value="tipo">Tipo</option>' +
+            '<option value="indice">📑 ' + t("Índice") + '</option>' +
+            '<option value="categoria">' + t("Categoria") + '</option>' +
+            '<option value="tipo">' + t("Tipo") + '</option>' +
             '<option value="az">A–Z</option>' +
           "</select>" +
-          '<button id="exp-nova" class="btn btn-primary" type="button">+ Nova nota</button>' +
+          '<button id="exp-nova" class="btn btn-primary" type="button">' + t("+ Nova nota") + '</button>' +
         "</div>" +
-        '<div class="explorador-arvore" id="exp-arvore"><div class="state-loading"><span class="spinner"></span>a carregar…</div></div>' +
+        '<div class="explorador-arvore" id="exp-arvore"><div class="state-loading"><span class="spinner"></span>' + t("a carregar…") + '</div></div>' +
       "</aside>" +
       '<main class="notas-centro" id="notas-centro"></main>' +
-      '<button class="contexto-toggle" id="contexto-toggle" type="button" title="Esconder/mostrar o contexto">' +
+      '<button class="contexto-toggle" id="contexto-toggle" type="button" title="' + t("Esconder/mostrar o contexto") + '">' +
         (ctxAberto ? "⟩" : "⟨") + "</button>" +
       '<aside class="contexto' + (ctxAberto ? "" : " escondido") + '" id="contexto"></aside>' +
     "</div>";
@@ -2661,7 +3074,7 @@ async function montarNotasShell(main, alvoInicial){
   try{
     notas = await apiGet("/api/notas");
   }catch(e){
-    renderErrorBox(arvoreEl, "não consegui carregar as notas: " + e.message, function(){ montarNotasShell(main, alvoInicial); });
+    renderErrorBox(arvoreEl, tf("não consegui carregar as notas: {erro}", {erro: e.message}), function(){ montarNotasShell(main, alvoInicial); });
     return;
   }
 
@@ -2734,7 +3147,7 @@ async function montarNotasShell(main, alvoInicial){
   function renderArvore(){
     var modo = NOTAS_SHELL.agrupamento;
     if(modo === "indice"){
-      arvoreEl.innerHTML = '<div class="state-loading"><span class="spinner"></span>a carregar…</div>';
+      arvoreEl.innerHTML = '<div class="state-loading"><span class="spinner"></span>' + t("a carregar…") + '</div>';
       garantirIndice().then(function(idx){
         var itens = itensIndiceDe(idx.markdown);
         var q = normalizarBusca(NOTAS_SHELL.filtro);
@@ -2743,16 +3156,16 @@ async function montarNotasShell(main, alvoInicial){
         }) : itens;
         arvoreEl.innerHTML = filtrados.length
           ? filtrados.map(expIndiceLinkHtml).join("")
-          : '<p class="dim-note" style="padding:10px">nenhuma entrada corresponde ao filtro.</p>';
+          : '<p class="dim-note" style="padding:10px">' + t("nenhuma entrada corresponde ao filtro.") + '</p>';
         marcarActiva();
       }).catch(function(e){
-        renderErrorBox(arvoreEl, "não consegui carregar o índice: " + e.message, renderArvore);
+        renderErrorBox(arvoreEl, tf("não consegui carregar o índice: {erro}", {erro: e.message}), renderArvore);
       });
       return;
     }
     var lista = notasFiltradas();
     if(!lista.length){
-      arvoreEl.innerHTML = '<p class="dim-note" style="padding:10px">nenhuma nota corresponde ao filtro.</p>';
+      arvoreEl.innerHTML = '<p class="dim-note" style="padding:10px">' + t("nenhuma nota corresponde ao filtro.") + '</p>';
       return;
     }
     var html;
@@ -2767,7 +3180,7 @@ async function montarNotasShell(main, alvoInicial){
     }else{
       var porCategoria = {};
       lista.forEach(function(n){
-        var cats = (n.categorias && n.categorias.length) ? n.categorias : ["Sem categoria"];
+        var cats = (n.categorias && n.categorias.length) ? n.categorias : [t("Sem categoria")];
         cats.forEach(function(c){ (porCategoria[c] = porCategoria[c] || []).push(n); });
       });
       var nomes = Object.keys(porCategoria).sort(function(a, b){ return porCategoria[b].length - porCategoria[a].length; });
@@ -2783,15 +3196,15 @@ async function montarNotasShell(main, alvoInicial){
   }
 
   async function renderIndiceNoCentro(centro, contexto){
-    contexto.innerHTML = '<p class="dim-note">selecciona uma nota para ver o contexto.</p>';
-    renderLoading(centro, "a carregar o índice…");
+    contexto.innerHTML = '<p class="dim-note">' + t("selecciona uma nota para ver o contexto.") + '</p>';
+    renderLoading(centro, t("a carregar o índice…"));
     try{
       var res = await Promise.all([garantirIndice(), apiGet("/api/categorias")]);
       var idx = res[0], cats = res[1];
       var cartoes = construirCartoesIndice(idx.markdown);
       var maxN = cats.categorias.length ? Math.max.apply(null, cats.categorias.map(function(c){ return c.n; })) : 1;
       centro.innerHTML =
-        "<h1>Notas</h1>" +
+        "<h1>" + t("Notas") + "</h1>" +
         '<div class="nuvem-categorias nuvem-mini">' + cats.categorias.slice(0, 16).map(function(c){
           var escala = 0.75 + (c.n / maxN) * 0.5;
           var hue = corCategoria(c.nome);
@@ -2799,9 +3212,9 @@ async function montarNotasShell(main, alvoInicial){
             escala.toFixed(2) + 'rem;background:hsla(' + hue + ',65%,50%,.18);color:hsl(' + hue + ',45%,38%)">' +
             escapeHtml(c.nome) + ' <span class="dim-note">' + c.n + "</span></a>";
         }).join("") + "</div>" +
-        '<div class="indice-filtro-row"><input id="indice-filtro" type="text" placeholder="Filtrar…">' +
+        '<div class="indice-filtro-row"><input id="indice-filtro" type="text" placeholder="' + t("Filtrar…") + '">' +
         '<span id="indice-contagem" class="dim-note"></span></div>' +
-        '<p class="dim-note">actualizado em ' + escapeHtml(idx.atualizado ? fmtDataCurta(new Date(idx.atualizado * 1000)) : "—") + "</p>" +
+        '<p class="dim-note">' + tf("actualizado em {data}", {data: escapeHtml(idx.atualizado ? fmtDataCurta(new Date(idx.atualizado * 1000)) : "—")}) + "</p>" +
         '<div id="indice-lista">' + cartoes.join("") + "</div>";
       var todosCartoes = Array.prototype.slice.call(centro.querySelectorAll(".indice-card"));
       var contagemEl = document.getElementById("indice-contagem");
@@ -2813,12 +3226,12 @@ async function montarNotasShell(main, alvoInicial){
           c.classList.toggle("hidden", !ok);
           if(ok) visiveis++;
         });
-        contagemEl.textContent = visiveis + " de " + todosCartoes.length;
+        contagemEl.textContent = tf("{a} de {b}", {a: visiveis, b: todosCartoes.length});
       }
       document.getElementById("indice-filtro").addEventListener("input", debounce(aplicar, 150));
       aplicar();
     }catch(e){
-      renderErrorBox(centro, "não consegui carregar o índice: " + e.message, function(){ abrir(null); });
+      renderErrorBox(centro, tf("não consegui carregar o índice: {erro}", {erro: e.message}), function(){ abrir(null); });
     }
   }
 
@@ -2836,33 +3249,33 @@ async function montarNotasShell(main, alvoInicial){
 
     if(alvo.tipo === "categoria"){
       contexto.innerHTML = "";
-      renderLoading(centro, "a carregar…");
+      renderLoading(centro, t("a carregar…"));
       try{
         var doGrupo = NOTAS_SHELL.notas.filter(function(n){
           return n.categorias && n.categorias.indexOf(alvo.nome) !== -1;
         }).sort(function(a, b){ return b.mtime - a.mtime; });
         centro.innerHTML =
-          '<div class="notas-centro-topo"><a class="btn" href="#/notas">← voltar</a></div>' +
-          "<h1>Categoria: " + escapeHtml(alvo.nome) + "</h1>" +
-          '<p class="dim-note">' + doGrupo.length + (doGrupo.length === 1 ? " nota nesta categoria." : " notas nesta categoria.") + "</p>" +
+          '<div class="notas-centro-topo"><a class="btn" href="#/notas">' + t("← voltar") + '</a></div>' +
+          "<h1>" + tf("Categoria: {nome}", {nome: escapeHtml(alvo.nome)}) + "</h1>" +
+          '<p class="dim-note">' + (doGrupo.length === 1 ? tf("{n} nota nesta categoria.", {n: doGrupo.length}) : tf("{n} notas nesta categoria.", {n: doGrupo.length})) + "</p>" +
           (doGrupo.length ? '<div class="categoria-cards">' + doGrupo.map(function(n){
             return '<a class="categoria-card" href="#/nota/' + n.nome + '"><strong>' + escapeHtml(n.titulo) + "</strong>" +
               (n.desc ? '<p class="nota-desc" style="margin:4px 0 0">' + escapeHtml(n.desc) + "</p>" : "") + "</a>";
           }).join("") + "</div>" : "");
       }catch(e){
-        renderErrorBox(centro, "não consegui carregar a categoria: " + e.message, function(){ abrir(alvo); });
+        renderErrorBox(centro, tf("não consegui carregar a categoria: {erro}", {erro: e.message}), function(){ abrir(alvo); });
       }
       return;
     }
 
-    centro.innerHTML = '<div class="notas-centro-topo"><a class="btn" href="#/notas">← voltar</a></div>';
-    renderLoading(centro, "a carregar a nota…");
+    centro.innerHTML = '<div class="notas-centro-topo"><a class="btn" href="#/notas">' + t("← voltar") + '</a></div>';
+    renderLoading(centro, t("a carregar a nota…"));
     contexto.innerHTML = "";
     var nota;
     try{
       nota = await apiGet("/api/nota?nome=" + encodeURIComponent(alvo.nome));
     }catch(e){
-      renderErrorBox(centro, "não consegui abrir esta nota: " + e.message, function(){ abrir(alvo); });
+      renderErrorBox(centro, tf("não consegui abrir esta nota: {erro}", {erro: e.message}), function(){ abrir(alvo); });
       return;
     }
     // #41: uma edição feita sem rede fica marcada "por enviar" até a fila sincronizar; um conflito por resolver
@@ -2903,7 +3316,7 @@ function carregarBasaltEditorLib(){
 function temaEditorActual(){
   return document.documentElement.getAttribute("data-theme") === "light" ? "claro" : "escuro";
 }
-var IA_ACOES_LABEL = {resumir: "Resumir", reescrever: "Reescrever", corrigir: "Corrigir", continuar: "Continuar"};
+var IA_ACOES_LABEL = {resumir: t("Resumir"), reescrever: t("Reescrever"), corrigir: t("Corrigir"), continuar: t("Continuar")};
 var IA_MAX_CARACTERES = 6000;     // o mesmo limite do servidor (texto_maximo em [ia] do basalt.toml; omissão 6000)
 
 /* adaptador com a mesma API do BasaltEditor (obterTexto/selecao/substituir/inserirNoCursor/…)
@@ -2966,23 +3379,23 @@ function renderConflito(nota, conflito, centro, contexto){
   }
   var temProposta = !!conflito.proposta && !!conflito.proposta_hash && (!fresco || conflito.proposta_hash === actualHash);
   var propostaLinhas = conflito.proposta_tipo === "linhas";       // junção sem IA, também só com confirmação
-  contexto.innerHTML = '<p class="dim-note">esta nota tem um conflito de sincronização por resolver.</p>';
+  contexto.innerHTML = '<p class="dim-note">' + t("esta nota tem um conflito de sincronização por resolver.") + '</p>';
   centro.innerHTML =
-    '<div class="notas-centro-topo"><a class="btn" href="#/notas">← voltar</a></div>' +
-    '<div class="conflito-aviso"><h1>⚠️ Conflito em «' + escapeHtml(nota.meta.name || nota.nome) + '»</h1>' +
-    "<p>Editaste esta nota sem rede e, entretanto, mudou no servidor (outra sessão ou um agente). Escolhe:</p>" +
+    '<div class="notas-centro-topo"><a class="btn" href="#/notas">' + t("← voltar") + '</a></div>' +
+    '<div class="conflito-aviso"><h1>' + tf("⚠️ Conflito em «{nome}»", {nome: escapeHtml(nota.meta.name || nota.nome)}) + '</h1>' +
+    "<p>" + t("Editaste esta nota sem rede e, entretanto, mudou no servidor (outra sessão ou um agente). Escolhe:") + "</p>" +
     '<div class="conflito-acoes">' +
-      '<button id="conf-servidor" class="btn" type="button">Ficar com a do servidor</button>' +
-      '<button id="conf-minha" class="btn" type="button">Ficar com a minha</button>' +
-      (temProposta ? '<button id="conf-proposta" class="btn" type="button">' + (propostaLinhas ? "Usar a junção automática" : "Usar a proposta da IA") + '</button>' : "") +
-      '<button id="conf-mao" class="btn btn-primary" type="button">Juntar à mão</button>' +
+      '<button id="conf-servidor" class="btn" type="button">' + t("Ficar com a do servidor") + '</button>' +
+      '<button id="conf-minha" class="btn" type="button">' + t("Ficar com a minha") + '</button>' +
+      (temProposta ? '<button id="conf-proposta" class="btn" type="button">' + (propostaLinhas ? t("Usar a junção automática") : t("Usar a proposta da IA")) + '</button>' : "") +
+      '<button id="conf-mao" class="btn btn-primary" type="button">' + t("Juntar à mão") + '</button>' +
     "</div></div>" +
     '<div class="conflito-lado-a-lado">' +
-      '<div class="conflito-coluna"><h3>Servidor (actual)</h3><pre class="conflito-texto">' + escapeHtml(actualTexto) + "</pre></div>" +
-      '<div class="conflito-coluna"><h3>A tua (sem rede)</h3><pre class="conflito-texto">' + escapeHtml(conflito.teu) + "</pre></div>" +
+      '<div class="conflito-coluna"><h3>' + t("Servidor (actual)") + '</h3><pre class="conflito-texto">' + escapeHtml(actualTexto) + "</pre></div>" +
+      '<div class="conflito-coluna"><h3>' + t("A tua (sem rede)") + '</h3><pre class="conflito-texto">' + escapeHtml(conflito.teu) + "</pre></div>" +
     "</div>" +
     (temProposta
-      ? '<div class="conflito-coluna" style="margin-top:12px"><h3>' + (propostaLinhas ? "Junção automática (linha a linha, sem IA) — revê antes de usar" : "Proposta da IA — revê antes de usar") + '</h3>' +
+      ? '<div class="conflito-coluna" style="margin-top:12px"><h3>' + (propostaLinhas ? t("Junção automática (linha a linha, sem IA) — revê antes de usar") : t("Proposta da IA — revê antes de usar")) + '</h3>' +
         (conflito.resumo ? '<p class="dim-note">' + escapeHtml(conflito.resumo) + "</p>" : "") +
         '<pre class="conflito-texto">' + escapeHtml(conflito.proposta) + "</pre></div>"
       : "");
@@ -2995,23 +3408,23 @@ function renderConflito(nota, conflito, centro, contexto){
     try{
       var res = await apiSend("PUT", "/api/nota?nome=" + encodeURIComponent(nota.nome), {texto: texto, base_hash: baseHash});
       if(copiaMudou()){
-        showToast(msgOk + " A cópia deste aparelho foi apagada entretanto — não lhe toquei.");
+        showToast(msgOk + " " + t("A cópia deste aparelho foi apagada entretanto — não lhe toquei."));
         reabrir();
         return;
       }
       var fila = await confirmarGravacaoComRede(nota.nome, null, texto, res.hash);
       await apagarConflitoSeIgual(nota.nome, conflito.quando);
-      if(fila === "ficou") showToast("há outra alteração deste aparelho por enviar nesta nota — vai ser juntada a seguir.");
+      if(fila === "ficou") showToast(t("há outra alteração deste aparelho por enviar nesta nota — vai ser juntada a seguir."));
       await atualizarContadorFila();
       showToast(msgOk);
       reabrir();
     }catch(e){
       if(e.status === 409){
         if(aoMudar && !copiaMudou()) await aoMudar();   // t41r5: a cópia apagada entretanto fica sem mexer
-        showToast("a nota mudou outra vez no servidor — vê a versão nova e escolhe de novo.");
+        showToast(t("a nota mudou outra vez no servidor — vê a versão nova e escolhe de novo."));
         reabrir();                          // volta a pedir a nota ao servidor: o conflito fica com o texto+hash novos
       }else{
-        showToast("falhou: " + e.message);
+        showToast(tf("falhou: {erro}", {erro: e.message}));
       }
     }
   }
@@ -3020,17 +3433,17 @@ function renderConflito(nota, conflito, centro, contexto){
       await apagarConflitoSeIgual(nota.nome, conflito.quando);
       var outra = await apagarFilaSeTexto(nota.nome, conflito.teu).catch(function(){ return false; });
       await atualizarContadorFila();
-      showToast(outra ? "ficaste com a versão do servidor — há outra alteração deste aparelho por enviar, que fica."
-                      : "ficaste com a versão do servidor.");
+      showToast(outra ? t("ficaste com a versão do servidor — há outra alteração deste aparelho por enviar, que fica.")
+                      : t("ficaste com a versão do servidor."));
       reabrir();
-    }catch(e){ showToast("falhou: " + e.message); }
+    }catch(e){ showToast(tf("falhou: {erro}", {erro: e.message})); }
   });
   centro.querySelector("#conf-minha").addEventListener("click", function(){
-    gravarEscolha(conflito.teu, actualHash, "ficaste com a tua versão.");
+    gravarEscolha(conflito.teu, actualHash, t("ficaste com a tua versão."));
   });
   if(temProposta){
     centro.querySelector("#conf-proposta").addEventListener("click", function(){
-      gravarEscolha(conflito.proposta, conflito.proposta_hash, propostaLinhas ? "ficou a junção automática." : "ficou a proposta da IA.", async function(){
+      gravarEscolha(conflito.proposta, conflito.proposta_hash, propostaLinhas ? t("ficou a junção automática.") : t("ficou a proposta da IA."), async function(){
         conflito.proposta = null; conflito.proposta_hash = null;     // feita sobre uma versão que já não é a actual
         await alterarConflitoSeIgual(nota.nome, conflito.quando, function(c){ c.proposta = null; c.proposta_hash = null; }).catch(function(){});   // 
       });
@@ -3039,7 +3452,7 @@ function renderConflito(nota, conflito, centro, contexto){
   centro.querySelector("#conf-mao").addEventListener("click", function(){
     var notaMesclada = {
       nome: nota.nome, projeto: nota.projeto, editavel: nota.editavel,
-      texto: "<<<<<<< SERVIDOR (actual)\n" + actualTexto + "\n=======\n" + conflito.teu + "\n>>>>>>> A TUA VERSÃO (sem rede)\n",
+      texto: "<<<<<<< " + t("SERVIDOR (actual)") + "\n" + actualTexto + "\n=======\n" + conflito.teu + "\n>>>>>>> " + t("A TUA VERSÃO (sem rede)") + "\n",
       hash: actualHash, meta: nota.meta, backlinks: nota.backlinks || [],
       parecidas: nota.parecidas || [], historico: nota.historico || [], categorias: nota.categorias || [],
       baseFila: actualTexto,           // se gravar sem rede, a base é a versão do servidor (não o texto com as marcas)
@@ -3058,19 +3471,19 @@ function renderNotaCompleta(nota, centro, contexto){
     var anotado = anotarEstrutura(renderMarkdown(corpo));
     var larguraTotal = lerBool("basalt-largura-total", false);
     centro.innerHTML =
-      '<div class="notas-centro-topo"><a class="btn" href="#/notas">← voltar</a></div>' +
+      '<div class="notas-centro-topo"><a class="btn" href="#/notas">' + t("← voltar") + '</a></div>' +
       '<div class="nota-largura-wrap' + (larguraTotal ? " largura-total" : "") + '" id="nota-largura-wrap">' +
         '<div class="nota-header"><h1>' + escapeHtml(nota.meta.name || nota.nome) + "</h1>" +
           '<div class="nota-badges">' +
             '<span class="badge" data-tipo="' + escapeHtml(nota.meta.type || "outros") + '">' + escapeHtml(nota.meta.type || "outros") + "</span>" +
-            (!nota.editavel ? '<span class="badge badge-readonly">só leitura</span>' : "") +
-            (nota.porEnviar ? '<span class="badge badge-porenviar">por enviar</span>' : "") +
+            (!nota.editavel ? '<span class="badge badge-readonly">' + t("só leitura") + '</span>' : "") +
+            (nota.porEnviar ? '<span class="badge badge-porenviar">' + t("por enviar") + '</span>' : "") +
           "</div>" +
           (nota.categorias && nota.categorias.length ? '<div class="cat-chips-row">' + nota.categorias.map(chipCategoria).join("") + "</div>" : "") +
           (nota.meta.description ? '<p class="nota-descricao">' + escapeHtml(nota.meta.description) + "</p>" : "") +
           '<div class="nota-acoes">' +
-            (nota.editavel ? '<button id="editar-btn" class="btn btn-primary" type="button">Editar</button>' : "") +
-            '<button id="largura-toggle" class="btn" type="button">' + (larguraTotal ? "↔ largura de leitura" : "↔ largura total") + "</button>" +
+            (nota.editavel ? '<button id="editar-btn" class="btn btn-primary" type="button">' + t("Editar") + '</button>' : "") +
+            '<button id="largura-toggle" class="btn" type="button">' + (larguraTotal ? t("↔ largura de leitura") : t("↔ largura total")) + "</button>" +
           "</div>" +
         "</div>" +
         '<div class="nota-corpo markdown-body">' + anotado.html + "</div>" +
@@ -3082,7 +3495,7 @@ function renderNotaCompleta(nota, centro, contexto){
       larguraTotal = !larguraTotal;
       gravarBool("basalt-largura-total", larguraTotal);
       larguraWrap.classList.toggle("largura-total", larguraTotal);
-      larguraBtn.textContent = larguraTotal ? "↔ largura de leitura" : "↔ largura total";
+      larguraBtn.textContent = larguraTotal ? t("↔ largura de leitura") : t("↔ largura total");
     });
     if(nota.editavel){
       centro.querySelector("#editar-btn").addEventListener("click", function(){ entrarEdicao(false); });
@@ -3101,31 +3514,31 @@ function renderNotaCompleta(nota, centro, contexto){
   function entrarEdicao(ehNova){
     ehNova = !!ehNova;
     centro.innerHTML =
-      '<div class="notas-centro-topo"><a class="btn" href="#/notas">← voltar</a></div>' +
-      '<div class="editor-header"><h1>a editar: ' + escapeHtml(nota.meta.name || nota.nome) +
+      '<div class="notas-centro-topo"><a class="btn" href="#/notas">' + t("← voltar") + '</a></div>' +
+      '<div class="editor-header"><h1>' + tf("a editar: {nome}", {nome: escapeHtml(nota.meta.name || nota.nome)}) +
         ' <span id="ed-dirty-marca" class="editor-dirty-marca"></span></h1>' +
-        '<div class="editor-actions"><button id="ed-cancelar" class="btn" type="button">Cancelar (Esc)</button>' +
-        '<button id="ed-gravar" class="btn btn-primary" type="button">Gravar (Ctrl+S)</button></div></div>' +
+        '<div class="editor-actions"><button id="ed-cancelar" class="btn" type="button">' + t("Cancelar (Esc)") + '</button>' +
+        '<button id="ed-gravar" class="btn btn-primary" type="button">' + t("Gravar (Ctrl+S)") + '</button></div></div>' +
       '<div id="ed-banner"></div>' +
       '<div class="editor-toolbar" id="editor-toolbar">' +
         '<div class="ia-wrap">' +
-          '<button id="ed-ia-btn" class="btn" type="button" title="Ideias de IA para o texto seleccionado">✨ IA</button>' +
+          '<button id="ed-ia-btn" class="btn" type="button" title="' + t("Ideias de IA para o texto seleccionado") + '">✨ ' + t("IA") + '</button>' +
           '<div id="ed-ia-menu" class="editor-dropdown hidden">' +
-            '<button type="button" data-acao="resumir">Resumir</button>' +
-            '<button type="button" data-acao="reescrever">Reescrever</button>' +
-            '<button type="button" data-acao="corrigir">Corrigir</button>' +
-            '<button type="button" data-acao="continuar">Continuar</button>' +
+            '<button type="button" data-acao="resumir">' + t("Resumir") + '</button>' +
+            '<button type="button" data-acao="reescrever">' + t("Reescrever") + '</button>' +
+            '<button type="button" data-acao="corrigir">' + t("Corrigir") + '</button>' +
+            '<button type="button" data-acao="continuar">' + t("Continuar") + '</button>' +
           "</div>" +
         "</div>" +
         '<div class="ligacoes-wrap">' +
-          '<button id="ed-ligacoes-btn" class="btn" type="button" title="Sugestões de notas para ligar">🔗 Ligações</button>' +
+          '<button id="ed-ligacoes-btn" class="btn" type="button" title="' + t("Sugestões de notas para ligar") + '">🔗 ' + t("Ligações") + '</button>' +
           '<div id="ed-ligacoes-painel" class="editor-dropdown hidden"></div>' +
         "</div>" +
-        '<span id="ed-rede-aviso" class="dim-note hidden">precisa de rede</span>' +
+        '<span id="ed-rede-aviso" class="dim-note hidden">' + t("precisa de rede") + '</span>' +
       "</div>" +
       '<div id="ed-parecida-aviso" class="aviso-parecida hidden"></div>' +
-      '<div class="editor-tabs"><button class="tab-btn active" data-tab="editar" type="button">Editar</button>' +
-      '<button class="tab-btn" data-tab="preview" type="button">Pré-visualizar</button></div>' +
+      '<div class="editor-tabs"><button class="tab-btn active" data-tab="editar" type="button">' + t("Editar") + '</button>' +
+      '<button class="tab-btn" data-tab="preview" type="button">' + t("Pré-visualizar") + '</button></div>' +
       '<div class="editor-split" data-active-tab="editar">' +
         '<div id="ed-editor-host" class="editor-cm-host"></div>' +
         '<div id="ed-preview" class="markdown-body editor-preview"></div>' +
@@ -3178,7 +3591,7 @@ function renderNotaCompleta(nota, centro, contexto){
     }
 
     function atualizarMarcaDirty(){
-      if(dirtyMarca) dirtyMarca.textContent = porGravar ? "● por gravar" : "";
+      if(dirtyMarca) dirtyMarca.textContent = porGravar ? t("● por gravar") : "";
     }
 
     // critério p/ "o texto quase não mudou" (não repetir o pedido): o comprimento variou menos de 20
@@ -3202,9 +3615,9 @@ function renderNotaCompleta(nota, centro, contexto){
         if(res && res.parecidas && res.parecidas.length){
           var p = res.parecidas[0];
           avisoParecidaEl.innerHTML =
-            '⚠️ Já existe uma nota muito parecida: <a href="#/nota/' + encodeURIComponent(p.nome) + '">[[' +
+            '⚠️ ' + t("Já existe uma nota muito parecida:") + ' <a href="#/nota/' + encodeURIComponent(p.nome) + '">[[' +
             escapeHtml(p.nome) + "]] (" + Math.round(p.semelhanca * 100) + "%)</a> — " +
-            '<a href="#/nota/' + encodeURIComponent(p.nome) + '">abrir</a>';
+            '<a href="#/nota/' + encodeURIComponent(p.nome) + '">' + t("abrir") + '</a>';
           avisoParecidaEl.classList.remove("hidden");
         }else{
           avisoParecidaEl.classList.add("hidden");
@@ -3242,12 +3655,12 @@ function renderNotaCompleta(nota, centro, contexto){
     }
 
     async function abrirPainelLigacoes(){
-      if(!navigator.onLine){ showToast("precisa de rede para sugerir ligações."); return; }
+      if(!navigator.onLine){ showToast(t("precisa de rede para sugerir ligações.")); return; }
       var sel = editorApi.selecao();
       var q = (sel.texto || "").slice(0, 300).trim();
-      if(!q){ showToast("põe o cursor num parágrafo com texto."); return; }
+      if(!q){ showToast(t("põe o cursor num parágrafo com texto.")); return; }
       ligacoesPainel.classList.remove("hidden");
-      ligacoesPainel.innerHTML = '<div class="cmd-loading"><span class="spinner"></span>a procurar…</div>';
+      ligacoesPainel.innerHTML = '<div class="cmd-loading"><span class="spinner"></span>' + t("a procurar…") + '</div>';
       try{
         var results = await apiGet("/api/procura?q=" + encodeURIComponent(q) + "&n=8");
         var existentes = ligacoesJaExistentes(editorApi.obterTexto());
@@ -3255,7 +3668,7 @@ function renderNotaCompleta(nota, centro, contexto){
           return r && r.nome && r.nome !== nota.nome && !existentes[r.nome];
         }).slice(0, 5);
         if(!sugestoes.length){
-          ligacoesPainel.innerHTML = '<div class="cmd-empty">sem sugestões novas.</div>';
+          ligacoesPainel.innerHTML = '<div class="cmd-empty">' + t("sem sugestões novas.") + '</div>';
           return;
         }
         ligacoesPainel.innerHTML = sugestoes.map(function(s){
@@ -3270,19 +3683,19 @@ function renderNotaCompleta(nota, centro, contexto){
           });
         });
       }catch(e){
-        ligacoesPainel.innerHTML = '<div class="cmd-error">falhou: ' + escapeHtml(e.message) + "</div>";
+        ligacoesPainel.innerHTML = '<div class="cmd-error">' + tf("falhou: {erro}", {erro: escapeHtml(e.message)}) + "</div>";
       }
     }
 
     async function executarAccaoIa(acao){
-      if(!navigator.onLine){ showToast("precisa de rede para usar a IA."); return; }
+      if(!navigator.onLine){ showToast(t("precisa de rede para usar a IA.")); return; }
       var sel = editorApi.selecao();
       if(!sel.texto || !sel.texto.trim()){
-        showToast("selecciona texto ou põe o cursor num parágrafo.");
+        showToast(t("selecciona texto ou põe o cursor num parágrafo."));
         return;
       }
       if(sel.texto.trim().length > IA_MAX_CARACTERES){      // antes o servidor cortava e o «Substituir» apagava o fim
-        showToast("a selecção tem " + sel.texto.trim().length + " caracteres; a IA só trabalha com até " + IA_MAX_CARACTERES + " — selecciona menos.");
+        showToast(tf("a selecção tem {n} caracteres; a IA só trabalha com até {max} — selecciona menos.", {n: sel.texto.trim().length, max: IA_MAX_CARACTERES}));
         return;
       }
       var root = document.getElementById("modal-root");
@@ -3292,8 +3705,8 @@ function renderNotaCompleta(nota, centro, contexto){
         '<div class="modal-backdrop" id="ia-backdrop">' +
           '<div class="modal ia-modal" role="dialog" aria-modal="true">' +
             "<h2>" + escapeHtml(IA_ACOES_LABEL[acao] || acao) + "</h2>" +
-            '<div id="ia-corpo"><div class="state-loading"><span class="spinner"></span>a pensar…</div></div>' +
-            '<div class="modal-actions" id="ia-acoes"><button id="ia-cancelar" class="btn" type="button">Cancelar</button></div>' +
+            '<div id="ia-corpo"><div class="state-loading"><span class="spinner"></span>' + t("a pensar…") + '</div></div>' +
+            '<div class="modal-actions" id="ia-acoes"><button id="ia-cancelar" class="btn" type="button">' + t("Cancelar") + '</button></div>' +
           "</div></div>";
       var backdrop = document.getElementById("ia-backdrop");
       function fechar(){ cancelado = true; root.innerHTML = ""; if(iaCtrl){ try{ iaCtrl.abort(); }catch(_e){} } }
@@ -3313,14 +3726,14 @@ function renderNotaCompleta(nota, centro, contexto){
       }
       corpo.innerHTML =
         '<div class="ia-comparacao">' +
-          '<div class="ia-coluna"><h3>Original</h3><pre class="ia-texto">' + escapeHtml(sel.texto) + "</pre></div>" +
-          '<div class="ia-coluna"><h3>Proposta</h3><pre class="ia-texto">' + escapeHtml(res.texto) + "</pre></div>" +
+          '<div class="ia-coluna"><h3>' + t("Original") + '</h3><pre class="ia-texto">' + escapeHtml(sel.texto) + "</pre></div>" +
+          '<div class="ia-coluna"><h3>' + t("Proposta") + '</h3><pre class="ia-texto">' + escapeHtml(res.texto) + "</pre></div>" +
         "</div>";
       var acoesEl = document.getElementById("ia-acoes");
       acoesEl.innerHTML =
-        '<button id="ia-substituir" class="btn btn-primary" type="button">Substituir</button>' +
-        '<button id="ia-inserir" class="btn" type="button">Inserir a seguir</button>' +
-        '<button id="ia-cancelar2" class="btn" type="button">Cancelar</button>';
+        '<button id="ia-substituir" class="btn btn-primary" type="button">' + t("Substituir") + '</button>' +
+        '<button id="ia-inserir" class="btn" type="button">' + t("Inserir a seguir") + '</button>' +
+        '<button id="ia-cancelar2" class="btn" type="button">' + t("Cancelar") + '</button>';
       document.getElementById("ia-substituir").addEventListener("click", function(){
         editorApi.substituir(sel.de, sel.ate, res.texto);
         editorApi.focar();
@@ -3335,7 +3748,7 @@ function renderNotaCompleta(nota, centro, contexto){
     }
 
     iaBtn.addEventListener("click", function(){
-      if(!navigator.onLine){ showToast("precisa de rede para usar a IA."); return; }
+      if(!navigator.onLine){ showToast(t("precisa de rede para usar a IA.")); return; }
       ligacoesPainel.classList.add("hidden");
       iaMenu.classList.toggle("hidden");
     });
@@ -3397,7 +3810,7 @@ function renderNotaCompleta(nota, centro, contexto){
           return ((NOTAS_SHELL && NOTAS_SHELL.notas) || []).map(function(n){ return {nome: n.nome, titulo: n.titulo}; });
         },
         abrirNota: function(nomeNota){
-          if(porGravar && !window.confirm("Tens alterações por gravar nesta nota. Sair sem gravar?")) return;
+          if(porGravar && !window.confirm(t("Tens alterações por gravar nesta nota. Sair sem gravar?"))) return;
           limparSessaoEdicao();
           location.hash = "#/nota/" + nomeNota;
         },
@@ -3425,7 +3838,7 @@ function renderNotaCompleta(nota, centro, contexto){
     centro.querySelector("#ed-gravar").addEventListener("click", gravar);
 
     async function gravar(){
-      banner.innerHTML = '<div class="state-loading"><span class="spinner"></span>a gravar…</div>';
+      banner.innerHTML = '<div class="state-loading"><span class="spinner"></span>' + t("a gravar…") + '</div>';
       var textoActual = editorApi.obterTexto();
       var geracao = GERACAO_COPIA;   // se a cópia for apagada (e religada) enquanto o PUT corre, o resultado já não toca na cópia
       if(editaSobreFila){
@@ -3433,12 +3846,12 @@ function renderNotaCompleta(nota, centro, contexto){
           await guardarEdicaoOffline(nota.nome, baseTextoEdicao, textoActual);
           nota.texto = textoActual;
           banner.innerHTML = "";
-          showToast("guardado — a juntar com a versão do servidor…");
+          showToast(t("guardado — a juntar com a versão do servidor…"));
           limparSessaoEdicao();
           renderVer();
           sincronizarFila();
         }catch(e2){
-          banner.innerHTML = '<div class="state-error"><p>⚠️ não consegui guardar: ' + escapeHtml(e2.message) + "</p></div>";
+          banner.innerHTML = '<div class="state-error"><p>⚠️ ' + tf("não consegui guardar: {erro}", {erro: escapeHtml(e2.message)}) + "</p></div>";
         }
         return;
       }
@@ -3451,35 +3864,35 @@ function renderNotaCompleta(nota, centro, contexto){
         var filaDepois = (COPIA_DESLIGADA || geracao !== GERACAO_COPIA) ? "" :   // cópia apagada entretanto → não escrever nela
           await confirmarGravacaoComRede(nota.nome, null, textoActual, res.hash).catch(function(){ return ""; });
         atualizarContadorFila();
-        if(filaDepois === "ficou") showToast("há outra alteração deste aparelho por enviar nesta nota — vai ser juntada a seguir.");
+        if(filaDepois === "ficou") showToast(t("há outra alteração deste aparelho por enviar nesta nota — vai ser juntada a seguir."));
         if(nota.resolveConflito){ nota.resolveConflito = false; nota.baseFila = null; if(geracao === GERACAO_COPIA) await apagarConflitoSeIgual(nota.nome, nota.conflitoQuando).catch(function(){}); }   // 
         banner.innerHTML = "";
-        showToast("nota gravada.");
+        showToast(t("nota gravada."));
         limparSessaoEdicao();
         renderVer();
       }catch(e){
         if(e.status === 409 && e.data && e.data.pendente){
           banner.innerHTML = '<div class="state-error"><p>⚠️ ' + escapeHtml(e.message) + '</p>' +
-            '<button id="ed-de-novo" class="btn btn-primary" type="button">gravar outra vez</button></div>';
+            '<button id="ed-de-novo" class="btn btn-primary" type="button">' + t("gravar outra vez") + '</button></div>';
           banner.querySelector("#ed-de-novo").addEventListener("click", gravar);
         }else if(e.status === 409){
           banner.innerHTML =
-            '<div class="state-error"><p>⚠️ a nota mudou entretanto.</p>' +
+            '<div class="state-error"><p>⚠️ ' + t("a nota mudou entretanto.") + '</p>' +
             '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-            '<button id="ed-copiar" class="btn" type="button">copiar o meu texto</button>' +
-            '<button id="ed-recarregar" class="btn btn-primary" type="button">recarregar</button>' +
+            '<button id="ed-copiar" class="btn" type="button">' + t("copiar o meu texto") + '</button>' +
+            '<button id="ed-recarregar" class="btn btn-primary" type="button">' + t("recarregar") + '</button>' +
             "</div></div>";
           banner.querySelector("#ed-copiar").addEventListener("click", async function(){
-            try{ await navigator.clipboard.writeText(textoActual); showToast("copiado."); }
+            try{ await navigator.clipboard.writeText(textoActual); showToast(t("copiado.")); }
             catch(err){
               try{
                 var tmp = document.createElement("textarea");
                 tmp.value = textoActual; document.body.appendChild(tmp); tmp.select();
                 document.execCommand && document.execCommand("copy");
                 document.body.removeChild(tmp);
-                showToast("copiado (modo alternativo).");
+                showToast(t("copiado (modo alternativo)."));
               }
-              catch(err2){ showToast("não consegui copiar automaticamente — selecciona e copia à mão."); }
+              catch(err2){ showToast(t("não consegui copiar automaticamente — selecciona e copia à mão.")); }
             }
           });
           banner.querySelector("#ed-recarregar").addEventListener("click", function(){
@@ -3490,11 +3903,10 @@ function renderNotaCompleta(nota, centro, contexto){
         }else if(e.semRede && (COPIA_DESLIGADA || geracao !== GERACAO_COPIA)){
           // sem rede E a cópia deste aparelho apagada — não se volta a criar fila; o texto fica no editor
           // idem se foi apagada (mesmo que religada) enquanto este PUT corria — uma edição descartada não ressuscita na fila
-          banner.innerHTML = '<div class="state-error"><p>⚠️ sem rede, e a cópia deste aparelho está apagada (ou foi apagada entretanto) — não guardo aqui. ' +
-            'Copia o teu texto ou volta a ligar a cópia (no Início) e grava outra vez.</p>' +
-            '<button id="ed-copiar-off" class="btn" type="button">copiar o meu texto</button></div>';
+          banner.innerHTML = '<div class="state-error"><p>⚠️ ' + t("sem rede, e a cópia deste aparelho está apagada (ou foi apagada entretanto) — não guardo aqui. Copia o teu texto ou volta a ligar a cópia (no Início) e grava outra vez.") + '</p>' +
+            '<button id="ed-copiar-off" class="btn" type="button">' + t("copiar o meu texto") + '</button></div>';
           banner.querySelector("#ed-copiar-off").addEventListener("click", function(){
-            try{ navigator.clipboard.writeText(textoActual).then(function(){ showToast("copiado."); }); }catch(err){ showToast("não consegui copiar automaticamente — selecciona e copia à mão."); }
+            try{ navigator.clipboard.writeText(textoActual).then(function(){ showToast(t("copiado.")); }); }catch(err){ showToast(t("não consegui copiar automaticamente — selecciona e copia à mão.")); }
           });
         }else if(e.semRede){
           // #41: sem rede — guarda no aparelho em vez de perder a edição; sobe sozinho quando houver rede
@@ -3503,15 +3915,15 @@ function renderNotaCompleta(nota, centro, contexto){
             if(nota.resolveConflito){ nota.resolveConflito = false; await apagarConflitoSeIgual(nota.nome, nota.conflitoQuando).catch(function(){}); }   // 
             nota.texto = textoActual;
             nota.porEnviar = true;
-            banner.innerHTML = '<div class="state-ok"><p>guardado no aparelho; sobe quando houver rede.</p></div>';
-            showToast("guardado no aparelho — sem rede.");
+            banner.innerHTML = '<div class="state-ok"><p>' + t("guardado no aparelho; sobe quando houver rede.") + '</p></div>';
+            showToast(t("guardado no aparelho — sem rede."));
             limparSessaoEdicao();
             renderVer();
           }catch(e2){
-            banner.innerHTML = '<div class="state-error"><p>⚠️ não consegui guardar nem no aparelho: ' + escapeHtml(e2.message) + "</p></div>";
+            banner.innerHTML = '<div class="state-error"><p>⚠️ ' + tf("não consegui guardar nem no aparelho: {erro}", {erro: escapeHtml(e2.message)}) + "</p></div>";
           }
         }else{
-          banner.innerHTML = '<div class="state-error"><p>⚠️ falhou a gravar: ' + escapeHtml(e.message) + "</p></div>";
+          banner.innerHTML = '<div class="state-error"><p>⚠️ ' + tf("falhou a gravar: {erro}", {erro: escapeHtml(e.message)}) + "</p></div>";
         }
       }
     }
@@ -3536,28 +3948,28 @@ function renderContextoLinha(item){
 function renderPainelContexto(nota, estrutura, contexto){
   var html = "";
   if(estrutura.length){
-    html += "<h3>Estrutura</h3><ul class=\"estrutura-lista\">" + estrutura.map(function(h){
+    html += "<h3>" + t("Estrutura") + "</h3><ul class=\"estrutura-lista\">" + estrutura.map(function(h){
       var nivelClasse = h.nivel >= 3 ? "estrutura-nivel-3" : (h.nivel === 2 ? "estrutura-nivel-2" : "");
       return '<li class="' + nivelClasse + '"><button type="button" data-alvo="' + h.id + '">' +
         escapeHtml(h.texto) + "</button></li>";
     }).join("") + "</ul>";
   }
   if(nota.categorias && nota.categorias.length){
-    html += "<h3>Categorias</h3><div class=\"cat-chips-row\">" + nota.categorias.map(chipCategoria).join("") + "</div>";
+    html += "<h3>" + t("Categorias") + "</h3><div class=\"cat-chips-row\">" + nota.categorias.map(chipCategoria).join("") + "</div>";
   }
-  html += "<h3>Grafo local</h3><div id=\"mini-grafo-wrap\"></div>";
-  html += "<h3>Quem aponta para aqui</h3>" +
+  html += "<h3>" + t("Grafo local") + "</h3><div id=\"mini-grafo-wrap\"></div>";
+  html += "<h3>" + t("Quem aponta para aqui") + "</h3>" +
     (nota.backlinks.length ? '<ul class="link-list backlinks-lista">' + nota.backlinks.map(renderContextoLinha).join("") + "</ul>"
-      : '<p class="dim-note">ninguém, por agora.</p>');
-  html += "<h3>Notas parecidas</h3>" +
+      : '<p class="dim-note">' + t("ninguém, por agora.") + '</p>');
+  html += "<h3>" + t("Notas parecidas") + "</h3>" +
     (nota.parecidas.length ? '<ul class="link-list">' + nota.parecidas.map(function(p){
       return '<li><a href="#/nota/' + p.nome + '" data-nome="' + escapeHtml(p.nome) + '">' + escapeHtml(p.nome) +
         '</a> <span class="dim-note">' + Math.round(p.sim * 100) + "%</span></li>";
-    }).join("") + "</ul>" : '<p class="dim-note">nenhuma semelhança forte.</p>');
-  html += "<h3>Histórico</h3>" +
+    }).join("") + "</ul>" : '<p class="dim-note">' + t("nenhuma semelhança forte.") + '</p>');
+  html += "<h3>" + t("Histórico") + "</h3>" +
     (nota.historico.length ? '<ul class="timeline">' + nota.historico.map(function(h){
       return '<li><span class="timeline-data">' + escapeHtml(h.data) + '</span><span class="timeline-msg">' + escapeHtml(h.msg) + "</span></li>";
-    }).join("") + "</ul>" : '<p class="dim-note">sem histórico.</p>');
+    }).join("") + "</ul>" : '<p class="dim-note">' + t("sem histórico.") + '</p>');
   contexto.innerHTML = html;
   contexto.querySelectorAll("[data-alvo]").forEach(function(btn){
     btn.addEventListener("click", function(){
@@ -3587,17 +3999,17 @@ function openNovaNotaModal(preenchido){
   root.innerHTML =
     '<div class="modal-backdrop" id="modal-backdrop">' +
       '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">' +
-        '<h2 id="modal-title">Nova nota</h2>' +
-        '<label>Nome (snake_case)<input id="nn-nome" type="text" autocomplete="off" placeholder="ex: project_novo_site"></label>' +
+        '<h2 id="modal-title">' + t("Nova nota") + '</h2>' +
+        '<label>' + t("Nome (snake_case)") + '<input id="nn-nome" type="text" autocomplete="off" placeholder="' + t("ex: project_novo_site") + '"></label>' +
         '<p class="field-error" id="nn-nome-erro"></p>' +
-        '<label>Tipo<select id="nn-tipo">' +
+        '<label>' + t("Tipo") + '<select id="nn-tipo">' +
           '<option value="user">user</option><option value="feedback">feedback</option>' +
           '<option value="project" selected>project</option><option value="reference">reference</option>' +
           '<option value="outros">outros</option></select></label>' +
-        '<label>Descrição<input id="nn-desc" type="text" placeholder="uma frase a descrever a nota"></label>' +
+        '<label>' + t("Descrição") + '<input id="nn-desc" type="text" placeholder="' + t("uma frase a descrever a nota") + '"></label>' +
         '<p class="field-error" id="nn-erro-geral"></p>' +
-        '<div class="modal-actions"><button class="btn" id="nn-cancelar" type="button">Cancelar</button>' +
-        '<button class="btn btn-primary" id="nn-criar" type="button">Criar</button></div>' +
+        '<div class="modal-actions"><button class="btn" id="nn-cancelar" type="button">' + t("Cancelar") + '</button>' +
+        '<button class="btn btn-primary" id="nn-criar" type="button">' + t("Criar") + '</button></div>' +
       "</div></div>";
   var backdrop = document.getElementById("modal-backdrop");
   var nomeInput = document.getElementById("nn-nome");
@@ -3608,7 +4020,7 @@ function openNovaNotaModal(preenchido){
   function validarNome(){
     var v = nomeInput.value.trim();
     var ok = /^[a-z0-9_]+$/.test(v);
-    nomeErro.textContent = v && !ok ? "só letras minúsculas, números e _ (ex: minha_nota_2)" : "";
+    nomeErro.textContent = v && !ok ? t("só letras minúsculas, números e _ (ex: minha_nota_2)") : "";
     return ok && !!v;
   }
   nomeInput.addEventListener("input", validarNome);
@@ -3627,7 +4039,7 @@ function openNovaNotaModal(preenchido){
     var texto = "---\nname: " + nome + '\ndescription: "' + descYaml + '"\nmetadata:\n  type: ' + tipo + "\n---\n\n" +
       (preenchido && preenchido.corpo ? preenchido.corpo + "\n" : "");
     geralErro.style.color = "var(--text-dim)";
-    geralErro.textContent = "a criar…";
+    geralErro.textContent = t("a criar…");
     try{
       await apiSend("POST", "/api/nota", {nome: nome, texto: texto});
       ABRIR_EM_EDICAO = nome;
@@ -3655,7 +4067,7 @@ function abrirSeletorNotaParaJuntar(aoEscolher){
   root.innerHTML =
     '<div class="modal-backdrop" id="salto-backdrop">' +
       '<div class="modal salto-modal" role="dialog" aria-modal="true">' +
-        '<input id="salto-input" type="text" placeholder="Escolher nota… (nome ou título)" autocomplete="off">' +
+        '<input id="salto-input" type="text" placeholder="' + t("Escolher nota… (nome ou título)") + '" autocomplete="off">' +
         '<div id="salto-lista" class="salto-lista"></div>' +
       "</div></div>";
   var backdrop = document.getElementById("salto-backdrop");
@@ -3691,7 +4103,7 @@ function abrirSeletorNotaParaJuntar(aoEscolher){
             '<span class="salto-meta">' + escapeHtml(n.nome) + "</span>" +
           "</div>";
         }).join("")
-      : '<p class="dim-note" style="padding:12px">nenhuma nota corresponde.</p>';
+      : '<p class="dim-note" style="padding:12px">' + t("nenhuma nota corresponde.") + '</p>';
     listaEl.querySelectorAll(".salto-item").forEach(function(el){
       el.addEventListener("mouseenter", function(){ selecionado = +el.dataset.i; marcarActivo(); });
       el.addEventListener("click", function(){ escolher(+el.dataset.i); });
@@ -3721,12 +4133,12 @@ function abrirSeletorNotaParaJuntar(aoEscolher){
   document.addEventListener("keydown", tratarTeclado, true);
 
   input.focus();
-  listaEl.innerHTML = '<div class="state-loading"><span class="spinner"></span>a carregar…</div>';
+  listaEl.innerHTML = '<div class="state-loading"><span class="spinner"></span>' + t("a carregar…") + '</div>';
   apiGet("/api/notas").then(function(notas){
     todas = notas.filter(function(n){ return n.editavel; }).sort(function(a, b){ return b.mtime - a.mtime; });
     aplicarFiltro();
   }).catch(function(e){
-    listaEl.innerHTML = '<p class="dim-note">não consegui carregar as notas: ' + escapeHtml(e.message) + "</p>";
+    listaEl.innerHTML = '<p class="dim-note">' + tf("não consegui carregar as notas: {erro}", {erro: escapeHtml(e.message)}) + "</p>";
   });
 }
 
@@ -3737,25 +4149,25 @@ function abrirSeletorNotaParaJuntar(aoEscolher){
 async function juntarIdeia(t, nota, btn, recarregar){
   // 25/09: usado pelo botão principal "Juntar a «X»" e pelo selector "outra nota…" — acrescenta a
   // ideia no fim da nota escolhida (com data e origem) e tira-a da Entrada.
-  if(!navigator.onLine){ showToast("precisa de rede."); return; }
+  if(!navigator.onLine){ showToast(basaltT("precisa de rede.")); return; }
   var textoOriginal = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "a juntar…";
+  btn.textContent = basaltT("a juntar…");
   try{
     var res = await apiSend("POST", "/api/entrada/juntar", {t: t, nota: nota});
-    showToast(res.mensagem || "junto.");
+    showToast(res.mensagem || basaltT("junto."));
     await recarregar();
   }catch(e){
     btn.disabled = false;
     btn.textContent = textoOriginal;
-    showToast("falhou: " + e.message);
+    showToast(tf("falhou: {erro}", {erro: e.message}));
   }
 }
 
 async function viewEntrada(main){
-  main.innerHTML = renderShell("Entrada");
+  main.innerHTML = renderShell(t("Entrada"));
   var body = main.querySelector(".view-body");
-  renderLoading(body, "a carregar a entrada…");
+  renderLoading(body, t("a carregar a entrada…"));
 
   function atualizarEntradaRede(){
     var online = navigator.onLine;
@@ -3778,22 +4190,22 @@ async function viewEntrada(main){
       var res = await Promise.all([apiGet("/api/entrada"), apiGet("/api/entrada/auto")]);
       var pendentes = res[0], automaticas = res[1];
       body.innerHTML =
-        '<p class="dim-note" id="entrada-intro">O Basalt arruma sozinho as ideias novas em poucos minutos. Aqui ficam só as que precisam de ti.</p>' +
+        '<p class="dim-note" id="entrada-intro">' + t("O Basalt arruma sozinho as ideias novas em poucos minutos. Aqui ficam só as que precisam de ti.") + '</p>' +
         '<div class="quick-guarda">' +
           '<div class="quick-guarda-row">' +
-            '<input id="quick-guarda-input" type="text" placeholder="Guardar uma ideia…">' +
-            '<button id="quick-guarda-btn" class="btn btn-primary" type="button">Guardar</button>' +
+            '<input id="quick-guarda-input" type="text" placeholder="' + t("Guardar uma ideia…") + '">' +
+            '<button id="quick-guarda-btn" class="btn btn-primary" type="button">' + t("Guardar") + '</button>' +
           "</div>" +
           '<div id="quick-guarda-msg"></div>' +
-          '<span class="dim-note rede-aviso hidden">precisa de rede</span>' +
+          '<span class="dim-note rede-aviso hidden">' + t("precisa de rede") + '</span>' +
         "</div>" +
-        '<section id="entrada-decidir"><h2>Para decidires</h2>' +
+        '<section id="entrada-decidir"><h2>' + t("Para decidires") + '</h2>' +
           (pendentes.length
             ? '<ul class="entrada-lista">' + pendentes.map(renderEntradaItem).join("") + "</ul>"
-            : '<p class="dim-note">nada a decidir — o Basalt tratou de tudo sozinho.</p>') +
+            : '<p class="dim-note">' + t("nada a decidir — o Basalt tratou de tudo sozinho.") + '</p>') +
         "</section>" +
         (automaticas.length
-          ? '<section id="entrada-auto"><h2>Arrumadas sozinhas (últimas)</h2>' +
+          ? '<section id="entrada-auto"><h2>' + t("Arrumadas sozinhas (últimas)") + '</h2>' +
               '<ul class="entrada-lista">' + automaticas.map(renderEntradaAutoItem).join("") + "</ul></section>"
           : "");
       atualizarEntradaRede();
@@ -3804,17 +4216,17 @@ async function viewEntrada(main){
       });
       body.querySelectorAll(".arquivar-btn").forEach(function(btn){
         btn.addEventListener("click", async function(){
-          if(!navigator.onLine){ showToast("precisa de rede."); return; }
+          if(!navigator.onLine){ showToast(t("precisa de rede.")); return; }
           btn.disabled = true;
-          btn.textContent = "a arquivar…";
+          btn.textContent = t("a arquivar…");
           try{
             await apiSend("POST", "/api/entrada/arquivar", {n: Number(btn.dataset.n)});
-            showToast("arquivado.");
+            showToast(t("arquivado."));
             await carregar();
           }catch(e){
             btn.disabled = false;
-            btn.textContent = "Arquivar";
-            showToast("falhou: " + e.message);
+            btn.textContent = t("Arquivar");
+            showToast(tf("falhou: {erro}", {erro: e.message}));
           }
         });
       });
@@ -3823,7 +4235,7 @@ async function viewEntrada(main){
       });
       body.querySelectorAll(".outra-nota-btn").forEach(function(btn){
         btn.addEventListener("click", function(){
-          if(!navigator.onLine){ showToast("precisa de rede."); return; }
+          if(!navigator.onLine){ showToast(t("precisa de rede.")); return; }
           abrirSeletorNotaParaJuntar(function(nomeEscolhido){
             juntarIdeia(btn.dataset.t, nomeEscolhido, btn, carregar);
           });
@@ -3836,39 +4248,39 @@ async function viewEntrada(main){
       });
       body.querySelectorAll(".eliminar-btn").forEach(function(btn){
         btn.addEventListener("click", async function(){
-          if(!navigator.onLine){ showToast("precisa de rede."); return; }
-          if(!window.confirm("Eliminar esta ideia? Não fica em nenhuma nota.")) return;
+          if(!navigator.onLine){ showToast(t("precisa de rede.")); return; }
+          if(!window.confirm(t("Eliminar esta ideia? Não fica em nenhuma nota."))) return;
           btn.disabled = true;
-          btn.textContent = "a eliminar…";
+          btn.textContent = t("a eliminar…");
           try{
             var res2 = await apiSend("POST", "/api/entrada/apagar", {t: btn.dataset.t});
-            showToast(res2.mensagem || "eliminada.");
+            showToast(res2.mensagem || t("eliminada."));
             await carregar();
           }catch(e){
             btn.disabled = false;
-            btn.textContent = "Eliminar";
-            showToast("falhou: " + e.message);
+            btn.textContent = t("Eliminar");
+            showToast(tf("falhou: {erro}", {erro: e.message}));
           }
         });
       });
       body.querySelectorAll(".desfazer-auto-btn").forEach(function(btn){
         btn.addEventListener("click", async function(){
-          if(!navigator.onLine){ showToast("precisa de rede."); return; }
+          if(!navigator.onLine){ showToast(t("precisa de rede.")); return; }
           btn.disabled = true;
-          btn.textContent = "a desfazer…";
+          btn.textContent = t("a desfazer…");
           try{
             var res3 = await apiSend("POST", "/api/entrada/desfazer", {t: btn.dataset.t});
-            showToast(res3.mensagem || "desfeito.");
+            showToast(res3.mensagem || t("desfeito."));
             await carregar();   // recarrega as duas listas
           }catch(e){
             btn.disabled = false;
-            btn.textContent = "Desfazer";
-            showToast("falhou: " + e.message);
+            btn.textContent = t("Desfazer");
+            showToast(tf("falhou: {erro}", {erro: e.message}));
           }
         });
       });
     }catch(e){
-      renderErrorBox(body, "não consegui carregar a entrada: " + e.message, carregar);
+      renderErrorBox(body, tf("não consegui carregar a entrada: {erro}", {erro: e.message}), carregar);
     }
   }
 }
@@ -3877,10 +4289,10 @@ function renderEntradaItem(item){
   var tAttr = escapeHtml(item.t);
   var acaoPrincipal = item.sugestao
     ? '<button class="btn btn-primary juntar-btn" type="button" data-t="' + tAttr + '" data-nota="' + escapeHtml(item.sugestao) +
-      '">Juntar a «' + escapeHtml(item.sugestao) + '»</button>' +
-      '<button class="btn-link outra-nota-btn" type="button" data-t="' + tAttr + '">outra nota…</button>'
-    : '<button class="btn criar-nota-btn" type="button" data-texto="' + escapeHtml(item.texto) + '">Criar nota com isto</button>' +
-      '<button class="btn outra-nota-btn" type="button" data-t="' + tAttr + '">Juntar a uma nota…</button>';
+      '">' + tf("Juntar a «{nome}»", {nome: escapeHtml(item.sugestao)}) + '</button>' +
+      '<button class="btn-link outra-nota-btn" type="button" data-t="' + tAttr + '">' + t("outra nota…") + '</button>'
+    : '<button class="btn criar-nota-btn" type="button" data-texto="' + escapeHtml(item.texto) + '">' + t("Criar nota com isto") + '</button>' +
+      '<button class="btn outra-nota-btn" type="button" data-t="' + tAttr + '">' + t("Juntar a uma nota…") + '</button>';
   // "duvida": quando o Basalt já olhou para a ideia mas não teve a certeza — a entrada() do servidor ainda
   // não devolve este campo (só a entrada_auto() o tem); fica pronto para quando o trouxer, sem partir nada agora.
   var motivoDuvida = (item.auto && item.auto.acao === "duvida" && item.auto.motivo) ? item.auto.motivo : "";
@@ -3889,20 +4301,20 @@ function renderEntradaItem(item){
     '<span class="dim-note">' + fmtDataCurta(d) + "</span></div>" +
     "<p>" + escapeHtml(item.texto) + "</p>" +
     (item.sugestao && item.porque && item.porque.length
-      ? '<p class="dim-note entrada-porque">em comum: ' + escapeHtml(item.porque.join(", ")) + "</p>" : "") +
-    (!item.sugestao ? '<p class="dim-note entrada-porque">sem nota certa</p>' : "") +
+      ? '<p class="dim-note entrada-porque">' + tf("em comum: {lista}", {lista: escapeHtml(item.porque.join(", "))}) + "</p>" : "") +
+    (!item.sugestao ? '<p class="dim-note entrada-porque">' + t("sem nota certa") + '</p>' : "") +
     (motivoDuvida ? '<p class="dim-note entrada-porque">' + escapeHtml(motivoDuvida) + "</p>" : "") +
     '<div class="entrada-acoes">' +
       acaoPrincipal +
-      '<button class="btn arquivar-btn" type="button" data-n="' + item.n + '">Arquivar</button>' +
-      '<button class="btn btn-perigo eliminar-btn" type="button" data-t="' + tAttr + '">Eliminar</button>' +
-      '<span class="dim-note rede-aviso hidden">precisa de rede</span>' +
+      '<button class="btn arquivar-btn" type="button" data-n="' + item.n + '">' + t("Arquivar") + '</button>' +
+      '<button class="btn btn-perigo eliminar-btn" type="button" data-t="' + tAttr + '">' + t("Eliminar") + '</button>' +
+      '<span class="dim-note rede-aviso hidden">' + t("precisa de rede") + '</span>' +
     "</div></li>";
 }
 function renderEntradaAutoItem(item){
   var linha = item.acao === "juntar" && item.nota
-    ? '↪ juntada a <a href="#/nota/' + encodeURIComponent(item.nota) + '">[[' + escapeHtml(item.nota) + "]]</a>"
-    : "🗑 arquivada (teste)";
+    ? '↪ ' + t("juntada a") + ' <a href="#/nota/' + encodeURIComponent(item.nota) + '">[[' + escapeHtml(item.nota) + "]]</a>"
+    : t("🗑 arquivada (teste)");
   var quando = item.quando ? fmtDataCurta(new Date(item.quando)) : "";
   return '<li class="entrada-item entrada-auto-item"><div class="entrada-top">' +
     '<span class="badge badge-origem">' + escapeHtml(item.de) + '</span>' +
@@ -3912,9 +4324,9 @@ function renderEntradaAutoItem(item){
     (item.motivo ? '<p class="dim-note entrada-porque">' + escapeHtml(item.motivo) + "</p>" : "") +
     '<div class="entrada-acoes">' +
       (item.desfeito
-        ? '<span class="dim-note">desfeito</span>'
-        : '<button class="btn desfazer-auto-btn" type="button" data-t="' + escapeHtml(item.t) + '">Desfazer</button>' +
-          '<span class="dim-note rede-aviso hidden">precisa de rede</span>') +
+        ? '<span class="dim-note">' + t("desfeito") + '</span>'
+        : '<button class="btn desfazer-auto-btn" type="button" data-t="' + escapeHtml(item.t) + '">' + t("Desfazer") + '</button>' +
+          '<span class="dim-note rede-aviso hidden">' + t("precisa de rede") + '</span>') +
     "</div></li>";
 }
 
@@ -3923,48 +4335,47 @@ function renderEntradaAutoItem(item){
    ==================================================================== */
 
 async function viewArrumar(main){
-  main.innerHTML = renderShell("Arrumar");
+  main.innerHTML = renderShell(t("Arrumar"));
   var body = main.querySelector(".view-body");
-  renderLoading(body, "a analisar a memória…");
+  renderLoading(body, t("a analisar a memória…"));
   try{
     var d = await apiGet("/api/arrumar");
     body.innerHTML =
       // «Notas muito parecidas» + botões Unir saíram — a arrumação automática trata disso sozinha.
-      '<section class="panel"><h2>Arrumação automática</h2>' + (function(au){
-        var ICONE = {unir: "🔗 unidas", arquivar: "🗄 arquivada", ligar: "↔ ligadas"};
+      '<section class="panel"><h2>' + t("Arrumação automática") + '</h2>' + (function(au){
+        var ICONE = {unir: t("🔗 unidas"), arquivar: t("🗄 arquivada"), ligar: t("↔ ligadas")};
         function par(n){ return '<a href="#/nota/' + escapeHtml(n[0]) + '">' + escapeHtml(n[0]) + '</a> ↔ <a href="#/nota/' +
           escapeHtml(n[1]) + '">' + escapeHtml(n[1]) + "</a>"; }
-        var intro = '<p class="dim-note">Se a arrumação automática estiver ligada neste servidor, o Basalt une, liga e arquiva sozinho as notas parecidas, de noite. ' +
-          "Tudo pode ser desfeito em «Fusões recentes», mais abaixo.</p>";
-        if(!au) return intro + '<p class="dim-note">Ainda não correu nenhuma noite.</p>';
+        var intro = '<p class="dim-note">' + t("Se a arrumação automática estiver ligada neste servidor, o Basalt une, liga e arquiva sozinho as notas parecidas, de noite. Tudo pode ser desfeito em «Fusões recentes», mais abaixo.") + "</p>";
+        if(!au) return intro + '<p class="dim-note">' + t("Ainda não correu nenhuma noite.") + '</p>';
         var feitos = (au.feitos || []).filter(function(f){ return f.commit; });
-        return intro + '<p class="dim-note">Última noite: ' + escapeHtml(au.data) + "</p>" +
+        return intro + '<p class="dim-note">' + tf("Última noite: {data}", {data: escapeHtml(au.data)}) + "</p>" +
           (feitos.length ? '<ul class="link-list">' + feitos.map(function(f){
             return "<li>" + escapeHtml(ICONE[f.acao] || f.acao) + ": " + par(f.notas) +
               '<span class="dim-note"> · ' + escapeHtml(f.motivo || "") + "</span></li>";
-          }).join("") + "</ul>" : '<p class="dim-note">nada a mudar.</p>') +
-          ((au.duvidas || []).length ? "<h3>Para decidires</h3>" + '<ul class="link-list">' + au.duvidas.map(function(x){
-            return "<li>" + par(x.notas) + '<span class="dim-note"> · sugestão: ' + escapeHtml(x.sugestao) + " — " +
+          }).join("") + "</ul>" : '<p class="dim-note">' + t("nada a mudar.") + '</p>') +
+          ((au.duvidas || []).length ? "<h3>" + t("Para decidires") + "</h3>" + '<ul class="link-list">' + au.duvidas.map(function(x){
+            return "<li>" + par(x.notas) + '<span class="dim-note"> · ' + tf("sugestão: {sug}", {sug: escapeHtml(x.sugestao)}) + " — " +
               escapeHtml(x.motivo || "") + "</span></li>";
           }).join("") + "</ul>" : "");
       })(d.auto) +
       "</section>" +
-      '<section class="panel"><h2>Pendentes esquecidos</h2>' +
+      '<section class="panel"><h2>' + t("Pendentes esquecidos") + '</h2>' +
         (d.pendentes.length ? '<ul class="link-list">' + d.pendentes.map(function(p){
           var linhas = (p[2] || []).map(function(l){ return "<li>" + escapeHtml(l) + "</li>"; }).join("");
-          return '<li><a href="#/nota/' + p[1] + '">' + escapeHtml(p[1]) + '</a> <span class="dim-note">· há ' + escapeHtml(p[0]) + ' dias</span>' +
+          return '<li><a href="#/nota/' + p[1] + '">' + escapeHtml(p[1]) + '</a> <span class="dim-note">· ' + tf("há {n} dias", {n: escapeHtml(p[0])}) + '</span>' +
             '<ul class="pendente-linhas">' + linhas + "</ul></li>";
-        }).join("") + "</ul>" : '<p class="dim-note">nenhum por agora.</p>') +
+        }).join("") + "</ul>" : '<p class="dim-note">' + t("nenhum por agora.") + '</p>') +
       "</section>" +
-      '<p class="dim-note">hoje: ' + d.commits_hoje.length + " commits · " + d.notas_hoje.length + " notas</p>" +
-      '<section class="panel"><h2>Fusões recentes</h2><div id="fusoes-recentes"><div class="state-loading"><span class="spinner"></span>a carregar…</div></div></section>';
+      '<p class="dim-note">' + tf("hoje: {c} commits · {n} notas", {c: d.commits_hoje.length, n: d.notas_hoje.length}) + "</p>" +
+      '<section class="panel"><h2>' + t("Fusões recentes") + '</h2><div id="fusoes-recentes"><div class="state-loading"><span class="spinner"></span>' + t("a carregar…") + '</div></div></section>';
 
     body.querySelectorAll(".unir-btn:not([disabled])").forEach(function(btn){
       btn.addEventListener("click", function(){ abrirModalUnir(btn.dataset.a, btn.dataset.b, main); });
     });
     carregarFusoesRecentes();
   }catch(e){
-    renderErrorBox(body, "não consegui analisar: " + e.message, function(){ viewArrumar(main); });
+    renderErrorBox(body, tf("não consegui analisar: {erro}", {erro: e.message}), function(){ viewArrumar(main); });
   }
 }
 
@@ -3975,34 +4386,36 @@ async function carregarFusoesRecentes(){
     var lista = await apiGet("/api/unir");
     alvo.innerHTML = lista.length
       ? '<ul class="fusoes-lista">' + lista.map(renderLinhaFusao).join("") + "</ul>"
-      : '<p class="dim-note">ainda não houve nenhuma.</p>';
+      : '<p class="dim-note">' + t("ainda não houve nenhuma.") + '</p>';
     alvo.querySelectorAll(".fus-desfazer").forEach(function(btn){
       btn.addEventListener("click", async function(){
         btn.disabled = true;
-        btn.textContent = "a desfazer…";
+        btn.textContent = t("a desfazer…");
         try{
           await apiSend("POST", "/api/unir/desfazer", {job: btn.dataset.job});
-          showToast("desfeito.");
+          showToast(t("desfeito."));
           carregarFusoesRecentes();
         }catch(e){
-          showToast("falhou desfazer: " + e.message);
+          showToast(tf("falhou desfazer: {erro}", {erro: e.message}));
           btn.disabled = false;
-          btn.textContent = "Desfazer";
+          btn.textContent = t("Desfazer");
         }
       });
     });
   }catch(e){
-    alvo.innerHTML = '<p class="dim-note">não consegui carregar as fusões: ' + escapeHtml(e.message) + "</p>";
+    alvo.innerHTML = '<p class="dim-note">' + tf("não consegui carregar as fusões: {erro}", {erro: escapeHtml(e.message)}) + "</p>";
   }
 }
+var ESTADO_UNIR = {na_fila: t("na_fila"), a_fundir: t("a_fundir"), recusada: t("recusada"), feita: t("feita"), falhou: t("falhou"), desfeita: t("desfeita")};
+function rotuloEstadoUnir(estado){ return Object.prototype.hasOwnProperty.call(ESTADO_UNIR, estado) ? ESTADO_UNIR[estado] : estado; }
 function renderLinhaFusao(job){
   var data = job.criada ? fmtDataCurta(new Date(job.criada)) : "—";
-  return '<li><span class="unir-estado-badge ' + escapeHtml(job.estado) + '">' + escapeHtml(job.estado) + "</span>" +
+  return '<li><span class="unir-estado-badge ' + escapeHtml(job.estado) + '">' + escapeHtml(rotuloEstadoUnir(job.estado)) + "</span>" +
     "<span>" + escapeHtml(job.fundir) + " → " + escapeHtml(job.manter) + "</span>" +
     '<span class="dim-note">' + escapeHtml(data) + "</span>" +
     (job.estado === "feita"
-      ? '<a class="btn" href="#/nota/' + job.manter + '">Abrir nota</a>' +
-        '<button class="btn fus-desfazer" type="button" data-job="' + escapeHtml(job.id) + '">Desfazer</button>'
+      ? '<a class="btn" href="#/nota/' + job.manter + '">' + t("Abrir nota") + '</a>' +
+        '<button class="btn fus-desfazer" type="button" data-job="' + escapeHtml(job.id) + '">' + t("Desfazer") + '</button>'
       : "") + "</li>";
 }
 
@@ -4010,7 +4423,7 @@ async function abrirModalUnir(nomeA, nomeB, main){
   var root = document.getElementById("modal-root");
   root.innerHTML =
     '<div class="modal-backdrop" id="unir-backdrop"><div class="modal unir-modal" role="dialog" aria-modal="true">' +
-    '<h2>Unir notas</h2><div id="unir-conteudo"><div class="state-loading"><span class="spinner"></span>a carregar as duas notas…</div></div>' +
+    '<h2>' + t("Unir notas") + '</h2><div id="unir-conteudo"><div class="state-loading"><span class="spinner"></span>' + t("a carregar as duas notas…") + '</div></div>' +
     "</div></div>";
   var backdrop = document.getElementById("unir-backdrop");
   function fechar(){ root.innerHTML = ""; document.removeEventListener("keydown", escFechar); }
@@ -4027,7 +4440,7 @@ async function abrirModalUnir(nomeA, nomeB, main){
     ]);
     notaA = res[0]; notaB = res[1];
   }catch(e){
-    conteudo.innerHTML = '<div class="state-error"><p>⚠️ não consegui carregar as notas: ' + escapeHtml(e.message) + "</p></div>";
+    conteudo.innerHTML = '<div class="state-error"><p>⚠️ ' + tf("não consegui carregar as notas: {erro}", {erro: escapeHtml(e.message)}) + "</p></div>";
     return;
   }
 
@@ -4040,25 +4453,24 @@ async function abrirModalUnir(nomeA, nomeB, main){
     return '<div class="unir-coluna">' +
       '<label><input type="radio" name="unir-fica" value="' + escapeHtml(nota.nome) + '" ' + (sugerida ? "checked" : "") + "> " +
       "<strong>" + escapeHtml(nota.meta.name || nota.nome) + "</strong></label>" +
-      '<dl><dt>Descrição</dt><dd>' + escapeHtml(nota.meta.description || "—") + "</dd>" +
-      "<dt>Caracteres</dt><dd>" + tamanho + "</dd>" +
-      "<dt>Quem aponta</dt><dd>" + backlinksN + "</dd>" +
-      "<dt>Última alteração</dt><dd>" + escapeHtml(dataAlt) + "</dd></dl></div>";
+      '<dl><dt>' + t("Descrição") + '</dt><dd>' + escapeHtml(nota.meta.description || "—") + "</dd>" +
+      "<dt>" + t("Caracteres") + "</dt><dd>" + tamanho + "</dd>" +
+      "<dt>" + t("Quem aponta") + "</dt><dd>" + backlinksN + "</dd>" +
+      "<dt>" + t("Última alteração") + "</dt><dd>" + escapeHtml(dataAlt) + "</dd></dl></div>";
   }
 
   conteudo.innerHTML =
     '<div class="unir-comparacao">' + coluna(notaA, backlinksA, tamA, sugereA) + coluna(notaB, backlinksB, tamB, !sugereA) + "</div>" +
-    '<p class="dim-note">A outra desaparece: o conteúdo junta-se nesta, as ligações [[…]] nas outras notas passam a ' +
-    "apontar para esta e o índice é actualizado. Fica uma fotografia antes e podes desfazer.</p>" +
+    '<p class="dim-note">' + t("A outra desaparece: o conteúdo junta-se nesta, as ligações [[…]] nas outras notas passam a apontar para esta e o índice é actualizado. Fica uma fotografia antes e podes desfazer.") + "</p>" +
     '<p class="field-error" id="unir-erro"></p>' +
-    '<div class="modal-actions"><button class="btn" id="unir-cancelar" type="button">Cancelar</button>' +
-    '<button class="btn btn-primary" id="unir-confirmar" type="button">Unir</button></div>';
+    '<div class="modal-actions"><button class="btn" id="unir-cancelar" type="button">' + t("Cancelar") + '</button>' +
+    '<button class="btn btn-primary" id="unir-confirmar" type="button">' + t("Unir") + '</button></div>';
 
   document.getElementById("unir-cancelar").addEventListener("click", fechar);
   document.getElementById("unir-confirmar").addEventListener("click", async function(){
     var radio = conteudo.querySelector("input[name='unir-fica']:checked");
     var erroEl = document.getElementById("unir-erro");
-    if(!radio){ erroEl.textContent = "escolhe qual fica."; return; }
+    if(!radio){ erroEl.textContent = t("escolhe qual fica."); return; }
     var manter = radio.value;
     var fundir = manter === notaA.nome ? notaB.nome : notaA.nome;
     erroEl.textContent = "";
@@ -4067,7 +4479,7 @@ async function abrirModalUnir(nomeA, nomeB, main){
       document.removeEventListener("keydown", escFechar);
       abrirProgressoUnir(res2.job, main);
     }catch(e){
-      erroEl.textContent = e.status === 409 ? "já há uma fusão a correr — espera que acabe." : e.message;
+      erroEl.textContent = e.status === 409 ? t("já há uma fusão a correr — espera que acabe.") : e.message;
     }
   });
 }
@@ -4076,8 +4488,8 @@ function abrirProgressoUnir(jobId, main){
   var root = document.getElementById("modal-root");
   root.innerHTML =
     '<div class="modal-backdrop" id="prog-backdrop"><div class="modal" role="dialog" aria-modal="true">' +
-    "<h2>A unir…</h2><div id=\"prog-conteudo\"></div>" +
-    '<div class="modal-actions"><button class="btn" id="prog-fechar" type="button">Fechar</button></div>' +
+    "<h2>" + t("A unir…") + "</h2><div id=\"prog-conteudo\"></div>" +
+    '<div class="modal-actions"><button class="btn" id="prog-fechar" type="button">' + t("Fechar") + '</button></div>' +
     "</div></div>";
   var conteudo = document.getElementById("prog-conteudo");
   var timer = null;
@@ -4090,30 +4502,30 @@ function abrirProgressoUnir(jobId, main){
 
   function passoAtual(job){
     conteudo.innerHTML =
-      '<div class="unir-progresso"><span class="unir-estado-badge ' + escapeHtml(job.estado) + '">' + escapeHtml(job.estado) + "</span>" +
+      '<div class="unir-progresso"><span class="unir-estado-badge ' + escapeHtml(job.estado) + '">' + escapeHtml(rotuloEstadoUnir(job.estado)) + "</span>" +
       '<p style="margin-top:10px">' + escapeHtml(job.passo || "") + "</p></div>";
   }
   function estadoFinal(job){
     var extra = "";
     if(job.estado === "feita"){
       extra = '<div class="modal-actions" style="justify-content:flex-start;margin-top:14px">' +
-        '<a class="btn btn-primary" href="#/nota/' + job.manter + '">Abrir nota</a>' +
-        '<button class="btn" id="prog-desfazer" type="button">Desfazer</button></div>';
+        '<a class="btn btn-primary" href="#/nota/' + job.manter + '">' + t("Abrir nota") + '</a>' +
+        '<button class="btn" id="prog-desfazer" type="button">' + t("Desfazer") + '</button></div>';
     }
     conteudo.innerHTML =
-      '<div class="unir-progresso"><span class="unir-estado-badge ' + escapeHtml(job.estado) + '">' + escapeHtml(job.estado) + "</span>" +
+      '<div class="unir-progresso"><span class="unir-estado-badge ' + escapeHtml(job.estado) + '">' + escapeHtml(rotuloEstadoUnir(job.estado)) + "</span>" +
       '<p style="margin-top:10px">' + escapeHtml(job.mensagem || job.passo || "") + "</p></div>" + extra;
     if(job.estado === "feita"){
       document.getElementById("prog-desfazer").addEventListener("click", async function(){
         this.disabled = true;
-        this.textContent = "a desfazer…";
+        this.textContent = t("a desfazer…");
         try{
           await apiSend("POST", "/api/unir/desfazer", {job: job.id});
-          showToast("desfeito.");
+          showToast(t("desfeito."));
           root.innerHTML = "";
           carregarFusoesRecentes();
         }catch(e){
-          showToast("falhou desfazer: " + e.message);
+          showToast(tf("falhou desfazer: {erro}", {erro: e.message}));
         }
       });
     }
@@ -4129,7 +4541,7 @@ function abrirProgressoUnir(jobId, main){
         estadoFinal(job);
       }
     }catch(e){
-      conteudo.innerHTML = '<div class="state-error"><p>⚠️ falhou a acompanhar a fusão: ' + escapeHtml(e.message) + "</p></div>";
+      conteudo.innerHTML = '<div class="state-error"><p>⚠️ ' + tf("falhou a acompanhar a fusão: {erro}", {erro: escapeHtml(e.message)}) + "</p></div>";
     }
   }
   poll();
@@ -4140,16 +4552,16 @@ function abrirProgressoUnir(jobId, main){
    ==================================================================== */
 
 async function viewRecentes(main){
-  main.innerHTML = renderShell("Recentes");
+  main.innerHTML = renderShell(t("Recentes"));
   var body = main.querySelector(".view-body");
-  renderLoading(body, "a carregar…");
+  renderLoading(body, t("a carregar…"));
   try{
     var itens = await apiGet("/api/recentes?n=40");
     body.innerHTML = itens.length
       ? '<ul class="timeline">' + itens.map(renderRecenteItem).join("") + "</ul>"
-      : '<p class="dim-note">sem histórico.</p>';
+      : '<p class="dim-note">' + t("sem histórico.") + '</p>';
   }catch(e){
-    renderErrorBox(body, "não consegui carregar: " + e.message, function(){ viewRecentes(main); });
+    renderErrorBox(body, tf("não consegui carregar: {erro}", {erro: e.message}), function(){ viewRecentes(main); });
   }
 }
 
@@ -4179,9 +4591,9 @@ function cartaoNotasDiario(nomes){
 }
 
 async function viewDiario(main, diaParam){
-  main.innerHTML = renderShell("Diário");
+  main.innerHTML = renderShell(t("Diário"));
   var body = main.querySelector(".view-body");
-  renderLoading(body, "a carregar o dia…");
+  renderLoading(body, t("a carregar o dia…"));
   try{
     var d = await apiGet("/api/diario" + (diaParam ? "?dia=" + encodeURIComponent(diaParam) : ""));
     var diaDate = parseISODate(d.dia);
@@ -4193,23 +4605,23 @@ async function viewDiario(main, diaParam){
 
     var html =
       '<div class="diario-nav">' +
-        '<a class="btn" href="#/diario/' + anterior + '">← dia anterior</a>' +
+        '<a class="btn" href="#/diario/' + anterior + '">' + t("← dia anterior") + '</a>' +
         '<input type="date" id="diario-data" value="' + escapeHtml(d.dia) + '">' +
-        '<a class="btn" href="#/diario/' + seguinte + '">dia seguinte →</a>' +
-        (d.dia !== hojeStr ? '<a class="btn" href="#/diario">hoje</a>' : "") +
+        '<a class="btn" href="#/diario/' + seguinte + '">' + t("dia seguinte →") + '</a>' +
+        (d.dia !== hojeStr ? '<a class="btn" href="#/diario">' + t("hoje") + '</a>' : "") +
       "</div>";
 
     if(vazio){
-      html += '<p class="dim-note" style="margin-top:20px">nada neste dia.</p>';
+      html += '<p class="dim-note" style="margin-top:20px">' + t("nada neste dia.") + '</p>';
     }
     if(d.notas_novas.length){
-      html += '<section class="panel" id="diario-notas-novas"><h2>Notas novas</h2>' + cartaoNotasDiario(d.notas_novas) + "</section>";
+      html += '<section class="panel" id="diario-notas-novas"><h2>' + t("Notas novas") + '</h2>' + cartaoNotasDiario(d.notas_novas) + "</section>";
     }
     if(d.notas_mudadas.length){
-      html += '<section class="panel" id="diario-notas-mudadas"><h2>Notas alteradas</h2>' + cartaoNotasDiario(d.notas_mudadas) + "</section>";
+      html += '<section class="panel" id="diario-notas-mudadas"><h2>' + t("Notas alteradas") + '</h2>' + cartaoNotasDiario(d.notas_mudadas) + "</section>";
     }
     if(d.commits.length){
-      html += '<section class="panel" id="diario-commits"><h2>Gravações na memória</h2><ul class="timeline">' + d.commits.map(function(c){
+      html += '<section class="panel" id="diario-commits"><h2>' + t("Gravações na memória") + '</h2><ul class="timeline">' + d.commits.map(function(c){
         var ficheiros = (c.ficheiros || []).map(function(f){
           var nome = f.replace(/\.md$/, "");
           return '<a class="chip file-chip" href="#/nota/' + nome + '" data-nome="' + escapeHtml(nome) + '">' + escapeHtml(f) + "</a>";
@@ -4219,7 +4631,7 @@ async function viewDiario(main, diaParam){
       }).join("") + "</ul></section>";
     }
     if(d.entrada.length){
-      html += '<section class="panel" id="diario-entrada"><h2>Entrou na caixa</h2><ul class="entrada-lista">' + d.entrada.map(function(item){
+      html += '<section class="panel" id="diario-entrada"><h2>' + t("Entrou na caixa") + '</h2><ul class="entrada-lista">' + d.entrada.map(function(item){
         var data = new Date(item.t);
         return '<li class="entrada-item"><div class="entrada-top"><span class="badge badge-origem">' +
           escapeHtml(item.de) + '</span><span class="dim-note">' + fmtDataCurta(data) + "</span></div><p>" +
@@ -4232,7 +4644,7 @@ async function viewDiario(main, diaParam){
       if(e.target.value) location.hash = "#/diario/" + e.target.value;
     });
   }catch(e){
-    renderErrorBox(body, "não consegui carregar o diário: " + e.message, function(){ viewDiario(main, diaParam); });
+    renderErrorBox(body, tf("não consegui carregar o diário: {erro}", {erro: e.message}), function(){ viewDiario(main, diaParam); });
   }
 }
 
@@ -4299,11 +4711,11 @@ function corDeMiniGrafo(n){
 }
 function renderMiniGrafo(container, nomeCentral){
   if(typeof d3 === "undefined" || !d3.forceSimulation){
-    container.innerHTML = '<p class="dim-note">grafo indisponível.</p>';
+    container.innerHTML = '<p class="dim-note">' + t("grafo indisponível.") + '</p>';
     return;
   }
   container.innerHTML =
-    '<label class="mini-grafo-topo"><input type="checkbox" id="mini-grafo-2saltos"> 2 saltos</label>' +
+    '<label class="mini-grafo-topo"><input type="checkbox" id="mini-grafo-2saltos"> ' + t("2 saltos") + '</label>' +
     '<div class="mini-grafo-canvas-wrap"><canvas id="mini-grafo-canvas"></canvas></div>';
   var chk = container.querySelector("#mini-grafo-2saltos");
   var canvas = container.querySelector("#mini-grafo-canvas");
@@ -4352,9 +4764,9 @@ function renderMiniGrafo(container, nomeCentral){
         });
         if(alvo) location.hash = "#/nota/" + alvo.id;
       };
-      canvas.title = "clica num nó para abrir a nota";
+      canvas.title = t("clica num nó para abrir a nota");
     }).catch(function(){
-      container.innerHTML = '<p class="dim-note">grafo indisponível.</p>';
+      container.innerHTML = '<p class="dim-note">' + t("grafo indisponível.") + '</p>';
     });
   }
   chk.addEventListener("change", function(){ desenhar(chk.checked); });
@@ -4404,12 +4816,12 @@ function posicionarPreview(el, alvoEl){
 }
 async function mostrarPreview(alvoEl, nome){
   var card = obterPreviewEl();
-  card.innerHTML = '<div class="state-loading"><span class="spinner"></span>a carregar…</div>';
+  card.innerHTML = '<div class="state-loading"><span class="spinner"></span>' + t("a carregar…") + '</div>';
   card.classList.remove("hidden");
   posicionarPreview(card, alvoEl);
   var nota = await carregarNotaPreview(nome);
   if(card.classList.contains("hidden")) return; // já foi fechada entretanto
-  if(!nota){ card.innerHTML = '<p class="dim-note">não encontrada.</p>'; return; }
+  if(!nota){ card.innerHTML = '<p class="dim-note">' + t("não encontrada.") + '</p>'; return; }
   var corpo = stripFrontmatter(nota.texto);
   var linhas = corpo.split("\n").filter(function(l){ return l.trim(); }).slice(0, 12).join("\n");
   await prepararMarkdown(linhas);
@@ -4444,12 +4856,12 @@ function ligarPreviewGlobal(){
 
 async function viewGrafo(main){
   main.innerHTML =
-    '<div class="view view-grafo"><div class="view-heading"><h1>Grafo</h1></div>' +
-    '<div class="grafo-controles"><input id="grafo-realce" type="text" placeholder="realçar por nome…">' +
+    '<div class="view view-grafo"><div class="view-heading"><h1>' + t("Grafo") + '</h1></div>' +
+    '<div class="grafo-controles"><input id="grafo-realce" type="text" placeholder="' + t("realçar por nome…") + '">' +
     '<div class="grafo-filtros" id="grafo-filtros"></div></div>' +
     '<div class="grafo-canvas-wrap"><canvas id="grafo-canvas"></canvas>' +
     '<div id="grafo-tooltip" class="grafo-tooltip hidden"></div>' +
-    '<div id="grafo-estado" class="state-loading"><span class="spinner"></span>a carregar o grafo…</div>' +
+    '<div id="grafo-estado" class="state-loading"><span class="spinner"></span>' + t("a carregar o grafo…") + '</div>' +
     "</div></div>";
 
   var canvas = document.getElementById("grafo-canvas");
@@ -4458,7 +4870,7 @@ async function viewGrafo(main){
   var estadoEl = document.getElementById("grafo-estado");
 
   if(typeof d3 === "undefined" || !d3.forceSimulation){
-    estadoEl.textContent = "os scripts do grafo (d3) não carregaram.";
+    estadoEl.textContent = t("os scripts do grafo (d3) não carregaram.");
     estadoEl.classList.add("state-error-inline");
     return;
   }
@@ -4467,7 +4879,7 @@ async function viewGrafo(main){
   try{
     dados = await apiGet("/api/grafo");
   }catch(e){
-    estadoEl.textContent = "não consegui carregar o grafo: " + e.message;
+    estadoEl.textContent = tf("não consegui carregar o grafo: {erro}", {erro: e.message});
     estadoEl.classList.add("state-error-inline");
     return;
   }
@@ -4708,13 +5120,13 @@ var AJUDA_ABERTA = false;
 var AJUDA_ITENS_ACTUAIS = [];
 
 var AJUDA_MENU_ITENS = [
-  {rota: "", nome: "Início", texto: "Vai para o ecrã principal: o estado geral da memória e o atalho para guardares uma ideia rápida."},
-  {rota: "notas", nome: "Notas", texto: "Abre a lista de notas, para procurares, filtrares e editares."},
-  {rota: "grafo", nome: "Grafo", texto: "Mostra o mapa visual das notas e das ligações entre elas."},
-  {rota: "entrada", nome: "Entrada", texto: "Abre a caixa das ideias por decidir — o resto, o Basalt já arrumou sozinho."},
-  {rota: "arrumar", nome: "Arrumar", texto: "Mostra o que o Basalt arrumou sozinho de noite e o que falta decidir."},
-  {rota: "recentes", nome: "Recentes", texto: "Lista as últimas alterações feitas na memória."},
-  {rota: "diario", nome: "Diário", texto: "Mostra o que mudou na memória num dia — hoje ou outro à escolha."}
+  {rota: "", nome: t("Início"), texto: t("Vai para o ecrã principal: o estado geral da memória e o atalho para guardares uma ideia rápida.")},
+  {rota: "notas", nome: t("Notas"), texto: t("Abre a lista de notas, para procurares, filtrares e editares.")},
+  {rota: "grafo", nome: t("Grafo"), texto: t("Mostra o mapa visual das notas e das ligações entre elas.")},
+  {rota: "entrada", nome: t("Entrada"), texto: t("Abre a caixa das ideias por decidir — o resto, o Basalt já arrumou sozinho.")},
+  {rota: "arrumar", nome: t("Arrumar"), texto: t("Mostra o que o Basalt arrumou sozinho de noite e o que falta decidir.")},
+  {rota: "recentes", nome: t("Recentes"), texto: t("Lista as últimas alterações feitas na memória.")},
+  {rota: "diario", nome: t("Diário"), texto: t("Mostra o que mudou na memória num dia — hoje ou outro à escolha.")}
 ];
 function ajudaGerarBarraMenu(){
   // cada item do menu existe duas vezes no HTML (barra de cima no computador, barra de baixo no telemóvel) —
@@ -4728,74 +5140,74 @@ function ajudaGerarBarraMenu(){
 }
 
 var AJUDA = {
-  _barra: [{sel: ".brand", nome: "Basalt", texto: "O logótipo. Leva-te sempre ao Início."}]
+  _barra: [{sel: ".brand", nome: "Basalt", texto: t("O logótipo. Leva-te sempre ao Início.")}]
     .concat(ajudaGerarBarraMenu())
     .concat([
-      {sel: "#cmd-input", nome: "Pesquisar", texto: "Escreve para procurares nas notas. Termina a frase com ? para perguntares à IA (responde com as notas como fonte). Começa por guarda: para mandares uma ideia rápida para a Entrada. Atalhos: Ctrl+K ou / trazem-te aqui."},
-      {sel: "#salto-rapido-btn", nome: "Saltar para nota", texto: "Pesquisa rápida para saltares direto para qualquer nota, sem tirar as mãos do teclado (Ctrl+O)."},
-      {sel: "#theme-toggle", nome: "Tema", texto: "Alterna entre tema claro e escuro. Fica guardado neste aparelho."},
-      {sel: "#ajuda-btn", nome: "Ajuda", texto: "Esta ajuda — mostra o que cada coisa desta página faz."}
+      {sel: "#cmd-input", nome: t("Pesquisar"), texto: t("Escreve para procurares nas notas. Termina a frase com ? para perguntares à IA (responde com as notas como fonte). Começa por guarda: para mandares uma ideia rápida para a Entrada. Atalhos: Ctrl+K ou / trazem-te aqui.")},
+      {sel: "#salto-rapido-btn", nome: t("Saltar para nota"), texto: t("Pesquisa rápida para saltares direto para qualquer nota, sem tirar as mãos do teclado (Ctrl+O).")},
+      {sel: "#theme-toggle", nome: t("Tema"), texto: t("Alterna entre tema claro e escuro. Fica guardado neste aparelho.")},
+      {sel: "#ajuda-btn", nome: t("Ajuda"), texto: t("Esta ajuda — mostra o que cada coisa desta página faz.")}
     ]),
   inicio: [
-    {sel: ".cards-grid", nome: "Números-resumo", texto: "Quantas notas tens, quantas ligações entre elas, quantas ideias por arrumar na Entrada e quantos pedaços de texto há para pesquisar."},
-    {sel: 'a.indice-atalho[href="#/notas"]', nome: "Índice", texto: "Atalho para o Índice das notas."},
-    {sel: 'a.indice-atalho[href="#/diario"]', nome: "Hoje na memória", texto: "Atalho para o que mudou hoje na memória."},
-    {sel: ".quick-guarda", nome: "Guardar uma ideia", texto: "Guarda uma ideia rápida sem saíres desta página — fica à espera na Entrada."},
-    {sel: ".home-grid section.panel:nth-of-type(1)", nome: "Últimas alterações", texto: "As últimas gravações feitas na memória."},
-    {sel: ".home-grid section.panel:nth-of-type(2)", nome: "Entrada", texto: "Quantas ideias da Entrada já têm sugestão de nota, e atalho para as abrires."},
-    {sel: "#apagar-copia-link", nome: "Apagar cópia deste aparelho", texto: "Apaga a cópia local das notas guardada neste aparelho e deixa de a guardar até voltares a ligar (no mesmo sítio). Não apaga nada no servidor — só a cópia para funcionar sem rede."}
+    {sel: ".cards-grid", nome: t("Números-resumo"), texto: t("Quantas notas tens, quantas ligações entre elas, quantas ideias por arrumar na Entrada e quantos pedaços de texto há para pesquisar.")},
+    {sel: 'a.indice-atalho[href="#/notas"]', nome: t("Índice"), texto: t("Atalho para o Índice das notas.")},
+    {sel: 'a.indice-atalho[href="#/diario"]', nome: t("Hoje na memória"), texto: t("Atalho para o que mudou hoje na memória.")},
+    {sel: ".quick-guarda", nome: t("Guardar uma ideia"), texto: t("Guarda uma ideia rápida sem saíres desta página — fica à espera na Entrada.")},
+    {sel: ".home-grid section.panel:nth-of-type(1)", nome: t("Últimas alterações"), texto: t("As últimas gravações feitas na memória.")},
+    {sel: ".home-grid section.panel:nth-of-type(2)", nome: t("Entrada"), texto: t("Quantas ideias da Entrada já têm sugestão de nota, e atalho para as abrires.")},
+    {sel: "#apagar-copia-link", nome: t("Apagar cópia deste aparelho"), texto: t("Apaga a cópia local das notas guardada neste aparelho e deixa de a guardar até voltares a ligar (no mesmo sítio). Não apaga nada no servidor — só a cópia para funcionar sem rede.")}
   ],
   notas: [
-    {sel: "#exp-filtro", nome: "Filtrar notas", texto: "Filtra a lista de notas pelo título ou pela descrição."},
-    {sel: "#exp-agrupar", nome: "Agrupar", texto: "Muda como a lista está organizada: por índice, categoria, tipo ou A–Z."},
-    {sel: "#exp-nova", nome: "Nova nota", texto: "Cria uma nota nova — escolhes o nome, o tipo e uma descrição."},
-    {sel: "#exp-arvore", nome: "Lista de notas", texto: "Toca numa nota para a abrires."},
-    {sel: "#explorador-toggle", nome: "Esconder a lista", texto: "Esconde ou mostra a lista de notas, para ganhares espaço de leitura."},
-    {sel: "#contexto-toggle", nome: "Esconder o contexto", texto: "Esconde ou mostra a coluna de contexto, ao lado."},
-    {sel: "#contexto", nome: "Contexto da nota", texto: "Tudo à volta desta nota: a estrutura (para saltares para uma secção), categorias, um mini-grafo, quem aponta para aqui, notas parecidas e o histórico de alterações."},
-    {sel: "#editar-btn", nome: "Editar", texto: "Abre esta nota em modo de edição."},
-    {sel: "#largura-toggle", nome: "Largura", texto: "Alterna entre largura de leitura (mais estreita) e largura total do ecrã."},
-    {sel: ".nota-badges", nome: "Tipo da nota", texto: "O tipo da nota e, se for o caso, se é só de leitura (doutro projecto) ou ainda não foi enviada ao servidor."},
-    {sel: ".cat-chips-row", nome: "Categorias", texto: "As categorias desta nota. Toca numa para veres as outras notas da mesma categoria."},
-    {sel: "#ed-gravar", nome: "Gravar", texto: "Grava as alterações (Ctrl+S)."},
-    {sel: "#ed-cancelar", nome: "Cancelar", texto: "Sai da edição sem gravar (Esc). Se tiveres alterações por gravar, pergunta antes de saíres."},
-    {sel: "#ed-ia-btn", nome: "IA", texto: "Pede à IA para resumir, reescrever, corrigir ou continuar o texto que tiveres seleccionado."},
-    {sel: "#ed-ligacoes-btn", nome: "Ligações", texto: "Sugere notas para ligares ao trecho seleccionado — escolhes uma e insere-se como [[ligação]]."},
-    {sel: "#ed-parecida-aviso", nome: "Nota parecida", texto: "Avisa se já existir outra nota muito parecida com o que estás a escrever (só na primeira edição de uma nota acabada de criar)."},
-    {sel: "#ed-editor-host", nome: "Texto da nota", texto: "Aqui escreves o texto em Markdown. Escreve [[ para ligares a outra nota — aparecem sugestões automáticas."},
-    {sel: "#ed-rede-aviso", nome: "Sem rede", texto: "Aparece quando não há rede — a IA e as sugestões de ligação ficam indisponíveis."}
+    {sel: "#exp-filtro", nome: t("Filtrar notas"), texto: t("Filtra a lista de notas pelo título ou pela descrição.")},
+    {sel: "#exp-agrupar", nome: t("Agrupar"), texto: t("Muda como a lista está organizada: por índice, categoria, tipo ou A–Z.")},
+    {sel: "#exp-nova", nome: t("Nova nota"), texto: t("Cria uma nota nova — escolhes o nome, o tipo e uma descrição.")},
+    {sel: "#exp-arvore", nome: t("Lista de notas"), texto: t("Toca numa nota para a abrires.")},
+    {sel: "#explorador-toggle", nome: t("Esconder a lista"), texto: t("Esconde ou mostra a lista de notas, para ganhares espaço de leitura.")},
+    {sel: "#contexto-toggle", nome: t("Esconder o contexto"), texto: t("Esconde ou mostra a coluna de contexto, ao lado.")},
+    {sel: "#contexto", nome: t("Contexto da nota"), texto: t("Tudo à volta desta nota: a estrutura (para saltares para uma secção), categorias, um mini-grafo, quem aponta para aqui, notas parecidas e o histórico de alterações.")},
+    {sel: "#editar-btn", nome: t("Editar"), texto: t("Abre esta nota em modo de edição.")},
+    {sel: "#largura-toggle", nome: t("Largura"), texto: t("Alterna entre largura de leitura (mais estreita) e largura total do ecrã.")},
+    {sel: ".nota-badges", nome: t("Tipo da nota"), texto: t("O tipo da nota e, se for o caso, se é só de leitura (doutro projecto) ou ainda não foi enviada ao servidor.")},
+    {sel: ".cat-chips-row", nome: t("Categorias"), texto: t("As categorias desta nota. Toca numa para veres as outras notas da mesma categoria.")},
+    {sel: "#ed-gravar", nome: t("Gravar"), texto: t("Grava as alterações (Ctrl+S).")},
+    {sel: "#ed-cancelar", nome: t("Cancelar"), texto: t("Sai da edição sem gravar (Esc). Se tiveres alterações por gravar, pergunta antes de saíres.")},
+    {sel: "#ed-ia-btn", nome: t("IA"), texto: t("Pede à IA para resumir, reescrever, corrigir ou continuar o texto que tiveres seleccionado.")},
+    {sel: "#ed-ligacoes-btn", nome: t("Ligações"), texto: t("Sugere notas para ligares ao trecho seleccionado — escolhes uma e insere-se como [[ligação]].")},
+    {sel: "#ed-parecida-aviso", nome: t("Nota parecida"), texto: t("Avisa se já existir outra nota muito parecida com o que estás a escrever (só na primeira edição de uma nota acabada de criar).")},
+    {sel: "#ed-editor-host", nome: t("Texto da nota"), texto: t("Aqui escreves o texto em Markdown. Escreve [[ para ligares a outra nota — aparecem sugestões automáticas.")},
+    {sel: "#ed-rede-aviso", nome: t("Sem rede"), texto: t("Aparece quando não há rede — a IA e as sugestões de ligação ficam indisponíveis.")}
   ],
   grafo: [
-    {sel: "#grafo-realce", nome: "Realçar", texto: "Escreve um nome para realçares esse ponto e o que liga a ele; os outros ficam esbatidos."},
-    {sel: "#grafo-filtros", nome: "Filtros", texto: "Mostra ou esconde tipos de nota no grafo. Toca para ligar/desligar cada um."},
-    {sel: "#grafo-canvas", nome: "O grafo", texto: "Cada ponto é uma nota (a cor é o tipo, o tamanho é quantas ligações tem); cada linha é uma ligação [[…]] entre duas notas. Arrasta para mover, roda a roda do rato para ampliar."}
+    {sel: "#grafo-realce", nome: t("Realçar"), texto: t("Escreve um nome para realçares esse ponto e o que liga a ele; os outros ficam esbatidos.")},
+    {sel: "#grafo-filtros", nome: t("Filtros"), texto: t("Mostra ou esconde tipos de nota no grafo. Toca para ligar/desligar cada um.")},
+    {sel: "#grafo-canvas", nome: t("O grafo"), texto: t("Cada ponto é uma nota (a cor é o tipo, o tamanho é quantas ligações tem); cada linha é uma ligação [[…]] entre duas notas. Arrasta para mover, roda a roda do rato para ampliar.")}
   ],
   entrada: [
-    {sel: "#entrada-intro", nome: "Arrumação automática", texto: 'As ideias que mandas pela barra de cima com "guarda: …", por esta caixa ou pelos teus agentes são arrumadas sozinhas em poucos minutos: juntadas à nota certa (com a data) ou arquivadas se forem só um teste. Tudo tem Desfazer. Aqui ficam só as que o Basalt não soube onde pôr.'},
-    {sel: "#quick-guarda-input", nome: "Guardar uma ideia", texto: "Escreve aqui uma ideia rápida — entra na Entrada tal como por guarda: na pesquisa."},
-    {sel: ".juntar-btn", nome: "Juntar a «nota»", texto: "Acrescenta esta ideia no fim da nota sugerida, com a data de hoje."},
-    {sel: ".outra-nota-btn", nome: "Outra nota", texto: "Escolhe outra nota tua (editável) para lhe acrescentares esta ideia."},
-    {sel: ".criar-nota-btn", nome: "Criar nota com isto", texto: "Abre «Nova nota» já com o texto desta ideia — só escolhes o nome."},
-    {sel: ".arquivar-btn", nome: "Arquivar", texto: "Tira esta ideia da Entrada sem a pôr em nenhuma nota."},
-    {sel: ".eliminar-btn", nome: "Eliminar", texto: "Apaga esta ideia de vez (pede confirmação). Não fica em nenhuma nota."},
-    {sel: "#entrada-auto", nome: "Arrumadas sozinhas", texto: "As últimas ideias que o Basalt já juntou ou arquivou sozinho. Podes desfazer, se mudares de ideias."},
-    {sel: ".desfazer-auto-btn", nome: "Desfazer", texto: "Desfaz o que o Basalt fez sozinho a esta ideia: tira-a da nota (se já lá estava) e devolve-a à Entrada."}
+    {sel: "#entrada-intro", nome: t("Arrumação automática"), texto: t("As ideias que mandas pela barra de cima com \"guarda: …\", por esta caixa ou pelos teus agentes são arrumadas sozinhas em poucos minutos: juntadas à nota certa (com a data) ou arquivadas se forem só um teste. Tudo tem Desfazer. Aqui ficam só as que o Basalt não soube onde pôr.")},
+    {sel: "#quick-guarda-input", nome: t("Guardar uma ideia"), texto: t("Escreve aqui uma ideia rápida — entra na Entrada tal como por guarda: na pesquisa.")},
+    {sel: ".juntar-btn", nome: t("Juntar a «nota»"), texto: t("Acrescenta esta ideia no fim da nota sugerida, com a data de hoje.")},
+    {sel: ".outra-nota-btn", nome: t("Outra nota"), texto: t("Escolhe outra nota tua (editável) para lhe acrescentares esta ideia.")},
+    {sel: ".criar-nota-btn", nome: t("Criar nota com isto"), texto: t("Abre «Nova nota» já com o texto desta ideia — só escolhes o nome.")},
+    {sel: ".arquivar-btn", nome: t("Arquivar"), texto: t("Tira esta ideia da Entrada sem a pôr em nenhuma nota.")},
+    {sel: ".eliminar-btn", nome: t("Eliminar"), texto: t("Apaga esta ideia de vez (pede confirmação). Não fica em nenhuma nota.")},
+    {sel: "#entrada-auto", nome: t("Arrumadas sozinhas"), texto: t("As últimas ideias que o Basalt já juntou ou arquivou sozinho. Podes desfazer, se mudares de ideias.")},
+    {sel: ".desfazer-auto-btn", nome: t("Desfazer"), texto: t("Desfaz o que o Basalt fez sozinho a esta ideia: tira-a da nota (se já lá estava) e devolve-a à Entrada.")}
   ],
   arrumar: [
-    {sel: ".view-body section.panel:nth-of-type(1)", nome: "Arrumação automática", texto: "O que o Basalt uniu, ligou ou arquivou sozinho a noite passada, às 04:10. Pode ser desfeito nas Fusões recentes, mais abaixo."},
-    {sel: ".view-body section.panel:nth-of-type(2)", nome: "Tarefas paradas", texto: "Tarefas que estão há dias sem mexer."},
-    {sel: ".view-body section.panel:nth-of-type(3)", nome: "Pendentes esquecidos", texto: "Coisas por fazer, escritas nalguma nota, que ainda ninguém marcou como feitas."},
-    {sel: ".view-body section.panel:nth-of-type(4)", nome: "Fusões recentes", texto: "As últimas fusões de notas, automáticas ou manuais. Dá para desfazer uma fusão feita, dentro do prazo."}
+    {sel: ".view-body section.panel:nth-of-type(1)", nome: t("Arrumação automática"), texto: t("O que o Basalt uniu, ligou ou arquivou sozinho a noite passada, às 04:10. Pode ser desfeito nas Fusões recentes, mais abaixo.")},
+    {sel: ".view-body section.panel:nth-of-type(2)", nome: t("Tarefas paradas"), texto: t("Tarefas que estão há dias sem mexer.")},
+    {sel: ".view-body section.panel:nth-of-type(3)", nome: t("Pendentes esquecidos"), texto: t("Coisas por fazer, escritas nalguma nota, que ainda ninguém marcou como feitas.")},
+    {sel: ".view-body section.panel:nth-of-type(4)", nome: t("Fusões recentes"), texto: t("As últimas fusões de notas, automáticas ou manuais. Dá para desfazer uma fusão feita, dentro do prazo.")}
   ],
   recentes: [
-    {sel: ".view-body .timeline", nome: "Últimas alterações", texto: "As últimas alterações feitas na memória, mais recentes primeiro."}
+    {sel: ".view-body .timeline", nome: t("Últimas alterações"), texto: t("As últimas alterações feitas na memória, mais recentes primeiro.")}
   ],
   diario: [
-    {sel: ".diario-nav", nome: "Navegar por dias", texto: "Seta para trás/à frente, ou escolhe uma data. «hoje» volta ao dia actual."},
-    {sel: "#diario-notas-novas", nome: "Notas novas", texto: "Notas criadas neste dia."},
-    {sel: "#diario-notas-mudadas", nome: "Notas alteradas", texto: "Notas que foram alteradas neste dia."},
-    {sel: "#diario-commits", nome: "Gravações na memória", texto: "Gravações feitas na memória nesse dia, com os ficheiros tocados em cada uma."},
-    {sel: "#diario-entrada", nome: "Entrou na caixa", texto: "Ideias que entraram na Entrada neste dia."}
+    {sel: ".diario-nav", nome: t("Navegar por dias"), texto: t("Seta para trás/à frente, ou escolhe uma data. «hoje» volta ao dia actual.")},
+    {sel: "#diario-notas-novas", nome: t("Notas novas"), texto: t("Notas criadas neste dia.")},
+    {sel: "#diario-notas-mudadas", nome: t("Notas alteradas"), texto: t("Notas que foram alteradas neste dia.")},
+    {sel: "#diario-commits", nome: t("Gravações na memória"), texto: t("Gravações feitas na memória nesse dia, com os ficheiros tocados em cada uma.")},
+    {sel: "#diario-entrada", nome: t("Entrou na caixa"), texto: t("Ideias que entraram na Entrada neste dia.")}
   ]
 };
 
@@ -4858,7 +5270,7 @@ function ajudaReconstruir(){
   AJUDA_ITENS_ACTUAIS = ajudaItensVisiveis();
   if(!AJUDA_ITENS_ACTUAIS.length){
     fecharAjuda();
-    showToast("nada para explicar aqui.");
+    showToast(t("nada para explicar aqui."));
     return;
   }
   var lista = document.getElementById("ajuda-lista");
@@ -4880,16 +5292,16 @@ function ajudaEscHandler(e){ if(e.key === "Escape") fecharAjuda(); }
 function abrirAjuda(){
   if(AJUDA_ABERTA) return;
   var itens = ajudaItensVisiveis();
-  if(!itens.length){ showToast("nada para explicar aqui."); return; }
+  if(!itens.length){ showToast(t("nada para explicar aqui.")); return; }
   AJUDA_ITENS_ACTUAIS = itens;
   AJUDA_ABERTA = true;
   var root = document.getElementById("ajuda-root");
   root.innerHTML =
     '<div id="ajuda-fundo"></div>' +
     '<div id="ajuda-caixas"></div>' +
-    '<aside id="ajuda-painel" role="region" aria-label="Ajuda desta página">' +
-      '<div class="ajuda-painel-topo"><h2>Ajuda desta página</h2>' +
-        '<button id="ajuda-fechar" class="btn" type="button">Fechar</button></div>' +
+    '<aside id="ajuda-painel" role="region" aria-label="' + t("Ajuda desta página") + '">' +
+      '<div class="ajuda-painel-topo"><h2>' + t("Ajuda desta página") + '</h2>' +
+        '<button id="ajuda-fechar" class="btn" type="button">' + t("Fechar") + '</button></div>' +
       '<ol id="ajuda-lista" class="ajuda-lista"></ol>' +
     "</aside>";
   document.getElementById("ajuda-fundo").addEventListener("click", fecharAjuda);
@@ -4974,7 +5386,7 @@ document.addEventListener("DOMContentLoaded", function(){
     var b = document.getElementById("sair-btn");
     if(!b || eu.modo !== "senha") return;
     b.hidden = false;
-    b.title = "Terminar sessão (" + (eu.nome || eu.email) + ")";
+    b.title = window.basaltTf("Terminar sessão ({quem})", {quem: eu.nome || eu.email});
     b.addEventListener("click", function(){
       fetch("/api/sair", {method:"POST", credentials:"same-origin", headers:{"X-Basalt":"1"}})
         .catch(function(){}).then(function(){ location.href = "/entrar"; });

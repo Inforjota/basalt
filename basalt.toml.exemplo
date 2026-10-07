@@ -6,6 +6,7 @@ dados = "/var/lib/basalt"          # raiz: <dados>/<espaco>/{memoria,copia,dados
 porta = 8121
 escutar = "127.0.0.1"              # põe um proxy (nginx/caddy) com HTTPS à frente; nunca 0.0.0.0 sem HTTPS
 lingua = "pt"
+idioma = "pt"                     # língua da interface: pt (omissão) · en (inglês) · auto (pelo Accept-Language do browser); também BASALT_IDIOMA
 git = true                         # fotografias git da memória: histórico, diário, desfazer fusões (precisa do `git`)
 
 [git]                              # quem assina as fotografias git da memória

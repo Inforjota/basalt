@@ -10,6 +10,15 @@ BASALT_CONFIG=~/basalt-dados/basalt.toml python3 -m basalt serve
 
 Abre http://127.0.0.1:8121. Sem `--email` fica em modo `aberto` (sem login) — só é aceite a escutar em `127.0.0.1`.
 
+**Interface em inglês?** No `basalt.toml` (ou com `BASALT_IDIOMA`, que vence o ficheiro):
+
+```toml
+[basalt]
+idioma = "en"      # "pt" (omissão) · "en" · "auto" (escolhe pelo Accept-Language do browser)
+```
+
+Depois de mudar o `idioma`, recarrega a página (a interface guarda-se no service worker, por isso o idioma novo só se vê depois de a recarregares). As mensagens de erro do servidor continuam em português.
+
 Onde fica cada coisa (por utilizador, em `<dados>/<espaco>/`):
 
 | pasta | o quê | podes mexer? |

@@ -21,6 +21,7 @@ LOCAIS = ("./basalt.toml", "~/.config/basalt/basalt.toml", "/etc/basalt/basalt.t
 ESPACO_OMISSAO = "principal"
 FORNECEDORES = ("nenhum", "openai", "anthropic", "claude-cli")
 MODOS_AUTH = ("cabecalho", "senha", "aberto")
+IDIOMAS = ("pt", "en", "auto")
 
 
 class ConfigInvalida(ValueError):
@@ -91,6 +92,7 @@ class Config:
     porta: int = 8121
     escutar: str = "127.0.0.1"
     lingua: str = "pt"
+    idioma: str = "pt"                  # idioma da interface web: pt | en | auto (auto = pelo Accept-Language do browser)
     git: bool = True                    # fotografias git da memória (histórico, diário, desfazer fusões)
     auth: AuthConfig = field(default_factory=AuthConfig)
     ia: IAConfig = field(default_factory=IAConfig)
@@ -113,6 +115,8 @@ class Config:
         return self.espaco(u.espaco)
 
     def validar(self) -> None:
+        if self.idioma not in IDIOMAS:
+            raise ConfigInvalida(f"[basalt] idioma tem de ser um de {IDIOMAS}, não {self.idioma!r}")
         if self.auth.modo not in MODOS_AUTH:
             raise ConfigInvalida(f"[auth] modo tem de ser um de {MODOS_AUTH}, não {self.auth.modo!r}")
         if self.ia.fornecedor not in FORNECEDORES:
@@ -339,6 +343,7 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
     cfg.porta = _int(amb, "BASALT_PORTA", _int(amb, "BASALT_WEB_PORT", int(b.get("porta", 8121))))
     cfg.escutar = amb.get("BASALT_ESCUTAR") or amb.get("BASALT_WEB_HOST") or b.get("escutar", "127.0.0.1")
     cfg.lingua = amb.get("BASALT_LINGUA") or b.get("lingua", "pt")
+    cfg.idioma = amb.get("BASALT_IDIOMA") or b.get("idioma", "pt")
     cfg.git = (amb.get("BASALT_GIT") or ("1" if b.get("git", True) else "0")) == "1"
 
     a = t.get("auth", {})

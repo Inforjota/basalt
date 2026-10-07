@@ -44,6 +44,7 @@ Tudo num `basalt.toml` ([exemplo comentado](basalt.toml.exemplo)): pasta dos dad
 (`senha` · `cabecalho` para quem já tem SSO num proxy · `aberto` só em localhost), utilizadores (cada um com o seu espaço),
 IA (`openai`-compatível como Ollama/OpenRouter/Mistral, `anthropic`, ou o `claude` CLI), embeddings, categorias, Entrada.
 As chaves de API **nunca** vão para o ficheiro: só por variável de ambiente ou ficheiro `0600`.
+A interface está em português e também em inglês: `[basalt] idioma = "pt" | "en" | "auto"` (ou `BASALT_IDIOMA`); depois de mudar, recarrega a página.
 
 ```bash
 python3 -m basalt utilizador novo ana@exemplo.pt --nome Ana        # + senha

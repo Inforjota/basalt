@@ -46,6 +46,42 @@ MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript; cha
         ".webmanifest": "application/manifest+json", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf"}   # fontes: KaTeX
 TRINCO_ESPERA = 20          # segundos; o vigia segura-o só durante um ciclo (normalmente < 1 s)
 
+
+# ── idioma da interface (config [basalt] idioma = pt | en | auto) ──
+def idioma_do_pedido(configurado: str, accept_language: str | None) -> str:
+    """«pt» e «en» mandam sempre; «auto» escolhe pelo Accept-Language: «en» se a 1.ª etiqueta en* (por ordem de q) tem q igual ou
+    maior que a da 1.ª pt*; sem nenhuma das duas (ou cabeçalho vazio) fica «pt»."""
+    if configurado in ("pt", "en"):
+        return configurado
+    if configurado != "auto":
+        return "pt"
+    etiquetas = []                                       # (q, posição, língua) — só pt e en interessam
+    for i, parte in enumerate((accept_language or "").split(",")[:30]):
+        tag, _, params = parte.strip().partition(";")
+        lingua = tag.strip().lower().split("-")[0]
+        if lingua not in ("pt", "en"):
+            continue
+        q = 1.0
+        params = params.strip().replace(" ", "")
+        if params.startswith("q="):
+            try:
+                q = float(params[2:])
+            except ValueError:
+                continue
+        if q > 0:
+            etiquetas.append((-q, i, lingua))
+    etiquetas.sort()                                     # q maior primeiro; em empate, a que vem antes no cabeçalho
+    q_en = next((-q for q, _, l in etiquetas if l == "en"), None)
+    q_pt = next((-q for q, _, l in etiquetas if l == "pt"), None)
+    return "en" if q_en is not None and (q_pt is None or q_en >= q_pt) else "pt"
+
+
+def indice_no_idioma(html: bytes, idioma: str) -> bytes:
+    """Em «en» troca o <html lang="pt-PT"> da página; em «pt» devolve os mesmos bytes (o português fica byte a byte igual)."""
+    if idioma != "en":
+        return html
+    return html.replace(b'<html lang="pt-PT">', b'<html lang="en" data-idioma="en">', 1)
+
 # A cópia editável tem VÁRIOS escritores em processos diferentes — esta web, o vigia 2vias (memória real ⇄ cópia) e quem
 # sincronizar a cópia com o telemóvel. Todos passam por um trinco (flock no mesmo ficheiro); o vigia revalida os hashes
 # dentro dele antes de escrever. O registo (ledger) diz se a memória real tem uma mudança que ainda não chegou à cópia —
@@ -1257,9 +1293,15 @@ class H(BaseHTTPRequestHandler):
         if STATIC.resolve() not in p.parents and p != STATIC.resolve() / "index.html" or not p.is_file():
             return self._json(404, {"erro": "não existe"})
         b = p.read_bytes()
+        auto = False
+        if rel == "index.html":
+            auto = self.cfg.idioma == "auto"
+            b = indice_no_idioma(b, idioma_do_pedido(self.cfg.idioma, self.headers.get("Accept-Language")))
         self.send_response(200)
         self.send_header("Content-Type", MIME.get(p.suffix, "application/octet-stream"))
         self.send_header("Cache-Control", "no-cache")
+        if auto:
+            self.send_header("Vary", "Accept-Language")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; "
                          "style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; "

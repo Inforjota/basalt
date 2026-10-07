@@ -40,7 +40,8 @@ ESTADO = {}
 
 def reset(**k):
     ESTADO.update(modo="ok", pacote=[], put=[], sinc_pedidos=0, nota_texto="S novo", nota_hash="H2", put_solta=None,
-                  sinc_409=None, sinc_503=False, pacote_solta=None, pacote_pedidos=0, put_falha_rede=False, nota_status=200)
+                  sinc_409=None, sinc_503=False, pacote_solta=None, pacote_pedidos=0, put_falha_rede=False, nota_status=200,
+                  idioma="pt")
     ESTADO["sinc_solta"] = threading.Event()
     ESTADO.update(k)
 
@@ -67,7 +68,9 @@ class Servidor(BaseHTTPRequestHandler):
         if caminho in ("/", "/index.html"):
             html = (STATIC / "index.html").read_text(encoding="utf-8")
             assert html.count("  iniciarOffline();") == 1
-            return self._envia(200, html.replace("  iniciarOffline();", "  " + GANCHO).encode(), "text/html; charset=utf-8")
+            from basalt.web import indice_no_idioma          # o idioma da página, como o servidor a serve (`ESTADO["idioma"]`: pt | en)
+            corpo = indice_no_idioma(html.replace("  iniciarOffline();", "  " + GANCHO).encode(), ESTADO["idioma"])
+            return self._envia(200, corpo, "text/html; charset=utf-8")
         if caminho == "/sw.js":
             return self._envia(200, (STATIC / "sw.js").read_bytes(), "application/javascript")
         if caminho in ("/manifest.webmanifest", "/favicon.ico", "/icon-192.png", "/icon-512.png"):

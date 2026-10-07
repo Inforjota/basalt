@@ -55,7 +55,17 @@ python3 -m basalt exportar ~/exported-vault                        # take the me
 python3 -m basalt arrumar                                          # Inbox → notes, links, categories (nightly timer)
 ```
 
-The CLI, the UI and the config keys are in Portuguese (the author's language); an English UI is on the roadmap.
+The CLI and the config keys are in Portuguese (the author's language), but **the web UI is available in English**. Turn it on in
+`basalt.toml`:
+
+```toml
+[basalt]
+idioma = "en"      # "pt" (default) · "en" · "auto" (follows the browser's Accept-Language)
+```
+
+or with the environment variable `BASALT_IDIOMA=en` (it wins over the file). After changing it, **reload the page**: the UI is
+cached by a service worker, so the new language only shows up after a reload. Limits: error messages coming from the server
+API stay in Portuguese, and the quick-save prefix in the command bar is still `guarda:`.
 
 ## Your AI agents
 
