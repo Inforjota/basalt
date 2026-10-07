@@ -73,6 +73,7 @@ def _isolar_processo():
     for d in (web._excls, web._trincos):
         d.clear()
     web._ia_usos.clear()
+    web._rec_usos.clear()
     yield
     config.definir_processo(None)
     config.usar(None)
@@ -130,6 +131,40 @@ def ia_de_teste(ollama, embeddings=True):
     return ia.IA(IAConfig(fornecedor="openai", url=ollama.url_chat, modelo_chat="modelo-de-teste",
                           embeddings_fornecedor="ollama" if embeddings else "nenhum", embeddings_url=ollama.url_emb,
                           embeddings_modelo="nomic-embed-text"))
+
+
+class IAFalsa:
+    """a IA de chat sem rede, para os testes que decidem o que ela responde (a junção da IA, o editor…).
+    `resposta`: um texto, uma função (prompt -> texto) ou uma excepção (levantada em cada chamada). Conta `chamadas` e guarda
+    os `prompts`. É uma `ia.IA` verdadeira (mesmas propriedades, `chat_activo`, `descricao()`…) com o `chat` trocado.
+    `fornecedor="nenhum"` dá a IA desligada; `**cfg` são campos do `IAConfig` (propostas_por_hora, texto_maximo…)."""
+
+    def __new__(cls, resposta="", fornecedor="openai", **cfg):
+        from basalt import ia
+        from basalt.config import IAConfig
+
+        class _IA(ia.IA):
+            def chat(self, prompt, sistema="", json_=False, tempo=None):
+                if not self.chat_activo:
+                    raise ia.IAIndisponivel("IA desligada")
+                self.chamadas += 1
+                self.prompts.append(prompt)
+                r = self.resposta(prompt) if callable(self.resposta) else self.resposta
+                if isinstance(r, BaseException):
+                    raise r
+                return r
+
+        o = _IA(IAConfig(fornecedor=fornecedor, url="http://127.0.0.1:9/v1", modelo_chat="modelo-de-teste", **cfg))
+        o.resposta, o.chamadas, o.prompts = resposta, 0, []
+        return o
+
+
+def usar_ia(resposta="", **k):
+    """põe uma `IAFalsa` como a IA do processo (o fixture autouse volta a deixá-la por definir no fim do teste)."""
+    from basalt import ia
+    f = IAFalsa(resposta, **k)
+    ia.definir(f)
+    return f
 
 
 class Resposta:
