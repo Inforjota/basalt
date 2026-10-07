@@ -18,7 +18,7 @@ def ligacoes(t):
     return {x.strip() for x in LIG_RX.findall(t)}
 
 
-# t41r4 G7: IPs e versões (192.0.2.104, v1.20, 3.11.2) são UM facto inteiro — e os seus pedaços («104», «20») não contam à
+# IPs e versões (192.0.2.104, v1.20, 3.11.2) são UM facto inteiro — e os seus pedaços («104», «20») não contam à
 # parte (contavam, e tem_facto() recusava-os dentro do próprio texto original: «perdeu 2 de 2 factos» numa fusão perfeita)
 COMPOSTO_RX = re.compile(r"(?<![\w.])v?\d+(?:\.\d+)+(?!\w)(?!\.\d)")
 
@@ -98,7 +98,7 @@ def trocar_ligacoes(t, fundir, manter):
 
 
 def _recuar(cas, trocas, falhas):
-    """t41r4 G6: a fusão falhou a meio — repõe o texto de antes em tudo o que já tinha sido trocado, pelo CAS (nunca por
+    """A fusão falhou a meio — repõe o texto de antes em tudo o que já tinha sido trocado, pelo CAS (nunca por
     cima de quem escreveu entretanto). As trocas que falharam já foram repostas pelo próprio CAS (ou guardadas à parte)."""
     desfeitas, por_troca = [], {}
     for t, antes in trocas:
@@ -126,7 +126,7 @@ def aplicar(real, manter, fundir, m, a=None, b=None):
     """grava tudo e faz commit; devolve (hash do commit, notas tocadas, commit ok). Tranca para não haver duas fusões ao
     mesmo tempo. a/b = o texto das notas que a IA juntou: se alguma mudou entretanto (as sessões escrevem na memória
     a toda a hora e a fusão leva 1-3 min), NÃO grava — senão a edição feita nesse intervalo perdia-se (25/09).
-    t41r4 G6: cada escrita e o apagamento passam pelo CAS (basalt.cas) — uma nota que mude entre a verificação e a troca,
+    Cada escrita e o apagamento passam pelo CAS (basalt.cas) — uma nota que mude entre a verificação e a troca,
     ou durante a graça, faz a fusão recuar inteira (o que já tinha sido trocado volta atrás) e levanta RuntimeError.
     Antes: write_text()/unlink() às cegas depois da verificação — uma gravação feita nesse instante perdia-se."""
     real = Path(real)

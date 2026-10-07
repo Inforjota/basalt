@@ -1,16 +1,16 @@
 """basalt.cas — escrever uma nota SÓ se ela ainda tem o conteúdo que se verificou (compare-and-swap), à prova de quem
-escreve sem trinco: o SilverBullet/Obsidian na cópia e os agentes na memória real.
+escreve sem trinco: o Obsidian (ou outro editor) na cópia e os agentes na memória real.
 
-Auditoria externa (ronda t41r, achado G4): «acrescentar outra leitura apenas desloca a janela». Aqui não há janela entre
+Princípio: «acrescentar outra leitura apenas desloca a janela». Aqui não há janela entre
 verificar e escrever: troca-se o ficheiro inteiro de uma vez (renameat2 RENAME_EXCHANGE, atómico no ZFS ≥ 2.2) e verifica-se
 o que SAIU. Se não era o que se esperava, alguém escreveu entretanto → destroca-se e o ficheiro volta a ter a escrita dessa
 pessoa (a nossa fica sem efeito e quem chama trata-a como «adiada»). A graça (0,3 s) apanha também quem já tinha o ficheiro
 aberto e acabou de escrever no ficheiro antigo depois da troca.
 Usado por basalt.duasvias e basalt.web (o cron de sincronização passa pelo duasvias).
-t41r3 (auditoria t41r2, achado 1): a reposição verifica o que SAIU na troca de volta (uma 3.ª escrita que entre
+Reposição: verifica-se o que SAIU na troca de volta (uma 3.ª escrita que entre
 nesse instante fica guardada, não se apaga às cegas); o que vai para SALVOS vai por rename (o inode inteiro, mesmo que ainda
 estejam a escrever nele), e SALVOS tem limite (dias e ficheiros) e não repete o mesmo conteúdo.
-t41r4 (auditoria t41r3, achados 1 e 2): a reposição também espera a graça antes de olhar ao que saiu (uma 3.ª
+A reposição também espera a graça antes de olhar ao que saiu (uma 3.ª
 escrita que ainda estivesse a decorrer no inode trocado perdia-se); em SALVOS a idade conta desde que se guardou (o rename
 trazia o mtime da nota — uma nota de 90 dias era podada no mesmo instante) e repete-se só o que tem o MESMO conteúdo agora
 (antes comparava-se o hash no nome, dado quando o ficheiro podia estar a meio de ser escrito: apagava-se a versão completa).
@@ -25,8 +25,8 @@ _libc.renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.
 _AT_FDCWD, _NOREPLACE, _EXCHANGE = -100, 1, 2
 GRACA = float(os.environ.get("BASALT_CAS_GRACA", "0.3"))
 SALVOS = Via("cas_salvos")        # PORTE: antes BASALT_CAS_SALVOS ou ~/.local/share; agora a pasta do espaço (a variável ainda vence, ver config.Espaco.de)
-SALVOS_DIAS = int(os.environ.get("BASALT_CAS_SALVOS_DIAS", "60"))     # t41r3: cópias salvas com mais de 60 dias saem
-SALVOS_MAX = int(os.environ.get("BASALT_CAS_SALVOS_MAX", "500"))      # t41r3: e nunca mais de 500 (ficam as mais novas)
+SALVOS_DIAS = int(os.environ.get("BASALT_CAS_SALVOS_DIAS", "60"))     # cópias salvas com mais de 60 dias saem
+SALVOS_MAX = int(os.environ.get("BASALT_CAS_SALVOS_MAX", "500"))      # e nunca mais de 500 (ficam as mais novas)
 
 
 def _renameat2(a, b, flags):
@@ -55,7 +55,7 @@ def durante_graca(alvo):
 
 
 def durante_reposicao(alvo):
-    """gancho para os testes (t41r4): simular quem escreve no ficheiro que saiu na troca de volta."""
+    """gancho para os testes (reposição): simular quem escreve no ficheiro que saiu na troca de volta."""
 
 
 class Troca:
@@ -103,7 +103,7 @@ def trocar(alvo, novo, esperado, rotulo="cas"):
 
 
 def _podar():
-    """t41r3: SALVOS não cresce sem limite — fora o que tem mais de SALVOS_DIAS dias e, acima de SALVOS_MAX, os mais antigos."""
+    """SALVOS não cresce sem limite — fora o que tem mais de SALVOS_DIAS dias e, acima de SALVOS_MAX, os mais antigos."""
     try:
         fich = sorted((q for q in SALVOS.iterdir() if q.is_file() and not q.name.startswith(".")), key=lambda q: q.stat().st_mtime)
     except OSError:
@@ -120,7 +120,7 @@ def _podar():
 
 
 def _guardar_a_parte(t):
-    """t41r3 G1: o ficheiro que saiu passa INTEIRO para SALVOS por rename (mesmo inode, sem copiar) — quem ainda o tiver aberto
+    """O ficheiro que saiu passa INTEIRO para SALVOS por rename (mesmo inode, sem copiar) — quem ainda o tiver aberto
     e acabar de escrever depois de o termos lido escreve já no sítio guardado. Antes copiava-se o que se tinha lido (podia
     estar a meio) e apagava-se o inode (a versão completa perdia-se). Devolve o caminho guardado (None se já não havia nada)."""
     SALVOS.mkdir(parents=True, exist_ok=True)
@@ -146,10 +146,10 @@ def _guardar_a_parte(t):
         destino = SALVOS / f"{t.alvo.stem}.{carimbo}-{n}.{h}{t.alvo.suffix}"
     os.rename(tmp, destino)
     try:
-        os.utime(destino, None)                       # t41r4 G2: a idade em SALVOS conta desde AGORA, não desde o mtime da nota
+        os.utime(destino, None)                       # a idade em SALVOS conta desde AGORA, não desde o mtime da nota
     except OSError:
         pass
-    # o mesmo conteúdo já estava guardado: fica só o mais novo. t41r4 G2: por CONTEÚDO (o hash no nome foi dado quando o
+    # o mesmo conteúdo já estava guardado: fica só o mais novo. por CONTEÚDO (o hash no nome foi dado quando o
     # ficheiro podia estar a meio de ser escrito; o que lá está agora pode ser a versão completa) e só o que assentou há ≥ 1 s.
     dados = _ler(destino)
     limite = time.time() - max(1.0, 2 * GRACA)
@@ -191,11 +191,11 @@ def confirmar(trocas, graca=None):
                 else:
                     _renameat2(t.saiu, t.alvo, _EXCHANGE)
                     reposto = True
-                    # t41r4 G1: a 3.ª escrita pode ainda estar A DECORRER (abriu o ficheiro antes desta troca e acaba de escrever uns ms
+                    # a 3.ª escrita pode ainda estar A DECORRER (abriu o ficheiro antes desta troca e acaba de escrever uns ms
                     # depois, já no inode que saiu) — a mesma graça da 1.ª troca, antes de olhar ao que saiu. Antes lia-se logo e apagava-se.
                     durante_reposicao(t.alvo)
                     time.sleep(GRACA if graca is None else graca)
-                    # t41r3 G1: entre a verificação de cima e esta troca pode ter entrado uma 3.ª escrita — é ela que saiu
+                    # entre a verificação de cima e esta troca pode ter entrado uma 3.ª escrita — é ela que saiu
                     # agora. Só se apaga o que saiu se for mesmo o nosso; senão fica guardado à parte (antes apagava-se às cegas).
                     if sha(_ler(t.saiu)) == t.novo_hash:
                         t.saiu.unlink()

@@ -26,9 +26,9 @@ REAL = Via("real")          # PORTE: antes caminhos fixos + variáveis; agora a 
 COPIA = Via("copia")
 LEDGER = Via("ledger")
 GIT = os.environ.get("BASALT_GIT", "1") == "1"
-# t41-r (auditoria G4): trinco partilhado com a web (basalt.web) e com o cron de sincronização — todos os
+# trinco partilhado com a web (basalt.web) e com o cron de sincronização — todos os
 # que escrevem na cópia. O ciclo segura-o do princípio ao fim. O editor/Obsidian (e os agentes, na real) escrevem SEM
-# trinco: desde a 2.ª auditoria (t41r2) cada escrita é um CAS (basalt.cas: troca atómica + confirmação do que saiu);
+# trinco: cada escrita é um CAS (basalt.cas: troca atómica + confirmação do que saiu);
 # se alguém escreveu nesse instante, a escrita dele fica e a nota passa ao ciclo seguinte («adiados»).
 TRINCO = Via("trinco")
 # ficheiros do próprio editor/índice que NÃO são notas da memória
@@ -122,7 +122,7 @@ def _ciclo():
     nomes = notas_de(REAL) | notas_de(COPIA)
     empurrados, puxados, conflitos, retidos, apagados, adiados = [], [], [], [], [], []
     fez_foto = False
-    trocas = []     # t41r2 G4: (troca, nome, valor novo do registo, lista onde conta) — confirmadas todas no fim, numa graça só
+    trocas = []     # (troca, nome, valor novo do registo, lista onde conta) — confirmadas todas no fim, numa graça só
 
     def trocar(alvo, novo, esperado, nome, valor_led, lista):
         """escreve/apaga por CAS (basalt.cas): se alguém escreveu no ficheiro desde que o lemos, nada se sobrepõe."""
@@ -177,7 +177,7 @@ def _ciclo():
             alvo = REAL / f"{nome[:-3]}.CONFLITO-{time.strftime('%Y%m%d-%H%M%S')}.md"
             if cas.escrever(alvo, bc, None, "2v"):          # nome único; se já existe (2 no mesmo segundo) fica p/ depois
                 adiados.append(nome); continue
-            # t41-r: a cópia passa a mostrar a real (a versão da cópia já está a salvo no .CONFLITO). Antes a cópia ficava
+            # a cópia passa a mostrar a real (a versão da cópia já está a salvo no .CONFLITO). Antes a cópia ficava
             # diferente e o ciclo seguinte EMPURRAVA-A por cima da real — perdia-se a mudança do agente.
             trocar(pc, None if seg_r else br, ch, nome, rh, conflitos); continue
 
@@ -185,7 +185,7 @@ def _ciclo():
         if rh and rh == ch:
             led[nome] = rh
 
-    # t41r2 G4: confirmar as trocas. A que falhar (alguém escreveu nesse instante) fica com a escrita dessa pessoa e o
+    # confirmar as trocas. A que falhar (alguém escreveu nesse instante) fica com a escrita dessa pessoa e o
     # registo NÃO avança → o ciclo seguinte vê as duas mudanças e trata-as (empurrar, puxar ou conflito), sem perder nada.
     falhas = {id(t) for t in cas.confirmar([x[0] for x in trocas])}
     salvos = []
@@ -287,7 +287,7 @@ def _teste():
     check(not existe(copia, "d.md"), "nota real com segredo NÃO devia ir/ficar na cópia")
     check(existe(real, "d.md"), "o original com segredo continua na memória real")
 
-    # 9) t41-r: depois de um CONFLITO, o ciclo seguinte NÃO pode empurrar a cópia por cima da real (perdia-se o agente)
+    # 9) depois de um CONFLITO, o ciclo seguinte NÃO pode empurrar a cópia por cima da real (perdia-se o agente)
     w(real, "e.md", "e0"); w(copia, "e.md", "e0"); ciclo()
     w(real, "e.md", "e AGENTE"); w(copia, "e.md", "e TELEMOVEL")
     r = ciclo()
@@ -297,7 +297,7 @@ def _teste():
     conf = list(real.glob("e.CONFLITO-*.md"))
     check(len(conf) == 1 and conf[0].read_text() == "e TELEMOVEL", "a versão da cópia devia ficar no .CONFLITO")
 
-    # 10) t41-r G4: escreve-se na cópia DURANTE a verificação de segredos de um «puxar» → essa escrita não se perde
+    # 10) escreve-se na cópia DURANTE a verificação de segredos de um «puxar» → essa escrita não se perde
     w(real, "f.md", "f0"); w(copia, "f.md", "f0"); ciclo()
     w(real, "f.md", "f AGENTE")
     original = globals()["tem_segredo"]
@@ -325,7 +325,7 @@ def _teste():
         q.read_text().startswith("f EDITOR") for q in real.glob("f.CONFLITO-*.md"))
     check(guardada and ler(real, "f.md") == "f AGENTE", "a edição do editor ou a do agente perdeu-se")
 
-    # 11) t41r2 G4 (2.ª auditoria): o editor grava DEPOIS de todas as verificações, mesmo antes da escrita do
+    # 11) o editor grava DEPOIS de todas as verificações, mesmo antes da escrita do
     #     vigia → a escrita dele fica na cópia e, no ciclo seguinte, vira conflito (nada se perde dos dois lados)
     w(real, "g.md", "g0"); w(copia, "g.md", "g0"); ciclo()
     w(real, "g.md", "g AGENTE")
@@ -345,7 +345,7 @@ def _teste():
     check(ler(real, "g.md") == "g AGENTE" and any(q.read_text() == "g EDITOR NOVO" for q in real.glob("g.CONFLITO-*.md")),
           "depois do 2.º ciclo, a versão do agente ou a do editor perdeu-se")
 
-    # 12) t41r2 G4: quem já tinha o ficheiro aberto acaba de escrever no ficheiro ANTIGO depois da troca
+    # 12) quem já tinha o ficheiro aberto acaba de escrever no ficheiro ANTIGO depois da troca
     w(real, "k.md", "k0"); w(copia, "k.md", "k0"); ciclo()
     w(real, "k.md", "k AGENTE")
     aberto = {}
@@ -366,7 +366,7 @@ def _teste():
     check("k.md" in r["adiados"] and ler(copia, "k.md") == "k EDITOR LENTO",
           "a escrita no ficheiro antigo (aberto antes da troca) perdeu-se")
 
-    # 13) t41r2 G4: um agente grava na REAL mesmo antes de o vigia empurrar a edição da cópia → a do agente fica
+    # 13) um agente grava na REAL mesmo antes de o vigia empurrar a edição da cópia → a do agente fica
     w(real, "m.md", "m0"); w(copia, "m.md", "m0"); ciclo()
     w(copia, "m.md", "m TELEMOVEL")
 

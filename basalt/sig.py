@@ -256,7 +256,7 @@ def _procurar(termo, n, dedup=True):
     sims, semantico = _pontuar(termo, linhas)
     piso = LIMIAR if semantico else 1e-9
     rq = _raizes(termo)
-    # IDENTIFICADORES da pergunta: siglas em maiúsculas (NAS, SSO, LXC) e termos com número (volume2, 104) — muito
+    # IDENTIFICADORES da pergunta: siglas em maiúsculas (NAS, SSO, API) e termos com número (volume2, 104) — muito
     # distintivos e que as raízes perdem (ex.: «NAS» colide com a preposição «nas»). Procuram-se tal e qual no texto.
     ids = set(re.findall(r"\b[A-Z]{2,}\d*\b|\b\w*\d\w*\b", termo)) - {"2026", "2027"}
     ids = {x for x in ids if len(x) >= 2}
