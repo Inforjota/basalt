@@ -106,16 +106,37 @@ def _recuar(cas, trocas, falhas):
     for t, antes in trocas:
         if t in falhas:
             continue
-        u, motivo = cas.trocar(t.alvo, antes, t.novo_hash, rotulo="unir-recuo")
+        try:
+            u, motivo = cas.trocar(t.alvo, antes, t.novo_hash, rotulo="unir-recuo")
+        except OSError as e:                                  # t41r6: o recuo também pode dar erro de disco — fica como motivo
+            u, motivo = None, f"erro ao gravar: {e.strerror or e}"
         if u is not None:
             desfeitas.append(u)
             por_troca[id(t)] = u
         else:
             motivos[id(t)] = motivo or "não se conseguiu trocar"
     recuo_falhou = {id(u) for u in cas.confirmar(desfeitas)}
+    # t41r6 (Astra t41r4 G1): o que SAIU nas trocas originais pode ainda estar a receber uma escrita de quem tinha a nota aberta
+    # antes da troca. Quando a fusão falha a meio, o confirmar() original nunca correu — e o do recuo só espera se houve trocas
+    # de volta com algo a sair (recriar B não tem). Por isso a graça espera-se AQUI, sempre, antes de decidir apagar ou guardar.
+    por_ver = [t for t, _ in trocas if t not in falhas and t.saiu is not None]
+    for t in por_ver:
+        cas.durante_graca(t.alvo)
+    if por_ver:
+        time.sleep(cas.GRACA)
     avisos = []
     for t, _ in trocas:
         if t in falhas:
+            # t41r6 (Astra t41r4 G3/G4): a troca original falhou no confirmar() (ou A foi gravada logo depois da troca) e o
+            # recuo não lhe toca — mas então a nota NÃO está no texto de antes, e isso tem de ir no erro (antes: «recuei tudo»)
+            actual = cas._ler(t.alvo)
+            if t.intruso is not None and actual is not None and cas.sha(actual) == cas.sha(t.intruso):
+                if t.salvo:                                   # voltou ao que o outro gravou; uma 3.ª escrita ficou guardada
+                    avisos.append(f"a nota «{t.alvo.stem}» ficou com o texto que outro gravou no mesmo instante; uma escrita "
+                                  f"posterior ficou guardada em {t.salvo}")
+                continue
+            avisos.append(f"a nota «{t.alvo.stem}» não voltou ao texto de antes (alguém gravou nela logo depois da troca; "
+                          "está como esse alguém a deixou" + (f"; a escrita anterior ficou guardada em {t.salvo}" if t.salvo else "") + ")")
             continue
         u = por_troca.get(id(t))
         reposta = u is not None and id(u) not in recuo_falhou
@@ -181,7 +202,17 @@ def aplicar(real, manter, fundir, m, a=None, b=None):
             falhas = cas.confirmar([t for t, _ in trocas])
             if falhas:
                 raise RuntimeError(f"a nota «{falhas[0].alvo.stem}» mudou enquanto a fusão se aplicava (alguém gravou no mesmo instante)")
-        except RuntimeError as e:
+            # t41r6 (Astra t41r4 G3): o confirmar() só verifica o inode que SAIU de cada troca — alguém pode ter gravado na
+            # que fica logo DEPOIS da troca (já no inode novo). Então ela já não tem o texto fundido: não se apaga a outra
+            # nem se mudam as ligações; a que fica deixa-se como esse alguém a deixou (o recuo não lhe toca) e diz-se.
+            if cas.sha(cas._ler(pa)) != cas.sha(m.encode("utf-8")):
+                falhas = [trocas[0][0]]
+                raise RuntimeError(f"a nota «{manter}» foi gravada por outro logo depois da fusão")
+        except Exception as e:
+            # t41r6 (Astra t41r4 G2): um erro de disco (OSError) a meio também recua — antes só o RuntimeError recuava e a
+            # fusão ficava aplicada a meio (A fundida, B apagada, ligações por mudar)
+            if not isinstance(e, RuntimeError):
+                e = RuntimeError(f"erro ao gravar ({type(e).__name__}: {e})")
             avisos = _recuar(cas, trocas, falhas)
             if not avisos:
                 raise RuntimeError(f"{e}; recuei tudo, nada ficou a meio — carrega outra vez em Unir") from None

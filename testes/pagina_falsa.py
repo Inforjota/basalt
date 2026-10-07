@@ -3,7 +3,7 @@
 O servidor é falso e local (127.0.0.1, porta livre): nunca toca em notas reais. Serve a página com um «gancho» (expõe as
 funções internas em `window.__t`) e a API com modos que se mudam durante o teste (`ESTADO["modo"]`): ok · 403 · 404 · login
 (302 para outro domínio) · html (200 text/html: a página de login do proxy) · sem-rede (fecha a ligação sem responder). Há também «pedidos suspensos» (`sinc_solta`,
-`put_solta`, `pacote_solta`): o servidor segura a resposta até o teste a soltar, para reproduzir corridas.
+`put_solta`, `pacote_solta`, `nota_solta` = o GET à nota): o servidor segura a resposta até o teste a soltar, para reproduzir corridas.
 
 `BASALT_STATIC=DIR` testa outra versão da página (ex.: uma cópia antiga, para provar que cada teste apanha o defeito).
 Esperas SEMPRE com `page.wait_for_timeout` (nunca `time.sleep`: os eventos do Playwright não chegam).
@@ -40,8 +40,8 @@ ESTADO = {}
 
 def reset(**k):
     ESTADO.update(modo="ok", pacote=[], put=[], sinc_pedidos=0, nota_texto="S novo", nota_hash="H2", put_solta=None,
-                  sinc_409=None, sinc_503=False, pacote_solta=None, pacote_pedidos=0, put_falha_rede=False, nota_status=200,
-                  idioma="pt")
+                  sinc_409=None, sinc_503=False, pacote_solta=None, pacote_pedidos=0, nota_solta=None, put_falha_rede=False,
+                  nota_status=200, idioma="pt")
     ESTADO["sinc_solta"] = threading.Event()
     ESTADO.update(k)
 
@@ -133,6 +133,8 @@ class Servidor(BaseHTTPRequestHandler):
             if ESTADO["put_falha_rede"]:                      # …e acaba como falha de rede (ligação cortada sem resposta)
                 self.close_connection = True
                 return
+            if ESTADO["nota_status"] != 200:                  # t41r6 M8: a nota já não existe quando o PUT chega
+                return self._envia(ESTADO["nota_status"], {"erro": "a nota já não existe"})
             if corpo.get("base_hash") == ESTADO["nota_hash"]:
                 ESTADO["nota_texto"], ESTADO["nota_hash"] = corpo.get("texto", ""), "H3"
                 return self._envia(200, {"ok": True, "hash": "H3"})
@@ -151,6 +153,8 @@ class Servidor(BaseHTTPRequestHandler):
             ESTADO["pacote_pedidos"] += 1
             if ESTADO["pacote_solta"] is not None:
                 ESTADO["pacote_solta"].wait(20)               # pacote «a meio» até o teste o soltar
+        if u.path == "/api/nota" and ESTADO["nota_solta"] is not None:
+            ESTADO["nota_solta"].wait(20)                     # GET à nota «suspenso» até o teste o soltar (antes do nota_status)
         if u.path == "/api/nota" and ESTADO["nota_status"] != 200:
             return self._envia(ESTADO["nota_status"], {"erro": "a nota já não existe"})
         return self._envia(200, self._api_ok(u, q))

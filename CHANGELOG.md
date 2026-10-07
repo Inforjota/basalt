@@ -24,3 +24,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   depois de mudar o `idioma` é preciso recarregar a página (service worker). O ecrã de entrada (`/entrar`) também sai em inglês. Limitações: as mensagens de erro da API do
   servidor e o prefixo `guarda:` da barra de comandos ficam em português. Testes em `testes/test_idioma.py`.
 - Sem rasto do autor original: nenhum nome, domínio, IP ou caminho da instalação de origem no código (teste `test_sem_rasto`).
+- Robustez (auditorias Astra t41r5/t41r6 da produção, 07/10/2026): o recuo da fusão («Unir») espera a graça do CAS antes de
+  apagar o que saiu e diz, nota a nota, o que não voltou; um erro de disco a meio também recua; a nota mantida é relida depois
+  da troca; a geração da cópia local é persistente (IndexedDB + localStorage) e comparada dentro de cada transacção que
+  escreve; o service worker (cache `basalt-v8`) ordena pedidos, trancas e lápides por relógio monótono e pela fotografia das
+  trancas que existiam ao partir; 404/410 deixam lápide na página e só apagam da cache o que partiu antes; «senha: 2026-10-06»
+  conta como password (a excepção data/hora só com contexto de validade). Testes: `testes/test_t41r5.py`, `testes/test_t41r6.py`.

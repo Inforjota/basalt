@@ -156,13 +156,26 @@ def _hash_no_ledger(nome_md):
 # continuam a poder escrever-se.
 PASSWORD_RX = re.compile(r"(?i)\b(?:password|passwd|senha|palavra[- ]passe)\b[^\n:=]{0,40}[:=][ \t]*"
                          r"(?!https?://|[/~])"
-                         # uma data ou hora a seguir («validade da senha: 2026-10-06», «senha: 06/10/2026», «: 09h30») não é a password
-                         r"(?!\d{4}-\d{2}-\d{2}(?![^\s.,;:)]))(?!\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}(?![^\s.,;:)]))(?!\d{1,2}[:h]\d{2}(?![^\s.,;:)]))"
-                         r"(?=\S*[0-9!@#$%^&*])\S{6,}")
+                         r"(?=\S*[0-9!@#$%^&*])(\S{6,})")
+# t41r6 (Astra t41r4 G7): um valor com formato de data/hora («2026-10-06», «06/10/2026», «10:30:59») SÓ deixa de contar como
+# password quando o contexto fala de validade («validade da senha: 2026-10-06», «a senha expira: 06/10/2026»). Antes a
+# exclusão era cega ao contexto: «senha: 2026-10-06» e «password: 10:30:59» passavam.
+_DATA_HORA_RX = re.compile(r"^(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{1,2}[:h]\d{2}(?::\d{2})?)[.,;:)]*$")
+_VALIDADE_RX = re.compile(r"(?i)\b(?:validade|válid[ao]|valid[ao]|expir\w*|venc\w*|prazo|renov\w*|caduc\w*|data|hora|dia|até|desde)\b")
+
+
+def _password_em_claro(txt):
+    for m in PASSWORD_RX.finditer(txt):
+        if _DATA_HORA_RX.match(m.group(1)):
+            inicio = txt.rfind("\n", 0, m.start()) + 1                 # o contexto é a mesma linha, até 80 caracteres antes
+            if _VALIDADE_RX.search(txt[max(inicio, m.start() - 80):m.start(1)]):
+                continue
+        return True
+    return False
 
 
 def tem_segredo_texto(txt):
-    return bool(SEGREDO_RX.search(txt) or PASSWORD_RX.search(txt))
+    return bool(SEGREDO_RX.search(txt) or _password_em_claro(txt))
 
 
 def tem_segredo_ficheiro(p: Path):
