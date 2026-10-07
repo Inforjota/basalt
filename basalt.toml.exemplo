@@ -8,6 +8,10 @@ escutar = "127.0.0.1"              # põe um proxy (nginx/caddy) com HTTPS à fr
 lingua = "pt"
 git = true                         # fotografias git da memória: histórico, diário, desfazer fusões (precisa do `git`)
 
+[git]                              # quem assina as fotografias git da memória
+nome = "Basalt"
+email = "basalt@localhost"
+
 [auth]
 modo = "senha"                     # senha = formulário próprio · cabecalho = o proxy já faz login (SSO) e manda o e-mail
                                    # · aberto = sem login, SÓ com escutar = 127.0.0.1
@@ -46,6 +50,13 @@ fontes_de_confianca = ["web", "terminal", "cli", "mcp"]
 # [entrada.telegram]               # opcional: guardar ideias por um bot Telegram
 # token_env = "BASALT_TG_TOKEN"
 # chats = ["123456789"]
+
+# [categorias]                     # opcional: as TUAS categorias (a IA escolhe 1-2 por nota) e regras seguras pelo nome da nota
+# regras = [["^trabalho|reuniao", "Trabalho"], ["receita|cozinha", "Casa"]]
+# [categorias.lista]
+# "Trabalho" = "projectos, clientes, reuniões"
+# "Casa" = "casa, família, compras"
+# "Diversos" = "nada acima encaixa"
 
 # [fontes_extra]                   # opcional: comandos que imprimem JSON [{"fonte","ref","titulo","texto"}] para entrar no índice
 # comandos = ["/usr/local/bin/as-minhas-tarefas"]

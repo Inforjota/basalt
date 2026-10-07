@@ -76,6 +76,18 @@ class EntradaConfig:
 
 
 @dataclass
+class GitConfig:
+    nome: str = "Basalt"                # autor das fotografias git da memória (não precisa de existir como conta)
+    email: str = "basalt@localhost"
+
+
+@dataclass
+class CategoriasConfig:
+    lista: dict = field(default_factory=dict)    # {"Nome": "definição para a IA"}; vazio = a lista de origem (basalt.categorias.DEF)
+    regras: list = field(default_factory=list)   # [["regex pelo nome da nota", "Nome"]]; vazio = as regras de origem
+
+
+@dataclass
 class Config:
     dados: Path                         # raiz: <dados>/<espaco>/{memoria,copia,dados}
     porta: int = 8121
@@ -85,6 +97,8 @@ class Config:
     auth: AuthConfig = field(default_factory=AuthConfig)
     ia: IAConfig = field(default_factory=IAConfig)
     entrada: EntradaConfig = field(default_factory=EntradaConfig)
+    git_autor: GitConfig = field(default_factory=GitConfig)
+    categorias: CategoriasConfig = field(default_factory=CategoriasConfig)
     utilizadores: list = field(default_factory=list)
     fontes_extra: list = field(default_factory=list)   # comandos que imprimem JSON [{fonte, ref, titulo, texto}] para o índice
     origem: Path | None = None          # o toml lido (None = só omissão + ambiente)
@@ -203,7 +217,7 @@ def usar(espaco: Espaco | None) -> None:
 
 
 def actual() -> Espaco:
-    e = getattr(_actual, "espaco", None)
+    e = getattr(_actual, "espaco", None) or _processo
     if e is None:
         raise RuntimeError("nenhum espaço activo neste fio (usar(espaco) primeiro)")
     return e
@@ -217,6 +231,67 @@ def dentro(espaco: Espaco):
         yield espaco
     finally:
         usar(anterior)
+
+
+_processo: Espaco | None = None
+
+
+def definir_processo(espaco: Espaco | None) -> None:
+    """para os programas de linha de comandos (`python -m basalt.duasvias`, …): um só espaço para o processo inteiro."""
+    global _processo
+    _processo = espaco
+
+
+def espaco_de_processo(ambiente: dict | None = None) -> Espaco:
+    """o espaço de um subprocesso: BASALT_ESPACO (nome; omissão «principal») dentro da raiz de dados do basalt.toml ou de
+    BASALT_DADOS. As variáveis antigas por pasta (BASALT_REAL, BASALT_COPIA, …) mandam, campo a campo (ver Espaco.de);
+    `Espaco.ambiente()` é o que o servidor passa aos filhos."""
+    amb = os.environ if ambiente is None else ambiente
+    nome = amb.get("BASALT_ESPACO") or ESPACO_OMISSAO
+    try:
+        raiz = carregar(ambiente=amb).dados
+    except ConfigInvalida:
+        raiz = Path(amb.get("BASALT_DADOS") or "~/.local/share/basalt/dados").expanduser()
+    return Espaco.de(nome, raiz, amb)
+
+
+class Via:
+    """Um caminho que segue o Espaço activo: `REAL = Via("real")` é sempre a pasta `real` do espaço do pedido (fio) ou, num
+    subprocesso, do espaço do processo. Comporta-se como um `Path` (o que não está aqui vai para o caminho actual)."""
+
+    def __init__(self, campo: str, *resto: str):
+        self._campo, self._resto = campo, resto
+
+    def _p(self) -> Path:
+        e = getattr(_actual, "espaco", None) or _processo
+        if e is None:
+            raise RuntimeError(f"nenhum espaço activo (config.usar/dentro) ao aceder a {self._campo!r}")
+        return Path(getattr(e, self._campo), *self._resto)
+
+    def __truediv__(self, outro):
+        return Via(self._campo, *self._resto, str(outro))
+
+    def __fspath__(self):
+        return str(self._p())
+
+    __str__ = __fspath__
+
+    def __repr__(self):
+        return f"Via({self._campo!r}{''.join(', ' + repr(r) for r in self._resto)})"
+
+    def __eq__(self, outro):
+        try:
+            return self._p() == Path(os.fspath(outro))
+        except (TypeError, RuntimeError):
+            return NotImplemented
+
+    def __hash__(self):
+        return hash(self._p())
+
+    def __getattr__(self, nome):
+        if nome.startswith("__"):
+            raise AttributeError(nome)
+        return getattr(self._p(), nome)
 
 
 # ───────────────────────────── carregar ─────────────────────────────
@@ -288,6 +363,12 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None) ->
     cfg.entrada = EntradaConfig(automatica=bool(en.get("automatica", True)),
                                 fontes_de_confianca=tuple(en.get("fontes_de_confianca", ("web", "terminal", "cli", "mcp"))),
                                 telegram_token_env=tg.get("token_env", ""), telegram_chats=tuple(str(c) for c in tg.get("chats", ())))
+
+    g = t.get("git", {})
+    cfg.git_autor = GitConfig(nome=str(g.get("nome", "Basalt")), email=str(g.get("email", "basalt@localhost")))
+    ca = t.get("categorias", {})
+    cfg.categorias = CategoriasConfig(lista={str(k): str(v) for k, v in ca.get("lista", {}).items()},
+                                      regras=[[str(r[0]), str(r[1])] for r in ca.get("regras", []) if len(r) == 2])
 
     for u in t.get("utilizadores", []):
         if not isinstance(u, dict) or not u.get("email"):
