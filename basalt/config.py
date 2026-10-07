@@ -318,7 +318,7 @@ def _int(amb, k, omissao):
         raise ConfigInvalida(f"{k} tem de ser um inteiro, não {v!r}")
 
 
-def carregar(caminho: str | Path | None = None, ambiente: dict | None = None) -> Config:
+def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, validar: bool = True) -> Config:
     amb = os.environ if ambiente is None else ambiente
     f = _ficheiro(caminho)
     t = {}
@@ -384,7 +384,8 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None) ->
             cfg.utilizadores.append(Utilizador(email=em))
     fe = t.get("fontes_extra", {})
     cfg.fontes_extra = [str(c) for c in fe.get("comandos", [])] if isinstance(fe, dict) else []
-    cfg.validar()
+    if validar:
+        cfg.validar()      # os programas auxiliares (sig, 2vias…) pedem validar=False: só querem ler o que lhes interessa
     return cfg
 
 
