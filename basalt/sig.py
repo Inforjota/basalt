@@ -25,7 +25,7 @@ except ImportError:
 
 from . import config
 from .config import Via
-from .ia import IA, IAIndisponivel
+from .ia import IA, IAIndisponivel, actual as ia, definir as definir_ia   # noqa: F401  (IA, definir_ia: para quem importa o sig)
 from .lexical import IndiceLexical
 
 PASTA = Via("real")                     # PORTE: antes BASALT_DIR/caminhos fixos; agora as pastas do espaço activo
@@ -36,23 +36,7 @@ LIMIAR = 0.52        # piso baixo: só decide quem é CANDIDATO; o filtro forte 
 LIMIAR_FORTE = 0.80  # tão perto que conta mesmo sem partilhar palavras (calibrado com casos bons e maus, nomic-embed-text)
 
 
-# ───────────────────────────── IA (embeddings e chat) ─────────────────────────────
-_ia = None
-
-
-def definir_ia(ia_):
-    """o servidor/testes põem aqui a IA já construída (None = voltar a ler o basalt.toml)."""
-    global _ia
-    _ia = ia_
-
-
-def ia():
-    global _ia
-    if _ia is None:
-        _ia = IA(config.carregar(validar=False).ia)
-    return _ia
-
-
+# ───────────────────────────── IA (embeddings e chat): basalt.ia.actual() ─────────────────────────────
 class EmbErro(Exception):
     pass
 

@@ -55,6 +55,25 @@ def _post_json(url: str, corpo: dict, cabecalhos: dict, tempo: int) -> dict:
         raise IAIndisponivel(f"{url}: resposta não é JSON")
 
 
+_global = None
+
+
+def definir(ia_) -> None:
+    """a IA do processo (o servidor e os testes põem-na aqui; None = voltar a ler o basalt.toml na próxima vez)."""
+    global _global
+    _global = ia_
+
+
+def actual() -> "IA":
+    """a IA do processo, construída do basalt.toml à primeira chamada. Usada pelos módulos de linha de comandos (sig,
+    categorias, unir, arrumar…) para não ser cada um a ler a configuração."""
+    global _global
+    if _global is None:
+        from .config import carregar
+        _global = IA(carregar(validar=False).ia)
+    return _global
+
+
 class IA:
     def __init__(self, cfg: IAConfig):
         self.cfg = cfg
