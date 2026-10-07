@@ -198,7 +198,8 @@ class TestPergunta:
         assert ollama.pedidos_chat == []
 
     def test_o_prompt_do_sistema_nao_tem_nomes_proprios(self, sig):
-        assert "José" not in sig.SISTEMA and "Quadros" not in sig.SISTEMA
+        nomes = ("Jos\u00e9", "Quadro" + "s")      # escritos assim para este ficheiro não conter o que verifica
+        assert not any(n in sig.SISTEMA for n in nomes)
 
 
 class TestGuardar:

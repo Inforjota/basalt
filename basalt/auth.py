@@ -83,7 +83,7 @@ class Autenticador:
             d = json.loads(self.ficheiro.read_text(encoding="utf-8"))
             agora = time.time()
             self._sessoes = {k: Sessao(**v) for k, v in d.items() if v.get("expira", 0) > agora}
-        except (OSError, ValueError, TypeError):
+        except (OSError, ValueError, TypeError, AttributeError):   # PORTE: JSON válido mas de outra forma ([] ou {"x": 5}) também arranca limpo
             self._sessoes = {}
 
     def _guardar(self):

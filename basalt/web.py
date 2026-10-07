@@ -1379,6 +1379,8 @@ class H(BaseHTTPRequestHandler):
             c = self._corpo()
         except Exception:
             return self._json(400, {"erro": "Pedido inválido."})
+        if not isinstance(c, dict):                   # PORTE: um corpo JSON que não é objecto ([1,2]) dava erro e cortava a ligação
+            return self._json(400, {"erro": "Pedido inválido."})
         ok, res = self.aut.entrar(str(c.get("email", "")), str(c.get("senha", "")), self._ip())
         if not ok:
             return self._json(429 if res.startswith("Demasiadas") else 401, {"erro": res})
