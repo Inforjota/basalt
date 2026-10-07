@@ -18,7 +18,7 @@ def ligacoes(t):
     return {x.strip() for x in LIG_RX.findall(t)}
 
 
-# t41r4 G7: IPs e versões (192.168.1.104, v1.20, 3.11.2) são UM facto inteiro — e os seus pedaços («168», «20») não contam à
+# t41r4 G7: IPs e versões (192.0.2.104, v1.20, 3.11.2) são UM facto inteiro — e os seus pedaços («104», «20») não contam à
 # parte (contavam, e tem_facto() recusava-os dentro do próprio texto original: «perdeu 2 de 2 factos» numa fusão perfeita)
 COMPOSTO_RX = re.compile(r"(?<![\w.])v?\d+(?:\.\d+)+(?!\w)(?!\.\d)")
 
