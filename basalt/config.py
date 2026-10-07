@@ -209,6 +209,14 @@ class Espaco:
                 "BASALT_UNIR_JOBS": str(self.jobs_unir)}
 
 
+def ambiente_filho(espaco: "Espaco | None" = None) -> dict:
+    """o ambiente completo de um subprocesso `python -m basalt.X`: o do processo + o do espaço + o pacote no PYTHONPATH
+    (corre de qualquer pasta e mesmo sem o pacote estar instalado)."""
+    e = espaco or actual()
+    pp = os.environ.get("PYTHONPATH", "")
+    return {**os.environ, **e.ambiente(), "PYTHONPATH": str(Path(__file__).resolve().parent.parent) + (os.pathsep + pp if pp else "")}
+
+
 _actual = threading.local()
 
 

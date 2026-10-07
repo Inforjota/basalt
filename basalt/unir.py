@@ -62,7 +62,7 @@ Regras (obrigatórias):
 {b}
 """
     # PORTE: antes `claude -p` com o modelo lido de uma ferramenta local; agora a IA configurada em [ia] (basalt.ia)
-    return _ia.actual().chat(prompt, tempo=600) + "\n"
+    return _ia.actual().chat(prompt, tempo=600).strip() + "\n"
 
 
 def validar(a, b, m, manter, fundir):
