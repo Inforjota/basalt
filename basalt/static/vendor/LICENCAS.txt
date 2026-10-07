@@ -1,0 +1,18 @@
+mermaid 12.0.0 (MIT) · katex 0.18.9 (MIT) — copiados do npm a 25/09/2026 para funcionar sem internet
+
+--- basalt-editor.min.js (25/09/2026) — construído de editor-src/ com esbuild, incluído no bundle: ---
+@codemirror/autocomplete 6.20.3 (MIT)
+@codemirror/commands 6.11.1 (MIT)
+@codemirror/language 6.12.4 (MIT)
+@codemirror/search 6.7.2 (MIT)
+@codemirror/state 6.7.6 (MIT)
+@codemirror/view 6.43.13 (MIT)
+@lezer/common 1.5.3 (MIT)
+@lezer/highlight 1.2.4 (MIT)
+@lezer/lr 1.4.10 (MIT)
+@lezer/markdown 1.7.2 (MIT)
+@marijn/find-cluster-break 1.0.4 (MIT)
+crelt 1.0.7 (MIT)
+style-mod 4.1.4 (MIT)
+w3c-keyname 2.2.8 (MIT)
+--- ferramenta de build (não entra no bundle final): esbuild 0.24.2 (MIT) ---
