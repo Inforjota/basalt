@@ -2,7 +2,7 @@
 // quando não há rede, nunca esconde uma sessão expirada atrás de dados velhos.
 "use strict";
 
-var CACHE_VERSAO = "basalt-v6";      // sobe de versão quando a lógica de cache muda
+var CACHE_VERSAO = "basalt-v7";      // sobe de versão quando a lógica de cache muda
 // «Apagar cópia deste aparelho» cria esta cache-marca (não começa por "basalt-", por isso sobrevive à limpeza
 // do activate) — enquanto existir, nenhuma resposta da API volta a ser guardada neste aparelho.
 var MARCA_DESLIGADA = "basaltcfg-copia-desligada";
@@ -196,12 +196,24 @@ function comInicio(resposta, inicio) {
   cabecalhos.set("X-Basalt-Inicio", String(inicio));
   return new Response(resposta.body, { status: resposta.status, statusText: resposta.statusText, headers: cabecalhos });
 }
-async function guardarSeMaisNova(c, pedido, copia, inicio) {
-  var ja = await c.match(pedido);
-  var q = ja ? Number(ja.headers.get("X-Basalt-Inicio")) || 0 : 0;
-  if (q > inicio) return false;
-  await c.put(pedido, comInicio(copia, inicio));
-  return true;
+// t41r5 (auditoria Astra t41r4): o «ver se há mais nova» e o «guardar» eram duas operações separadas — duas respostas à
+// mesma nota a chegar quase juntas viam as duas a cache vazia e a mais ANTIGA podia ficar por cima. Agora, por URL, cada
+// guardar espera pelo anterior (match+put em fila) e a comparação vale mesmo.
+var GUARDAR_FILA = {};
+function guardarSeMaisNova(c, pedido, copia, inicio) {
+  var chave = (pedido && pedido.url) || String(pedido);
+  var anterior = GUARDAR_FILA[chave] || Promise.resolve();
+  var p = anterior.catch(function () {}).then(async function () {
+    var ja = await c.match(pedido);
+    var q = ja ? Number(ja.headers.get("X-Basalt-Inicio")) || 0 : 0;
+    if (q > inicio) return false;
+    await c.put(pedido, comInicio(copia, inicio));
+    return true;
+  });
+  GUARDAR_FILA[chave] = p;
+  var largar = function () { if (GUARDAR_FILA[chave] === p) delete GUARDAR_FILA[chave]; };
+  p.then(largar, largar);
+  return p;
 }
 
 // o redireccionamento para o login vira um 401 de verdade (antes era Response.error(), que a página lia como

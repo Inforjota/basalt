@@ -2,7 +2,7 @@
 
 O servidor é falso e local (127.0.0.1, porta livre): nunca toca em notas reais. Serve a página com um «gancho» (expõe as
 funções internas em `window.__t`) e a API com modos que se mudam durante o teste (`ESTADO["modo"]`): ok · 403 · 404 · login
-(302 para outro domínio) · sem-rede (fecha a ligação sem responder). Há também «pedidos suspensos» (`sinc_solta`,
+(302 para outro domínio) · html (200 text/html: a página de login do proxy) · sem-rede (fecha a ligação sem responder). Há também «pedidos suspensos» (`sinc_solta`,
 `put_solta`, `pacote_solta`): o servidor segura a resposta até o teste a soltar, para reproduzir corridas.
 
 `BASALT_STATIC=DIR` testa outra versão da página (ex.: uma cópia antiga, para provar que cada teste apanha o defeito).
@@ -118,6 +118,8 @@ class Servidor(BaseHTTPRequestHandler):
             return self._envia(302, b"", "text/html", {"Location": "http://localhost:9/oauth2/sign_in"})
         if modo == "403":
             return self._envia(403, {"erro": "Acesso só para geral@exemplo.pt."})
+        if modo == "html":                                    # t41r5: a sessão caiu e o proxy devolve a página de login com 200
+            return self._envia(200, b"<!doctype html><title>Entrar</title><p>Entra com a tua conta.</p>", "text/html; charset=utf-8")
         if modo == "404" and u.path == "/api/nota":
             return self._envia(404, {"erro": "Nota não encontrada (ou reservada por ter dados sensíveis)."})
         if metodo == "PUT" and u.path == "/api/nota":

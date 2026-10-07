@@ -819,7 +819,13 @@ async function reagirResposta(res, path, bloqAntes, inicio){
   try{
     // só destranca o trancar que já existia quando ESTE pedido partiu (uma resposta boa atrasada, de antes de
     // a sessão expirar, não pode destrancar o que outro pedido/separador acabou de trancar)
-    if(res.ok){ if(COPIA_BLOQUEADA && BLOQUEIO_ID === bloqAntes) await desbloquearCopiaLocal(bloqAntes, inicio); return; }
+    if(res.ok){
+      // t41r5 (auditoria Astra t41r4): um 200 que não seja JSON (a página de login em HTML) não prova que a sessão está boa —
+      // não destranca. O service worker já o evitava (t41r4 G4); a página voltava a destrancar ao receber a mesma resposta.
+      var tipoOk = (res.headers && res.headers.get && res.headers.get("content-type")) || "";
+      if(/json/i.test(tipoOk) && COPIA_BLOQUEADA && BLOQUEIO_ID === bloqAntes) await desbloquearCopiaLocal(bloqAntes, inicio);
+      return;
+    }
     if(res.status === 401){ mostrarSessaoExpirada(); return; }      // inclui o 401 que o service worker faz do login
     if(res.status === 403){ await bloquearCopiaLocal(); return; }
     if((res.status === 404 || res.status === 410) && path.indexOf("/api/nota?") === 0){   // o 410 também tira a nota da cópia
@@ -2982,8 +2988,17 @@ function renderConflito(nota, conflito, centro, contexto){
       : "");
   function reabrir(){ if(NOTAS_SHELL) NOTAS_SHELL.abrir({tipo:"nota", nome: nota.nome}); }
   async function gravarEscolha(texto, baseHash, msgOk, aoMudar){
+    // t41r5 (auditoria Astra t41r4): se a cópia deste aparelho for apagada (e religada) enquanto o PUT corre, a confirmação
+    // que chega depois já não lhe toca — o editor já fazia isto (t41r4 G5); os botões do conflito ainda não.
+    var geracao = GERACAO_COPIA;
+    function copiaMudou(){ return COPIA_DESLIGADA || geracao !== GERACAO_COPIA; }
     try{
       var res = await apiSend("PUT", "/api/nota?nome=" + encodeURIComponent(nota.nome), {texto: texto, base_hash: baseHash});
+      if(copiaMudou()){
+        showToast(msgOk + " A cópia deste aparelho foi apagada entretanto — não lhe toquei.");
+        reabrir();
+        return;
+      }
       var fila = await confirmarGravacaoComRede(nota.nome, null, texto, res.hash);
       await apagarConflitoSeIgual(nota.nome, conflito.quando);
       if(fila === "ficou") showToast("há outra alteração deste aparelho por enviar nesta nota — vai ser juntada a seguir.");
@@ -2992,7 +3007,7 @@ function renderConflito(nota, conflito, centro, contexto){
       reabrir();
     }catch(e){
       if(e.status === 409){
-        if(aoMudar) await aoMudar();
+        if(aoMudar && !copiaMudou()) await aoMudar();   // t41r5: a cópia apagada entretanto fica sem mexer
         showToast("a nota mudou outra vez no servidor — vê a versão nova e escolhe de novo.");
         reabrir();                          // volta a pedir a nota ao servidor: o conflito fica com o texto+hash novos
       }else{

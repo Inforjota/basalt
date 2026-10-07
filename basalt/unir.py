@@ -99,27 +99,39 @@ def trocar_ligacoes(t, fundir, manter):
 
 def _recuar(cas, trocas, falhas):
     """A fusão falhou a meio — repõe o texto de antes em tudo o que já tinha sido trocado, pelo CAS (nunca por
-    cima de quem escreveu entretanto). As trocas que falharam já foram repostas pelo próprio CAS (ou guardadas à parte)."""
-    desfeitas, por_troca = [], {}
+    cima de quem escreveu entretanto). As trocas que falharam já foram repostas pelo próprio CAS (ou guardadas à parte).
+    t41r5 (auditoria Astra t41r4): devolve a lista (frases) do que NÃO voltou ao texto de antes — nota a nota, com o motivo e
+    onde ficou guardado — para o erro dizer a verdade; antes ignorava as falhas do recuo e anunciava sempre «recuei tudo»."""
+    desfeitas, por_troca, motivos = [], {}, {}
     for t, antes in trocas:
         if t in falhas:
             continue
-        u, _ = cas.trocar(t.alvo, antes, t.novo_hash, rotulo="unir-recuo")
+        u, motivo = cas.trocar(t.alvo, antes, t.novo_hash, rotulo="unir-recuo")
         if u is not None:
             desfeitas.append(u)
             por_troca[id(t)] = u
+        else:
+            motivos[id(t)] = motivo or "não se conseguiu trocar"
     recuo_falhou = {id(u) for u in cas.confirmar(desfeitas)}
-    for t, _ in trocas:                                   # o que saiu nas trocas ainda não confirmadas era o texto de antes
-        try:
-            if t.saiu is None or not t.saiu.exists():
-                continue
-            u = por_troca.get(id(t))
-            if u is not None and id(u) not in recuo_falhou and cas.sha(cas._ler(t.saiu)) == t.esperado:
-                t.saiu.unlink()                           # o texto de antes voltou ao sítio: a cópia que saiu já não faz falta
-            else:
-                t.salvo = cas._guardar_a_parte(t)        # não se conseguiu repor: fica guardado à parte (e há a fotografia git)
+    avisos = []
+    for t, _ in trocas:
+        if t in falhas:
+            continue
+        u = por_troca.get(id(t))
+        reposta = u is not None and id(u) not in recuo_falhou
+        try:                                              # o que saiu nas trocas ainda não confirmadas era o texto de antes
+            if t.saiu is not None and t.saiu.exists():
+                if reposta and cas.sha(cas._ler(t.saiu)) == t.esperado:
+                    t.saiu.unlink()                       # o texto de antes voltou ao sítio: a cópia que saiu já não faz falta
+                else:
+                    t.salvo = cas._guardar_a_parte(t)    # não se conseguiu repor: fica guardado à parte (e há a fotografia git)
         except OSError:
             pass
+        if not reposta:                                   # t41r5: o que NÃO voltou ao texto de antes vai no erro, pelo nome
+            motivo = motivos.get(id(t), "alguém gravou nela no mesmo instante")
+            avisos.append(f"a nota «{t.alvo.stem}» não voltou ao texto de antes ({motivo}"
+                          + (f"; esse texto ficou guardado em {t.salvo}" if t.salvo else "") + ")")
+    return avisos
 
 
 def aplicar(real, manter, fundir, m, a=None, b=None):
@@ -170,8 +182,13 @@ def aplicar(real, manter, fundir, m, a=None, b=None):
             if falhas:
                 raise RuntimeError(f"a nota «{falhas[0].alvo.stem}» mudou enquanto a fusão se aplicava (alguém gravou no mesmo instante)")
         except RuntimeError as e:
-            _recuar(cas, trocas, falhas)
-            raise RuntimeError(f"{e}; recuei tudo, nada ficou a meio — carrega outra vez em Unir") from None
+            avisos = _recuar(cas, trocas, falhas)
+            if not avisos:
+                raise RuntimeError(f"{e}; recuei tudo, nada ficou a meio — carrega outra vez em Unir") from None
+            # t41r5 (auditoria Astra t41r4): o recuo nem sempre consegue repor tudo — dizer exactamente o quê, nota a nota
+            # (antes anunciava «recuei tudo» na mesma)
+            raise RuntimeError(f"{e}; recuei o que pude, mas " + "; ".join(avisos) + " — o texto de antes está na "
+                               "fotografia git «antes de unir»; vê essas notas antes de voltar a Unir") from None
         tocadas = [p.name for p, _, _ in plano[2:]]
         _git(real, "add", "-A")
         c = _git(real, "commit", "-q", "-m", f"basalt: unir {fundir} em {manter}")
