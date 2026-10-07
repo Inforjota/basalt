@@ -292,3 +292,50 @@ def servidor_local(tmp_path):
     yield fazer
     for s in feitos:
         s.parar()
+
+
+# ───────────────────────── testes de página (Playwright) — ver pagina_falsa.py ─────────────────────────
+
+@pytest.fixture(scope="session")
+def base():
+    """URL do servidor simulado da página (porta livre, só 127.0.0.1)."""
+    from http.server import ThreadingHTTPServer
+    from pagina_falsa import Servidor
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), Servidor)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{srv.server_address[1]}"
+    srv.shutdown()
+    srv.server_close()
+
+
+@pytest.fixture(scope="session")
+def navegador():
+    """um Chromium do Playwright para toda a sessão (salta-se sem Playwright ou sem o Chromium)."""
+    sync_api = pytest.importorskip("playwright.sync_api", reason="precisa do Playwright para Python (pip install playwright)")
+    with sync_api.sync_playwright() as pw:
+        try:
+            b = pw.chromium.launch()
+        except Exception as e:                                # sem o Chromium do Playwright (playwright install chromium)
+            pytest.skip(f"o Playwright não consegue lançar o Chromium: {str(e)[:120]}")
+        yield b
+        b.close()
+
+
+@pytest.fixture
+def contexto(navegador):
+    """contexto(sw=False, **k) → novo contexto do navegador (fechado no fim). O estado do servidor simulado volta ao início."""
+    from pagina_falsa import ESTADO, reset
+    reset()
+    abertos = []
+
+    def novo(sw=False, **k):
+        c = navegador.new_context(service_workers="allow" if sw else "block", **k)
+        abertos.append(c)
+        return c
+
+    yield novo
+    for ev in (ESTADO.get("sinc_solta"), ESTADO.get("put_solta"), ESTADO.get("pacote_solta")):
+        if ev is not None:
+            ev.set()                                          # não deixar pedidos suspensos no servidor para o teste seguinte
+    for c in abertos:
+        c.close()
