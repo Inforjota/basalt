@@ -140,7 +140,7 @@ def ESPACO_RX_OK(nome: str) -> bool:
 
 
 # ───────────────────────────── o Espaço ─────────────────────────────
-# Variáveis antigas (produção do José e a suite de testes) que continuam a mandar, campo a campo:
+# Variáveis antigas por pasta (instalações anteriores e a suite de testes) que continuam a mandar, campo a campo:
 _AMBIENTE = {
     "real": ("BASALT_REAL", "BASALT_DIR"), "copia": ("BASALT_COPIA", "BASALT_WEB_COPIA"), "dados": ("BASALT_DADOS_ESPACO",),
     "ledger": ("BASALT_LEDGER",), "trinco": ("BASALT_TRINCO",), "excluir": ("BASALT_EXCLUIR",),

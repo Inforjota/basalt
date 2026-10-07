@@ -152,7 +152,7 @@ def pendentes_soltos():
 
 
 def resumo_dia():
-    """(commits de hoje na memória, notas mexidas hoje). PORTE: sem Farol, as «tarefas mexidas» passam a ser as notas mexidas;
+    """(commits de hoje na memória, notas mexidas hoje). PORTE: sem sistema de tarefas externo, as «tarefas mexidas» passam a ser as notas mexidas;
     sem git (ou BASALT_GIT=0) não há commits — conta só os ficheiros."""
     commits = []
     if os.environ.get("BASALT_GIT") != "0":

@@ -125,7 +125,7 @@ def campo(t, nome):
 
 def _extras():
     """[(fonte, ref, titulo, trecho)] dos comandos de `[fontes_extra]` (cada um imprime JSON [{fonte, ref, titulo, texto}]).
-    PORTE: aqui entravam as decisões/tarefas de um sistema externo por ssh; agora é só configuração, nunca código.
+    PORTE: aqui entravam as notas de um sistema externo, com comandos fixos no código; agora é só configuração.
     BASALT_SIG_ISOLADO=1 (testes) não corre nenhum, para a suite não ler o basalt.toml de quem a corre."""
     if os.environ.get("BASALT_SIG_ISOLADO") == "1":
         return []
