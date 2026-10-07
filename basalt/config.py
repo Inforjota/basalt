@@ -365,7 +365,8 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None) ->
                                 telegram_token_env=tg.get("token_env", ""), telegram_chats=tuple(str(c) for c in tg.get("chats", ())))
 
     g = t.get("git", {})
-    cfg.git_autor = GitConfig(nome=str(g.get("nome", "Basalt")), email=str(g.get("email", "basalt@localhost")))
+    cfg.git_autor = GitConfig(nome=amb.get("BASALT_GIT_NOME") or str(g.get("nome", "Basalt")),
+                              email=amb.get("BASALT_GIT_EMAIL") or str(g.get("email", "basalt@localhost")))
     ca = t.get("categorias", {})
     cfg.categorias = CategoriasConfig(lista={str(k): str(v) for k, v in ca.get("lista", {}).items()},
                                       regras=[[str(r[0]), str(r[1])] for r in ca.get("regras", []) if len(r) == 2])
@@ -385,6 +386,28 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None) ->
     cfg.fontes_extra = [str(c) for c in fe.get("comandos", [])] if isinstance(fe, dict) else []
     cfg.validar()
     return cfg
+
+
+def git_autor() -> tuple:
+    """(nome, e-mail) de quem assina as fotografias git. Os módulos e subprocessos leem-no do ambiente
+    (BASALT_GIT_NOME / BASALT_GIT_EMAIL), que o servidor e a CLI preenchem a partir do basalt.toml (exportar_ambiente)."""
+    return (os.environ.get("BASALT_GIT_NOME") or "Basalt", os.environ.get("BASALT_GIT_EMAIL") or "basalt@localhost")
+
+
+def git_c() -> list:
+    """os `-c user.name=… -c user.email=…` de um `git` que vai gravar."""
+    n, e = git_autor()
+    return ["-c", f"user.name={n}", "-c", f"user.email={e}"]
+
+
+def exportar_ambiente(cfg: Config) -> None:
+    """põe no ambiente do processo (sem sobrepor o que já lá estiver) o que os subprocessos e módulos de linha de comandos
+    precisam do toml: BASALT_CONFIG, BASALT_GIT, BASALT_GIT_NOME/EMAIL."""
+    if cfg.origem:
+        os.environ.setdefault(ENV_CONFIG, str(cfg.origem))
+    os.environ.setdefault("BASALT_GIT", "1" if cfg.git else "0")
+    os.environ.setdefault("BASALT_GIT_NOME", cfg.git_autor.nome)
+    os.environ.setdefault("BASALT_GIT_EMAIL", cfg.git_autor.email)
 
 
 def exemplo() -> str:
