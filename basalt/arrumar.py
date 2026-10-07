@@ -20,7 +20,7 @@ try:                                    # PORTE: o numpy era obrigatório; agora
 except ImportError:
     np = None
 
-from . import config
+from . import caminhos, config, retidas
 from .config import Via
 from .lexical import tokens
 
@@ -86,10 +86,8 @@ def _tfidf_por_nota(extra=None):
     """{nota: {termo: peso normalizado}} a partir do texto dos ficheiros (recurso quando o índice não tem vectores).
     `extra` = {nome: texto} de textos que ainda não são ficheiros (a página compara o que se está a escrever com as notas)."""
     docs = {}
-    for p in sorted(PASTA.glob("*.md")):
-        if p.name == "MEMORY.md":
-            continue
-        docs[p.stem] = Counter(tokens(p.read_text(encoding="utf-8", errors="replace")))
+    for p, t in retidas.notas(PASTA):          # ronda 8 (notas retidas): as retidas não entram (quem compara pares manda-os depois à IA)
+        docs[p.stem] = Counter(tokens(t))
     for nome, texto in (extra or {}).items():
         docs[nome] = Counter(tokens(texto))
     df, N = Counter(), len(docs)
@@ -127,7 +125,8 @@ def duplicados():
     else:
         v = _tfidf_por_nota()
         limiar, sim = DUP_LEXICO, lambda a, b: _cos_esparso(v[a], v[b])
-    nomes = list(v)
+    ret = retidas.nomes_retidos(PASTA)
+    nomes = [n for n in v if n not in ret]       # ronda 8 (notas retidas): um índice feito antes de a nota ficar retida ainda a pode ter
     raizes = {n: _raiz_nome(n) for n in nomes}
     pares = []
     for i in range(len(nomes)):
@@ -145,7 +144,7 @@ def pendentes_soltos():
     lim = agora - ANTIGA_DIAS * 86400
     marca = re.compile(r"(⏳|\[ \]|\bpor fazer\b|\bpor decidir\b|\bfalta\b|\bpendente\b)", re.I)
     out = []
-    for p in sorted(PASTA.glob("*.md")):
+    for p in sorted(caminhos.notas(PASTA)):
         if p.name == "MEMORY.md" or p.stat().st_mtime > lim:
             continue
         linhas = [l.strip("-* ").strip() for l in p.read_text(encoding="utf-8", errors="replace").splitlines() if marca.search(l)]
@@ -162,7 +161,7 @@ def resumo_dia():
         g = subprocess.run(["git", "-C", str(PASTA), "log", "--since=midnight", "--format=%s"], capture_output=True, text=True)
         commits = [l for l in g.stdout.splitlines() if l.strip()]
     meia_noite = datetime.datetime.combine(datetime.date.today(), datetime.time.min).timestamp()
-    notas = [p.stem for p in sorted(PASTA.glob("*.md")) if p.name != "MEMORY.md" and p.stat().st_mtime >= meia_noite]
+    notas = [p.stem for p in sorted(caminhos.notas(PASTA)) if p.name != "MEMORY.md" and p.stat().st_mtime >= meia_noite]
     return commits, notas
 
 
@@ -182,8 +181,8 @@ def relatorio(como_json=False, so_resumo=False):
     for s, a, b in dup[:8]:
         print(f"    [{s}] {a}  ≈  {b}")
     print(f"\n● Pendentes soltos em notas com ≥{ANTIGA_DIAS} dias: {len(pend)}")
-    for idade, nome, linhas in pend[:8]:
-        print(f"    {nome} ({idade}d): {linhas[0][:90]}")
+    for idade, nome, linhas in pend[:8]:   # o texto da nota só num terminal; no journal/cron ficam o nome e a contagem
+        print(f"    {nome} ({idade}d): {linhas[0][:90]}" if sys.stdout.isatty() else f"    {nome} ({idade}d): {len(linhas)} pendente(s)")
     print(f"\n● Hoje: {len(commits)} gravações na memória · {len(notas)} notas mexidas")
 
 

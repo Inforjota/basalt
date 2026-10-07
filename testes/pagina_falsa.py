@@ -3,7 +3,11 @@
 O servidor é falso e local (127.0.0.1, porta livre): nunca toca em notas reais. Serve a página com um «gancho» (expõe as
 funções internas em `window.__t`) e a API com modos que se mudam durante o teste (`ESTADO["modo"]`): ok · 403 · 404 · login
 (302 para outro domínio) · html (200 text/html: a página de login do proxy) · sem-rede (fecha a ligação sem responder). Há também «pedidos suspensos» (`sinc_solta`,
-`put_solta`, `pacote_solta`, `nota_solta` = o GET à nota): o servidor segura a resposta até o teste a soltar, para reproduzir corridas.
+`put_solta`, `pacote_solta`, `nota_solta` = o GET à nota, `pacote_uma` = só o próximo pedido de pacote): o servidor segura a
+resposta até o teste a soltar, para reproduzir corridas.
+Contas (ronda 8): `/api/eu` diz o `dono` da conta que está «no browser» (`ESTADO["dono"]`; mudá-lo = outra conta entrou); um pedido
+com `X-Basalt-Dono` diferente leva 403 «outra conta» (`X-Basalt-Outra-Conta: 1`), como o servidor a sério. Ficam registados os donos
+de cada pedido (`donos`), os textos enviados a /api/sincronizar com o dono (`sinc`) e os POST a /api/sair (`sair`).
 
 `BASALT_STATIC=DIR` testa outra versão da página (ex.: uma cópia antiga, para provar que cada teste apanha o defeito).
 Esperas SEMPRE com `page.wait_for_timeout` (nunca `time.sleep`: os eventos do Playwright não chegam).
@@ -31,7 +35,13 @@ GANCHO = ('window.__t = {guardarEdicaoOffline: guardarEdicaoOffline, sincronizar
           'tentarOffline: tentarOffline, desligarCopiaLocal: desligarCopiaLocal, religarCopiaLocal: religarCopiaLocal, apiGet: apiGet, '
           'apiSend: apiSend, trancasNaMarca: trancasNaMarca, desbloquearCopiaLocal: desbloquearCopiaLocal, '
           'geracao: function(){ return GERACAO_COPIA; }, desligada: function(){ return COPIA_DESLIGADA; }, '
-          'bloqueada: function(){ return COPIA_BLOQUEADA; }, setIdbGet: function(f){ idbGet = f; }};\n  iniciarOffline();')
+          'bloqueada: function(){ return COPIA_BLOQUEADA; }, setIdbGet: function(f){ idbGet = f; }, '
+          # ronda 8 (contas no mesmo browser): com `typeof`, para o gancho servir também uma página anterior (BASALT_STATIC)
+          'trocarDono: typeof trocarDono === "function" ? trocarDono : null, '
+          'verificarDono: typeof verificarDono === "function" ? verificarDono : null, '
+          'dono: function(){ return typeof DONO === "undefined" ? null : DONO; }, '
+          'donoOk: function(){ return typeof DONO_OK === "undefined" ? null : DONO_OK; }, '
+          'outraConta: function(){ return typeof OUTRA_CONTA === "undefined" ? null : OUTRA_CONTA; }};\n  iniciarOffline();')
 
 NOTA = {"nome": "n1", "titulo": "n1", "desc": "nota de teste", "tipo": "project", "mtime": 1758900000, "projeto": "demo",
         "editavel": True, "categorias": []}
@@ -41,7 +51,7 @@ ESTADO = {}
 def reset(**k):
     ESTADO.update(modo="ok", pacote=[], put=[], sinc_pedidos=0, nota_texto="S novo", nota_hash="H2", put_solta=None,
                   sinc_409=None, sinc_503=False, pacote_solta=None, pacote_pedidos=0, nota_solta=None, put_falha_rede=False,
-                  nota_status=200, idioma="pt")
+                  nota_status=200, idioma="pt", pacote_uma=None, dono="d-ana", modo_auth="cabecalho", donos=[], sinc=[], sair=0)
     ESTADO["sinc_solta"] = threading.Event()
     ESTADO.update(k)
 
@@ -86,6 +96,11 @@ class Servidor(BaseHTTPRequestHandler):
 
     def _api_ok(self, u, q):
         c = u.path
+        if c == "/api/eu":
+            eu = {"modo": ESTADO["modo_auth"], "email": "ana@exemplo.pt", "nome": "ana"}
+            if ESTADO["dono"] is not None:                    # None = um servidor que não diz o dono
+                eu["dono"] = ESTADO["dono"]
+            return eu
         if c == "/api/estado":
             return {"notas": 1, "ligacoes": 0, "entrada": 0, "pedacos": 0, "ultima_foto": "2026-10-06 10:00 · teste", "modelo": "modelo-teste"}
         if c == "/api/notas":
@@ -123,6 +138,17 @@ class Servidor(BaseHTTPRequestHandler):
             return self._envia(403, {"erro": "Acesso só para geral@exemplo.pt."})
         if modo == "html":                                    # ronda 5: a sessão caiu e o proxy devolve a página de login com 200
             return self._envia(200, b"<!doctype html><title>Entrar</title><p>Entra com a tua conta.</p>", "text/html; charset=utf-8")
+        hd = (self.headers.get("X-Basalt-Dono") or "").strip()
+        ESTADO["donos"].append((metodo, u.path, hd))
+        if hd and ESTADO["dono"] and hd != ESTADO["dono"]:    # ronda 8: o cookie já é de outra conta
+            if metodo in ("PUT", "POST"):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            return self._envia(403, {"erro": "Entrou outra conta neste browser: recarrega a página antes de continuar.", "outraConta": True},
+                               extra={"X-Basalt-Outra-Conta": "1"})
+        if metodo == "POST" and u.path == "/api/sair":
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            ESTADO["sair"] += 1
+            return self._envia(200, {})
         if modo == "404" and u.path == "/api/nota":
             return self._envia(404, {"erro": "Nota não encontrada (ou reservada por ter dados sensíveis)."})
         if metodo == "PUT" and u.path == "/api/nota":
@@ -143,6 +169,7 @@ class Servidor(BaseHTTPRequestHandler):
         if metodo == "POST" and u.path == "/api/sincronizar":
             corpo = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
             ESTADO["sinc_pedidos"] += 1
+            ESTADO["sinc"].append((corpo.get("texto", ""), hd))
             if ESTADO["sinc_503"]:
                 return self._envia(503, {"erro": "ocupado", "estado": "ocupado"})
             ESTADO["sinc_solta"].wait(20)
@@ -151,8 +178,15 @@ class Servidor(BaseHTTPRequestHandler):
             return self._envia(200, {"estado": "gravado", "hash": "h-" + corpo.get("texto", "")})
         if u.path == "/api/pacote":
             ESTADO["pacote_pedidos"] += 1
+            # ronda 7 (ordem dos pacotes): o pacote leva as notas do momento em que o pedido CHEGOU ao servidor (um pacote suspenso é
+            # velho); `pacote_uma` = um Event que suspende só ESTE pedido (o seguinte já não), `pacote_solta` continua a segurar todos
+            notas = list(ESTADO["pacote"])
+            ev, ESTADO["pacote_uma"] = ESTADO["pacote_uma"], None
+            if ev is not None:
+                ev.wait(20)
             if ESTADO["pacote_solta"] is not None:
                 ESTADO["pacote_solta"].wait(20)               # pacote «a meio» até o teste o soltar
+            return self._envia(200, {"gerado": 1, "notas": notas})
         if u.path == "/api/nota" and ESTADO["nota_solta"] is not None:
             ESTADO["nota_solta"].wait(20)                     # GET à nota «suspenso» até o teste o soltar (antes do nota_status)
         if u.path == "/api/nota" and ESTADO["nota_status"] != 200:

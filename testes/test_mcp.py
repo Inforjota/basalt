@@ -7,7 +7,6 @@ import io
 import json
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -15,7 +14,6 @@ import pytest
 RAIZ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(RAIZ))
 os.environ.setdefault("BASALT_CAS_GRACA", "0.05")
-os.environ.setdefault("BASALT_CAS_SALVOS", tempfile.mkdtemp(prefix="basalt-mcp-cas-salvos-"))
 
 from basalt import auth, config, mcp                                   # noqa: E402
 from basalt.config import AuthConfig, Config, Utilizador                # noqa: E402
@@ -38,7 +36,8 @@ def _web_para(esp, monkeypatch):
 def amb(tmp_path, monkeypatch):
     token, h = auth.gerar_token()
     u = Utilizador(email="ana@exemplo.pt", espaco="ana", nome="Ana", mcp_token_hash=h)
-    cfg = Config(dados=tmp_path / "dados", escutar="127.0.0.1", auth=AuthConfig(modo="aberto"), utilizadores=[u])
+    cfg = Config(dados=tmp_path / "dados", escutar="127.0.0.1", auth=AuthConfig(modo="aberto"), utilizadores=[u],
+                 anfitrioes=("basalt.exemplo.pt",))      # ronda 8 (Host/Origin): em modo aberto o Host não conta; o nome público vem da lista
     cfg.validar()
     esp = cfg.espaco_de(u).criar()
     for nome, texto in NOTAS.items():
@@ -237,7 +236,9 @@ def test_utilizador_local_para_stdio(amb):
 
 
 def test_origem():
-    assert mcp.origem_ok("https://basalt.exemplo.pt", "basalt.exemplo.pt")
-    assert mcp.origem_ok("http://localhost:8121", "127.0.0.1:8121")
-    assert not mcp.origem_ok("https://mau.exemplo.com", "basalt.exemplo.pt")
-    assert not mcp.origem_ok("null", "basalt.exemplo.pt")
+    nossos = frozenset({"basalt.exemplo.pt", "localhost", "127.0.0.1", "::1"})
+    assert mcp.origem_ok("https://basalt.exemplo.pt", nossos)
+    assert mcp.origem_ok("http://localhost:8121", nossos)
+    assert not mcp.origem_ok("https://mau.exemplo.com", nossos)
+    assert not mcp.origem_ok("null", nossos)
+    assert not mcp.origem_ok("http://127.0.0.1.mau.exemplo.com", nossos)     # ronda 8 (Host/Origin): o nome inteiro, não um prefixo

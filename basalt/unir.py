@@ -7,9 +7,10 @@ memória de rascunho).
 import fcntl, json, os, re, subprocess, time
 from pathlib import Path
 
-from . import cas, config
+from . import caminhos, cas, config
 from . import ia as _ia
 from .duasvias import SEGREDO_RX     # PORTE: era uma cópia do mesmo padrão; agora há um só
+from .segredos import tem_segredo_texto
 
 LIG_RX = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 
@@ -45,6 +46,8 @@ def tem_facto(x, m):
 
 
 def fundir_llm(a, b, manter, fundir):
+    if tem_segredo_texto(a) or tem_segredo_texto(b):        # ronda 8 (notas retidas): uma nota com segredo em claro nunca vai à IA
+        raise ValueError("uma das notas tem o que parece uma password ou chave em claro — não a mando à IA")
     prompt = f"""Tens duas notas da memória de trabalho do utilizador que tratam do mesmo assunto. Funde-as numa SÓ nota.
 
 Regras (obrigatórias):
@@ -115,7 +118,19 @@ def _recuar(cas, trocas, falhas):
             por_troca[id(t)] = u
         else:
             motivos[id(t)] = motivo or "não se conseguiu trocar"
-    recuo_falhou = {id(u) for u in cas.confirmar(desfeitas)}
+    # ronda 7 (erro ao confirmar o recuo): um erro de disco a ler um temporário do recuo (EIO…) não pode cortar o relato nem deixar o que saiu das
+    # reposições num temporário escondido — fica guardado à parte, sem julgar, e cada nota diz que não se confirmou
+    erro_confirmar = ""
+    try:
+        recuo_falhou = {id(u) for u in cas.confirmar(desfeitas)}
+    except OSError as e:
+        recuo_falhou, erro_confirmar = set(), (e.strerror or str(e))
+        for d in desfeitas:
+            try:
+                if d.salvo is None and d.saiu is not None and d.saiu.exists():
+                    d.salvo = cas._guardar_a_parte(d)
+            except OSError:
+                pass
     # ronda 6 (achado G1 da ronda 4): o que SAIU nas trocas originais pode ainda estar a receber uma escrita de quem tinha a nota aberta
     # antes da troca. Quando a fusão falha a meio, o confirmar() original nunca correu — e o do recuo só espera se houve trocas
     # de volta com algo a sair (recriar B não tem). Por isso a graça espera-se AQUI, sempre, antes de decidir apagar ou guardar.
@@ -139,19 +154,27 @@ def _recuar(cas, trocas, falhas):
                           "está como esse alguém a deixou" + (f"; a escrita anterior ficou guardada em {t.salvo}" if t.salvo else "") + ")")
             continue
         u = por_troca.get(id(t))
-        reposta = u is not None and id(u) not in recuo_falhou
+        # ronda 7 (erro ao confirmar o recuo): sem o recuo confirmado não se sabe se a nota voltou ao texto de antes — então nada se apaga
+        reposta = u is not None and id(u) not in recuo_falhou and not erro_confirmar
         try:                                              # o que saiu nas trocas ainda não confirmadas era o texto de antes
             if t.saiu is not None and t.saiu.exists():
                 if reposta and cas.sha(cas._ler(t.saiu)) == t.esperado:
                     t.saiu.unlink()                       # o texto de antes voltou ao sítio: a cópia que saiu já não faz falta
                 else:
                     t.salvo = cas._guardar_a_parte(t)    # não se conseguiu repor: fica guardado à parte (e há a fotografia git)
-        except OSError:
-            pass
-        if not reposta:                                   # ronda 5: o que NÃO voltou ao texto de antes vai no erro, pelo nome
+        except OSError as e:                              # ronda 7 (erro ao confirmar o recuo): dizê-lo, em vez de calar
+            avisos.append(f"não consegui ler nem guardar o que saiu da nota «{t.alvo.stem}» ({e.strerror or e}); deve estar em {t.saiu}")
+        if u is not None and erro_confirmar:              # ronda 7 (erro ao confirmar o recuo)
+            avisos.append(f"não consegui confirmar se a nota «{t.alvo.stem}» voltou ao texto de antes ({erro_confirmar}) — vê-a"
+                          + (f"; o que tinha antes da fusão ficou guardado em {t.salvo}" if t.salvo else "")
+                          + (f"; o que saiu dela no recuo ficou guardado em {u.salvo}" if u.salvo else ""))
+        elif not reposta:                                 # ronda 5: o que NÃO voltou ao texto de antes vai no erro, pelo nome
             motivo = motivos.get(id(t), "alguém gravou nela no mesmo instante")
             avisos.append(f"a nota «{t.alvo.stem}» não voltou ao texto de antes ({motivo}"
                           + (f"; esse texto ficou guardado em {t.salvo}" if t.salvo else "") + ")")
+        elif t.salvo:                                     # ronda 7 (escrita guardada durante o recuo): voltou, mas alguém escreveu nela enquanto a fusão corria
+            avisos.append(f"uma escrita feita na nota «{t.alvo.stem}» enquanto a fusão corria ficou guardada em {t.salvo} "
+                          "(a nota voltou ao texto de antes)")
     return avisos
 
 
@@ -178,7 +201,7 @@ def aplicar(real, manter, fundir, m, a=None, b=None):
         _git(real, "add", "-A"); _git(real, "commit", "-q", "-m", f"basalt: antes de unir {fundir} em {manter}")
         # o plano: (ficheiro, bytes de antes, bytes de depois | None = apagar). Primeiro decide-se tudo, depois troca-se.
         plano = [(pa, bruto_a, m.encode("utf-8")), (pb, bruto_b, None)]
-        for p in sorted(real.glob("*.md")):
+        for p in caminhos.notas(real):
             if p in (pa, pb):
                 continue
             bruto = p.read_bytes()

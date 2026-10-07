@@ -10,6 +10,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from . import caminhos
+
 TAG_RX = re.compile(r"(?<![\w#/\[])#([A-Za-z][A-Za-z0-9_\-/]*)")
 _HEX = re.compile(r"^(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 _CERCA = re.compile(r"(?ms)^```.*?^```[ \t]*$|^~~~.*?^~~~[ \t]*$")
@@ -66,7 +68,7 @@ def contar(textos) -> Counter:
 def do_espaco(esp) -> list[dict]:
     """[{etiqueta, notas}] por ordem decrescente de uso, depois alfabética — para /api/etiquetas."""
     textos = []
-    for p in sorted(Path(esp.real).glob("*.md")):
+    for p in caminhos.notas(esp.real):
         try:
             textos.append(p.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError):

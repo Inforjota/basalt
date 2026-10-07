@@ -2,7 +2,7 @@
 // quando não há rede, nunca esconde uma sessão expirada atrás de dados velhos.
 "use strict";
 
-var CACHE_VERSAO = "basalt-v8";      // sobe de versão quando a lógica de cache muda
+var CACHE_VERSAO = "basalt-v10";      // sobe de versão quando a lógica de cache muda
 // «Apagar cópia deste aparelho» cria esta cache-marca (não começa por "basalt-", por isso sobrevive à limpeza
 // do activate) — enquanto existir, nenhuma resposta da API volta a ser guardada neste aparelho.
 var MARCA_DESLIGADA = "basaltcfg-copia-desligada";
@@ -14,6 +14,10 @@ var MARCA_TRANCADA = "basaltcfg-copia-trancada";
 // lápides — quando uma nota dá 404/410 fica aqui a hora (chave = o URL do pedido). Uma resposta 200 que tenha
 // PARTIDO antes dessa hora (pedido atrasado) já não entra na cache. Não começa por "basalt-": sobrevive ao activate.
 var MARCA_APAGADAS = "basaltcfg-apagadas";
+// ronda 7 (geração): «apagar a cópia» (na página) muda esta marca ANTES de pôr a de desligada. Um pedido que partiu antes
+// disso compara-a ao guardar: se mudou, a cópia foi apagada (e talvez religada) enquanto ele corria e a resposta dele é de
+// antes — não entra. Antes só se via a marca de desligada no instante de guardar: apagar+religar a meio deixava passar.
+var MARCA_GERACAO = "basaltcfg-copia-geracao";
 var LAPIDE_DIAS = 30;
 // ronda 6 (achado G5 da ronda 4): o relógio pode andar PARA TRÁS (acerto NTP, mudança de hora) — as horas com que se ordenam
 // pedidos, trancas e lápides vêm daqui e nunca descem: cada uma é pelo menos 1 ms acima da última vista (também das já
@@ -35,7 +39,8 @@ function viuInstante(t) {
 }
 // ronda 6 G5: a chave de uma tranca (um Request na cache a sério; uma string nos ensaios) e a fotografia de um conjunto delas
 function chaveDe(t) { return t && t.chave ? (t.chave.url || String(t.chave)) : ""; }
-function chavesDe(lista) { var s = {}; for (var i = 0; i < lista.length; i++) { var u = chaveDe(lista[i]); if (u) s[u] = true; } return s; }
+// ronda 7 (chave reutilizada): a fotografia guarda chave → hora; a mesma chave com outra hora é outra tranca (nova)
+function chavesDe(lista) { var s = {}; for (var i = 0; i < lista.length; i++) { var u = chaveDe(lista[i]); if (u) s[u] = String(lista[i].quando); } return s; }
 var CACHE_APP = CACHE_VERSAO + "-app";
 var CACHE_API = CACHE_VERSAO + "-api";
 var CACHE_VENDOR = CACHE_VERSAO + "-vendor";   // /static/vendor/ (mermaid, katex) — cache-first, guardado no 1º uso
@@ -136,6 +141,16 @@ async function tratarCasca(pedido) {
 function copiaDesligada() {
   return caches.has(MARCA_DESLIGADA).catch(function () { return false; });
 }
+// ronda 7 (geração): "" = nunca apagada; na dúvida (a cache falhou) um valor que nunca é igual — não se guarda
+async function geracaoDaCopia() {
+  try {
+    if (!(await caches.has(MARCA_GERACAO))) return "";
+    var r = await (await caches.open(MARCA_GERACAO)).match("/__geracao");
+    return r ? await r.text() : "";
+  } catch (e) {
+    return "?" + Math.random();
+  }
+}
 // as trancas em vigor — [{chave, quando}] ([] = destrancada). Na dúvida (a cache falhou) conta como trancada:
 // nunca servir dados privados por não se conseguir ler a marca.
 async function trancas() {
@@ -193,7 +208,7 @@ async function destrancar(lista) {
 }
 async function marcarApagada(pedido, inicio) {
   try {
-    var c = await caches.open(MARCA_APAGADAS), q = agora();
+    var c = await caches.open(MARCA_APAGADAS), q = agora(), real = Date.now();   // ronda 7: a idade conta-se no relógio real
     // ronda 6 (achado M9 da ronda 4): a lápide leva a hora a que o pedido do 404/410 PARTIU (a cópia leva a do seu pedido — é a
     // mesma régua) e nunca desce: uma lápide mais nova já posta fica
     var marca = inicio || q, ja = await c.match(pedido.url);
@@ -204,7 +219,7 @@ async function marcarApagada(pedido, inicio) {
     for (var i = 0; i < chaves.length; i++) {
       var r = await c.match(chaves[i]);
       var l = r ? Number(await r.text()) || 0 : 0;
-      if (q - l > LAPIDE_DIAS * 86400000) await c.delete(chaves[i]);
+      if (real - l > LAPIDE_DIAS * 86400000) await c.delete(chaves[i]);
     }
   } catch (e) {}
 }
@@ -239,13 +254,29 @@ function emFila(chave, fn) {
   p.then(largar, largar);
   return p;
 }
-function guardarSeMaisNova(c, pedido, copia, inicio) {
+function guardarSeMaisNova(c, pedido, copia, inicio, geracaoAntes) {
   return emFila((pedido && pedido.url) || String(pedido), async function () {
+    // ronda 7 (geração): apagada (ou apagada e religada) desde que o pedido partiu → a resposta é de antes, não entra
+    if (geracaoAntes !== undefined && ((await copiaDesligada()) || (await geracaoDaCopia()) !== geracaoAntes)) return false;
     var ja = await c.match(pedido);
     var q = ja ? Number(ja.headers.get("X-Basalt-Inicio")) || 0 : 0;
     viuInstante(q);
     if (q > inicio) return false;
     await c.put(pedido, comInicio(copia, inicio));
+    return true;
+  });
+}
+// ronda 7 (limpeza na fila): depois de guardar, se entretanto a nota levou lápide (ou a cópia mudou de geração), sai — mas
+// na fila por URL e só se o que lá está é deste pedido ou mais antigo. Antes apagava fora da fila e sem olhar à hora: uma
+// recriação guardada por um pedido mais novo desaparecia.
+function limparSeFicouVelha(c, pedido, inicio, geracaoAntes) {
+  return emFila((pedido && pedido.url) || String(pedido), async function () {
+    var velha = (await apagadaDepois(pedido, inicio)) || (geracaoAntes !== undefined && (await geracaoDaCopia()) !== geracaoAntes);
+    if (!velha) return false;
+    var ja = await c.match(pedido);
+    if (!ja) return false;
+    if ((Number(ja.headers.get("X-Basalt-Inicio")) || 0) > inicio) return false;
+    await c.delete(pedido);
     return true;
   });
 }
@@ -276,8 +307,26 @@ function respostaLogin() {
 // a cópia só se mostra quando a REDE falha. Se o servidor responde — mesmo que seja a recusar
 // (401/403), a dizer que a nota já não existe (404/410) ou a mandar para o login (redireccionamento) — essa
 // resposta ganha sempre: nunca se transforma uma recusa num 200 com dados privados guardados.
+// ronda 8 (contas no mesmo browser): entrar e sair mudam a conta do browser. 1.º muda a geração (um pedido que partiu antes
+// não guarda nada), depois a cópia da API sai — antes de o pedido seguir e outra vez quando ele volta (um GET que tenha
+// partido no meio, ainda com a conta anterior, também não fica). O pedido segue para a rede tal e qual.
+async function mudouDeConta() {
+  try {
+    await (await caches.open(MARCA_GERACAO)).put("/__geracao", new Response("conta-" + agora() + "-" + Math.random().toString(36).slice(2, 10)));
+  } catch (e) {}
+  await caches.delete(CACHE_API).catch(function () {});
+}
+async function tratarSaidaEntrada(pedido) {
+  await mudouDeConta();
+  try {
+    return await fetch(pedido);
+  } finally {
+    await mudouDeConta();
+  }
+}
+
 async function tratarApi(pedido) {
-  var resp, antes = chavesDe(await trancas()), inicio = agora();   // ronda 6 G5: as trancas que JÁ existiam quando este pedido partiu
+  var resp, antes = chavesDe(await trancas()), inicio = agora(), geracaoAntes = await geracaoDaCopia();   // ronda 6 G5: as trancas que JÁ existiam quando este pedido partiu
   try {
     // redirect "manual": o 302 para o login chega como "opaqueredirect" em vez de ser seguido para outro domínio e
     // falhar como se fosse falta de rede (era assim que a sessão expirada passava por "sem rede").
@@ -287,6 +336,8 @@ async function tratarApi(pedido) {
     if (doCache) return doCache;
     throw e;
   }
+  // ronda 8: «entrou outra conta neste browser» não é sessão expirada — a página pede para recarregar; não se tranca nada
+  if (resp.status === 403 && resp.headers.get("X-Basalt-Outra-Conta") === "1") return resp;
   if (resp.type === "opaqueredirect" || resp.status === 401 || resp.status === 403) {
     await trancar();                                               // sessão expirada / acesso recusado → fora tudo
     return resp.type === "opaqueredirect" ? respostaLogin() : resp;
@@ -312,15 +363,15 @@ async function tratarApi(pedido) {
     var lista = await trancas();
     // pedido feito ANTES de trancar (resposta atrasada): não destranca nem se guarda. Feito depois: a sessão voltou.
     // ronda 6 G5: decide-se pelas CHAVES que já existiam ao partir (fotografia), não pela hora; uma tranca ilegível conta como nova.
-    for (var i = 0; i < lista.length; i++) if (!antes[chaveDe(lista[i])]) return resp;
+    for (var i = 0; i < lista.length; i++) if (antes[chaveDe(lista[i])] !== String(lista[i].quando)) return resp;   // ronda 7: chave E hora
     if (lista.length) await destrancar(lista);
     // pedido que partiu ANTES de a nota dar 404/410 (resposta atrasada) — não volta a guardá-la
     if (await apagadaDepois(pedido, inicio)) return resp;
     if (!(await copiaDesligada())) {
       var copia = resp.clone();
       caches.open(CACHE_API)
-        .then(function (c) { return guardarSeMaisNova(c, pedido, copia, inicio).then(function () { return c; }); })
-        .then(function (c) { return apagadaDepois(pedido, inicio).then(function (ap) { if (ap) return c.delete(pedido); }); })
+        .then(function (c) { return guardarSeMaisNova(c, pedido, copia, inicio, geracaoAntes).then(function () { return c; }); })
+        .then(function (c) { return limparSeFicouVelha(c, pedido, inicio, geracaoAntes); })   // ronda 7: na fila, só o deste pedido
         .then(function () { return semCopia(); })
         .then(function (marca) { if (marca) return caches.delete(CACHE_API); })   // apagada/trancada a meio → fora
         .catch(function () {});
@@ -332,6 +383,14 @@ async function tratarApi(pedido) {
 
 self.addEventListener("fetch", function (event) {
   var pedido = event.request;
+  if (pedido.method === "POST") {
+    // ronda 8: entrar/sair — a resposta vem da rede, só se limpa a cópia da API à volta (ver tratarSaidaEntrada)
+    var urlConta = new URL(pedido.url);
+    if (urlConta.origin === self.location.origin && (urlConta.pathname === "/api/sair" || urlConta.pathname === "/api/entrar")) {
+      event.respondWith(tratarSaidaEntrada(pedido));
+    }
+    return;
+  }
   if (pedido.method !== "GET") return; // nunca intercepta POST/PUT — vão sempre direitos à rede
 
   var url = new URL(pedido.url);

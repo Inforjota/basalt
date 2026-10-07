@@ -43,10 +43,11 @@ cópia editável sem rede (PWA), pesquisa por significado, arrumação automáti
 ## Disposição
 ```
 basalt/                          (git; o repositório público)
-  README.md · README.en.md · LICENCA · basalt.toml.exemplo · CHANGELOG.md · DESENHO.md
+  README.md · README.en.md · LICENCA · CHANGELOG.md · DESENHO.md
   basalt/                        pacote Python (python3 -m basalt …)
     __init__.py · __main__.py    CLI: iniciar, serve, mcp, utilizador, importar, exportar, indexar
     config.py                    toml + ambiente → Config, Espaco, utilizadores, ia, auth
+    basalt.toml.exemplo          o exemplo comentado (vai dentro do pacote: `basalt iniciar` parte dele)
     web.py                       servidor web (interface + API + /anexos + /mcp por ROTAS_EXTRA)
     cas.py · duasvias.py · sig.py · categorias.py · unir.py · arrumar.py · auto_arrumar.py
     ia.py                        fornecedores (nenhum/openai/anthropic/claude-cli) + limites

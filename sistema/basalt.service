@@ -1,7 +1,11 @@
 # /etc/systemd/system/basalt.service — Basalt como serviço do sistema (utilizador próprio, sem root)
+# Na pasta do repositório (ver docs/INSTALAR.md, secção 3):
 #   sudo useradd --system --create-home --home-dir /var/lib/basalt basalt
-#   sudo -u basalt python3 -m basalt iniciar --dados /var/lib/basalt      # cria basalt.toml + pastas
+#   sudo mkdir -p /opt/basalt /var/lib/basalt
+#   sudo cp -r basalt /opt/basalt/ && sudo chown -R basalt:basalt /opt/basalt
+#   sudo -u basalt env PYTHONPATH=/opt/basalt python3 -m basalt iniciar --dados /var/lib/basalt --email tu@exemplo.pt
 #   sudo systemctl enable --now basalt
+# O código fica em /opt/basalt (sem pip); o serviço corre em /var/lib/basalt e encontra o módulo por PYTHONPATH.
 [Unit]
 Description=Basalt — notas com memória (servidor web + MCP)
 After=network-online.target
@@ -13,6 +17,7 @@ User=basalt
 Group=basalt
 WorkingDirectory=/var/lib/basalt
 Environment=BASALT_CONFIG=/var/lib/basalt/basalt.toml
+Environment=PYTHONPATH=/opt/basalt
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/usr/bin/python3 -m basalt serve
 Restart=on-failure

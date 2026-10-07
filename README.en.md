@@ -29,19 +29,20 @@ overwriting** what you wrote. Works offline, in plain Python, on your own machin
 ## Install in 2 minutes
 
 ```bash
-git clone https://github.com/…/basalt && cd basalt
-python3 -m basalt iniciar --dados ~/basalt-data        # creates basalt.toml, folders and the first user
-python3 -m basalt serve                                # http://127.0.0.1:8121
+git clone https://github.com/REPO_POR_DEFINIR/basalt && cd basalt
+python3 -m basalt iniciar --dados ~/basalt-data --email you@example.com   # asks for a password; creates basalt.toml and folders
+export BASALT_CONFIG=~/basalt-data/basalt.toml                            # the next commands find the file through this
+python3 -m basalt serve                                                   # http://127.0.0.1:8121
 ```
 
-Docker: `cd docker && docker compose up -d` (data lives in `docker/dados/`). As a service: `sistema/basalt.service`.
-Details, HTTPS proxy and local AI: [docs/INSTALAR.md](docs/INSTALAR.md).
+Docker: run `iniciar` first, then `docker compose up -d` (the container needs the `basalt.toml`). As a systemd service:
+`sistema/basalt.service`. The exact steps, the HTTPS proxy and local AI are in [docs/INSTALAR.md](docs/INSTALAR.md) (Portuguese).
 
 Requirements: Python ≥ 3.11, `git` (history), Linux (CAS uses `renameat2`). Optional: Ollama for local embeddings and AI.
 
 ## Configure
 
-Everything in one `basalt.toml` ([commented example](basalt.toml.exemplo)): data folder, port, auth mode (`senha` = password
+Everything in one `basalt.toml` ([commented example](basalt/basalt.toml.exemplo)): data folder, port, auth mode (`senha` = password
 form · `cabecalho` = header from an SSO proxy you already have · `aberto` = open, localhost only), users (each with its own
 space), AI (`openai`-compatible such as Ollama/OpenRouter/Mistral, `anthropic`, or the `claude` CLI), embeddings, categories,
 Inbox. API keys **never** go in the file: environment variable or a `0600` file only.
@@ -70,7 +71,7 @@ API stay in Portuguese, and the quick-save prefix in the command bar is still `g
 ## Your AI agents
 
 ```bash
-claude mcp add basalt -- python3 -m basalt mcp --utilizador ana@example.com
+claude mcp add basalt -- python3 -m basalt --config ~/basalt-data/basalt.toml mcp --utilizador ana@example.com
 ```
 
 Then, in Claude Code: "search my notes for what I decided about the server", "append to note `project_x` that …".

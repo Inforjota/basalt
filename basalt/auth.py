@@ -17,11 +17,14 @@ import hmac
 import json
 import os
 import secrets
+import sys
 import threading
 import time
 from dataclasses import dataclass
 from http.cookies import SimpleCookie
 from pathlib import Path
+
+from . import config
 
 from .config import Config, Utilizador
 
@@ -76,6 +79,8 @@ class Autenticador:
         self._sessoes: dict[str, Sessao] = {}
         self._falhas: dict[str, list[float]] = {}   # ip → instantes das falhas
         self._carregar()
+        self._origem = Path(cfg.origem) if cfg.origem else None   # ronda 8 (configuração relida em execução): o basalt.toml relê-se quando muda (revogar sem reiniciar)
+        self._marca = self._marca_do_toml()
 
     # ── persistência ──
     def _carregar(self):
@@ -94,7 +99,49 @@ class Autenticador:
             os.chmod(tmp, 0o600)
             os.replace(tmp, self.ficheiro)
         except OSError:
-            pass
+            raise                                     # ronda 8 (configuração relida em execução): quem chama decide o que dizer; engolir fazia «saí» sem ter saído
+
+    # ── ronda 8 (configuração relida em execução): os utilizadores (e-mails, senhas, tokens MCP) seguem o basalt.toml em execução ──
+    def _marca_do_toml(self):
+        if self._origem is None:
+            return None
+        try:
+            st = self._origem.stat()
+            return (st.st_mtime_ns, st.st_size, st.st_ino)
+        except OSError:
+            return None
+
+    def reler_se_mudou(self) -> bool:
+        """se o basalt.toml mudou desde a última leitura, os utilizadores passam a ser os novos (apagar um token ou um utilizador
+        revoga-o no pedido seguinte) e as sessões de quem deixou de existir, ou mudou de senha, terminam. Um toml que não carrega não derruba o
+        servidor: ficam os utilizadores anteriores e avisa-se no stderr."""
+        marca = self._marca_do_toml()
+        if marca is None or marca == self._marca:
+            return False
+        with self._lock:
+            if marca == self._marca:
+                return False
+            self._marca = marca
+            try:
+                novo = config.carregar(self._origem)
+            except (config.ConfigInvalida, OSError, ValueError) as e:
+                print(f"basalt.toml mudou mas não carrega ({e}); fico com os utilizadores anteriores", file=sys.stderr, flush=True)
+                return False
+            antes = {u.email.lower(): u.senha_hash for u in self.cfg.utilizadores}
+            self.cfg.utilizadores = novo.utilizadores            # o mesmo objecto Config que o servidor web usa
+            vivos = {u.email.lower(): u.senha_hash for u in novo.utilizadores}
+            # ronda 8 (configuração relida em execução): quem mudou de senha também sai — uma sessão roubada não sobrevive à troca
+            outra_senha = {e for e, h in vivos.items() if e in antes and antes[e] != h}
+            mortas = [k for k, s in self._sessoes.items() if s.email.lower() not in vivos or s.email.lower() in outra_senha]
+            for k in mortas:
+                self._sessoes.pop(k, None)
+            if mortas:
+                try:
+                    self._guardar()
+                except OSError as e:
+                    print(f"sessões: não consegui gravar ({e})", file=sys.stderr, flush=True)
+            print(f"basalt.toml relido: {len(novo.utilizadores)} utilizador(es)", file=sys.stderr, flush=True)
+            return True
 
     # ── limite por IP ──
     def _bloqueado(self, ip: str) -> bool:
@@ -110,6 +157,7 @@ class Autenticador:
     # ── entrar / sair (modo senha) ──
     def entrar(self, email: str, senha: str, ip: str) -> tuple[bool, str]:
         """(ok, token-ou-motivo). Sempre o mesmo tempo e a mesma mensagem para e-mail inexistente e senha errada."""
+        self.reler_se_mudou()
         with self._lock:
             if self._bloqueado(ip):
                 return False, "Demasiadas tentativas; espera %d minutos." % self.cfg.auth.janela_minutos
@@ -122,13 +170,24 @@ class Autenticador:
             agora = time.time()
             self._sessoes[hash_token(token)] = Sessao(email=u.email, expira=agora + self.cfg.auth.sessao_horas * 3600, criada=agora)
             self._falhas.pop(ip, None)
-            self._guardar()
+            try:
+                self._guardar()
+            except OSError as e:                                  # ronda 8 (configuração relida em execução): sem sessão gravada não há sessão — e diz-se
+                self._sessoes.pop(hash_token(token), None)
+                return False, f"Não consegui guardar a sessão ({e.strerror or e}); o início de sessão não ficou feito."
             return True, token
 
-    def sair(self, token: str):
+    def sair(self, token: str) -> tuple[bool, str]:
+        """(ok, motivo). A sessão sai sempre da memória; se o ficheiro não se deixar gravar diz-se — ao reiniciar podia voltar a valer."""
         with self._lock:
-            if self._sessoes.pop(hash_token(token or ""), None) is not None:
+            if self._sessoes.pop(hash_token(token or ""), None) is None:
+                return True, ""
+            try:
                 self._guardar()
+            except OSError as e:
+                return False, (f"A sessão terminou, mas não consegui gravar o ficheiro de sessões ({e.strerror or e}): "
+                               "ao reiniciar o servidor podia voltar a valer.")
+            return True, ""
 
     def cabecalho_cookie(self, token: str, seguro: bool) -> str:
         return (f"{COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict; Max-Age={self.cfg.auth.sessao_horas * 3600}"
@@ -140,6 +199,7 @@ class Autenticador:
     # ── quem é ──
     def utilizador_do_pedido(self, cabecalhos, ip: str = "") -> Utilizador | None:
         """`cabecalhos` é o `self.headers` do handler (ou um dict). None = 401."""
+        self.reler_se_mudou()
         get = cabecalhos.get
         # agentes: Bearer (vale em todos os modos; é o único caminho para o MCP por HTTP)
         auth = (get("Authorization") or "").strip()

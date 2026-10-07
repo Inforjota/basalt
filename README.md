@@ -28,19 +28,20 @@ nunca sobrepor** o que tu escreveste. Funciona sem internet, num só ficheiro Py
 ## Instalar em 2 minutos
 
 ```bash
-git clone https://github.com/…/basalt && cd basalt
-python3 -m basalt iniciar --dados ~/basalt-dados      # cria basalt.toml, as pastas e o primeiro utilizador
-python3 -m basalt serve                                # http://127.0.0.1:8121
+git clone https://github.com/REPO_POR_DEFINIR/basalt && cd basalt
+python3 -m basalt iniciar --dados ~/basalt-dados --email tu@exemplo.pt   # pede a senha; cria basalt.toml e as pastas
+export BASALT_CONFIG=~/basalt-dados/basalt.toml                          # os comandos seguintes encontram o ficheiro
+python3 -m basalt serve                                                  # http://127.0.0.1:8121
 ```
 
-Com Docker: `cd docker && docker compose up -d` (os dados ficam em `docker/dados/`). Como serviço: `sistema/basalt.service`.
-Detalhes, proxy com HTTPS e IA local em [docs/INSTALAR.md](docs/INSTALAR.md).
+Com Docker: primeiro `iniciar` e só depois `docker compose up -d` (o contentor precisa do `basalt.toml`). Como serviço systemd:
+`sistema/basalt.service`. Os passos exactos, o proxy com HTTPS e a IA local estão em [docs/INSTALAR.md](docs/INSTALAR.md).
 
 Requisitos: Python ≥ 3.11, `git` (histórico), Linux (o CAS usa `renameat2`). Opcional: Ollama para embeddings e IA local.
 
 ## Configurar
 
-Tudo num `basalt.toml` ([exemplo comentado](basalt.toml.exemplo)): pasta dos dados, porta, modo de autenticação
+Tudo num `basalt.toml` ([exemplo comentado](basalt/basalt.toml.exemplo)): pasta dos dados, porta, modo de autenticação
 (`senha` · `cabecalho` para quem já tem SSO num proxy · `aberto` só em localhost), utilizadores (cada um com o seu espaço),
 IA (`openai`-compatível como Ollama/OpenRouter/Mistral, `anthropic`, ou o `claude` CLI), embeddings, categorias, Entrada.
 As chaves de API **nunca** vão para o ficheiro: só por variável de ambiente ou ficheiro `0600`.
@@ -58,7 +59,7 @@ python3 -m basalt arrumar                                          # Entrada →
 ## Os teus agentes de IA
 
 ```bash
-claude mcp add basalt -- python3 -m basalt mcp --utilizador ana@exemplo.pt
+claude mcp add basalt -- python3 -m basalt --config ~/basalt-dados/basalt.toml mcp --utilizador ana@exemplo.pt
 ```
 
 Depois, no Claude Code: «procura nas minhas notas o que decidi sobre o servidor», «acrescenta à nota `projecto_x` que …».

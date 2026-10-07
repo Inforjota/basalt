@@ -17,19 +17,27 @@ apagar** notas: apaga-se na interface, com histórico.
 
 ```bash
 # Claude Code
-claude mcp add basalt -- python3 -m basalt mcp --config ~/.config/basalt/basalt.toml --utilizador ana@exemplo.pt
+claude mcp add basalt -- python3 -m basalt --config ~/basalt-dados/basalt.toml mcp --utilizador ana@exemplo.pt
 
 # Codex (~/.codex/config.toml)
 [mcp_servers.basalt]
 command = "python3"
-args = ["-m", "basalt", "mcp", "--config", "~/.config/basalt/basalt.toml", "--utilizador", "ana@exemplo.pt"]
+args = ["-m", "basalt", "--config", "~/basalt-dados/basalt.toml", "mcp", "--utilizador", "ana@exemplo.pt"]
 
 # Cursor / Windsurf / outros (.cursor/mcp.json)
 { "mcpServers": { "basalt": { "command": "python3",
-  "args": ["-m", "basalt", "mcp", "--config", "~/.config/basalt/basalt.toml", "--utilizador", "ana@exemplo.pt"] } } }
+  "args": ["-m", "basalt", "--config", "~/basalt-dados/basalt.toml", "mcp", "--utilizador", "ana@exemplo.pt"] } } }
 ```
 
+`--config` é opção do `basalt`, não do `mcp`: vai **antes** de `mcp` (`basalt --config X mcp`); depois de `mcp` dá erro. Sem ela vale
+`BASALT_CONFIG`, `./basalt.toml` ou `~/.config/basalt/basalt.toml`.
+O caminho é o que o `iniciar` mostrou. Os outros comandos `python3 -m basalt …` desta página supõem
+`export BASALT_CONFIG=~/basalt-dados/basalt.toml`, como no README.
 `--utilizador` só é preciso quando o `basalt.toml` tem mais do que um utilizador. O registo vai para stderr; stdout é só protocolo.
+
+**stdio sozinho não sincroniza.** O `basalt mcp` escreve na cópia editável (`copia/`); não sincroniza nem faz commit. A nota
+só chega a `memoria/` (o cofre, com git) quando a sincronização corre: deixa o `basalt serve` a correr (o vigia faz isso
+sozinho) ou corre `python3 -m basalt sincronizar` depois. Por HTTP já é o servidor a escrever, por isso o vigia trata do resto.
 
 ### HTTP
 
@@ -88,7 +96,8 @@ parece uma password ou chave em claro** (não se grava; o Basalt sugere o cofre)
 ## Segurança
 
 - O token MCP dá **os mesmos poderes de escrita** que o utilizador — trata-o como uma senha. Guarda-o no cliente, nunca em notas.
-- Para o revogar, gera outro (`mcp-token`) ou apaga `mcp_token_hash` do utilizador no `basalt.toml`.
+- Para o revogar, gera outro (`mcp-token`) ou apaga `mcp_token_hash` do utilizador no `basalt.toml`. O servidor relê o
+  `basalt.toml` sozinho quando o ficheiro muda: não é preciso reiniciá-lo.
 - Cada utilizador só vê e escreve no seu espaço (`[[utilizadores]] espaco`), também por MCP.
 - O servidor nunca executa o conteúdo das notas; devolve texto. O que um agente lê numa nota é **dado**, não instrução — isso
   é regra do cliente, e vale a pena lembrá-la no prompt do sistema do agente.

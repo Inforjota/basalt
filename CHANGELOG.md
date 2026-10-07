@@ -30,3 +30,33 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   escreve; o service worker (cache `basalt-v8`) ordena pedidos, trancas e lápides por relógio monótono e pela fotografia das
   trancas que existiam ao partir; 404/410 deixam lápide na página e só apagam da cache o que partiu antes; «senha: 2026-10-06»
   conta como password (a excepção data/hora só com contexto de validade). Testes: `testes/test_ronda5.py`, `testes/test_ronda6.py`.
+- Robustez, ronda 7 (07/10/2026): uma escrita feita durante o recuo de uma fusão fica em `cas-salvos/` e o erro diz onde; um
+  erro de disco ao confirmar o recuo dá o relato nota a nota e não deixa temporários; a gravação sem internet compara a geração
+  persistente da cópia, por isso uma edição descartada por outro separador não volta à cópia nova; o service worker (cache
+  `basalt-v9`) não guarda respostas que partiram antes de apagar e religar a cópia, não apaga trancas novas com a mesma chave,
+  faz a limpeza dentro da fila por endereço e mede a idade das lápides no relógio real; um 404/410 atrasado ou um pacote antigo
+  não apagam nem repõem uma nota recriada depois. Testes: `testes/test_ronda7.py`.
+- Segurança e instalação, ronda 8 (auditoria externa do pacote, 07/10/2026):
+  - **Contas no mesmo browser:** a cópia local e a fila sem internet têm dono (`/api/eu` → `dono`; cabeçalho `X-Basalt-Dono`).
+    O servidor recusa com 403, sem trancar a cópia, um pedido de outra conta. A fila de quem saiu fica guardada à parte e é
+    enviada quando essa conta volta. «Terminar sessão» tira a cópia do browser. O service worker (cache `basalt-v10`) esvazia a
+    cópia da API ao entrar e ao sair. Os anexos revalidam sempre e a etiqueta (ETag) depende do dono.
+  - **Um espaço por utilizador:** o `basalt.toml` com dois utilizadores no mesmo espaço é recusado (partilhar só com
+    `[basalt] espaco_partilhado = true`); `basalt utilizador novo` nunca reutiliza o espaço de outro.
+  - **Revogar sem reiniciar:** os utilizadores relêem-se do `basalt.toml` quando ele muda; apagar um utilizador ou um token vale
+    no pedido seguinte e mudar a senha termina as sessões dessa conta. Uma sessão só conta depois de gravada.
+  - **DNS rebinding:** em modo `aberto` (e com `[basalt] anfitrioes`) o `Host` e o `Origin` conferem-se; um nome estranho recebe
+    421. O MCP confere o `Origin` contra a mesma lista.
+  - **Segredos:** um só guarda (`basalt.segredos`) em todas as entradas (interface, MCP, duas vias, `sig guarda`, importação,
+    anexos de texto). Notas retidas não vão para a IA em nenhum caminho (índice, pergunta, categorias, arrumação, fusão, Entrada).
+  - **Erros:** a chave da IA, o texto das notas e caminhos internos não aparecem nos erros nem nos registos; um redirect para
+    outro endereço não leva o `Authorization`.
+  - **Escrita:** a Entrada tem um trinco partilhado por todos os processos e carimbos únicos; a importação e a arrumação
+    automática escrevem com CAS; ligações simbólicas não saem do espaço; o MCP não esvazia notas.
+  - **Configuração:** `--config` vale para tudo no mesmo processo (notas, IA, índice); o `basalt.toml` só é substituído
+    depois de validado; `X-Forwarded-For` só de `[auth] proxies_de_confianca` (loopback conta sempre), lido da direita.
+  - **Instalação:** `/api/saude` pública para o healthcheck; Docker cria o `basalt.toml` antes do `up` e não anuncia o modo
+    aberto; systemd com `/opt/basalt` e `PYTHONPATH`; o timer corre `arrumar --auto` com o mesmo endurecimento; os exemplos MCP
+    põem `--config` antes de `mcp`; os recursos estáticos vão todos no pacote instalável; a importação trata anexos em
+    subpastas, nomes repetidos e tamanho.
+  - Testes: `testes/test_ronda8_*.py`, `testes/test_segredos.py`, `testes/test_instalacao.py`.

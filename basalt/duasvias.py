@@ -19,8 +19,9 @@ BASALT_GIT=1 (omissão): fotografia git da memória real antes de a alterar.
 import contextlib, fcntl, hashlib, json, os, re, subprocess, sys, tempfile, time
 from pathlib import Path
 
-from . import cas, config
+from . import caminhos, cas, config
 from .config import Via
+from .segredos import SEGREDO_RX, tem_segredo_texto  # noqa: F401  (SEGREDO_RX: basalt.unir importa daqui)
 
 REAL = Via("real")          # PORTE: antes caminhos fixos + variáveis; agora a pasta do espaço (config.Espaco; as variáveis antigas ainda mandam)
 COPIA = Via("copia")
@@ -33,9 +34,6 @@ GIT = os.environ.get("BASALT_GIT", "1") == "1"
 TRINCO = Via("trinco")
 # ficheiros do próprio editor/índice que NÃO são notas da memória
 IGNORA = {"index.md", "CONFIG.md", "MEMORY.md"}
-SEGREDO_RX = re.compile(r"(sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{40,}|gh[pousr]_[A-Za-z0-9]{30,}|AKIA[A-Z0-9]{16}|"
-                        r"xox[baprs]-[A-Za-z0-9-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[0-9A-Za-z_-]{35}|"
-                        r"[0-9]{8,10}:[A-Za-z0-9_-]{35})")
 
 
 def h(p: Path):
@@ -76,13 +74,13 @@ def nota(nome):
 
 
 def notas_de(d: Path):
-    return {p.name for p in d.glob("*.md") if nota(p.name)}
+    return {p.name for p in caminhos.notas(d) if nota(p.name)}      # ronda 8 (ligações simbólicas): uma nota simbólica não entra na sincronização
 
 
 def tem_segredo(p: Path):
-    """True se a nota tiver um segredo em claro (padrões de chaves de API, tokens e chaves privadas).
-    PORTE: antes consultava também um cofre de passwords externo; o pacote público fica pelos padrões."""
-    return bool(SEGREDO_RX.search(p.read_text(encoding="utf-8", errors="replace")))
+    """True se a nota tiver um segredo em claro — o mesmo critério das outras entradas (basalt.segredos: chaves, tokens,
+    chaves privadas E passwords escritas à mão). PORTE: antes consultava também um cofre de passwords externo."""
+    return tem_segredo_texto(p.read_text(encoding="utf-8", errors="replace"))
 
 
 def tem_segredo_bytes(b, nome):

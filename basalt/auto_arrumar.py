@@ -17,7 +17,7 @@ sem IA não faz nada (e não deixa a memória a meio).
 import datetime, fcntl, hashlib, json, os, re, subprocess, sys, time, uuid
 from pathlib import Path
 
-from . import arrumar as arr, config, unir
+from . import arrumar as arr, cas, config, retidas, unir
 from . import ia as _ia
 from .config import Via
 
@@ -31,6 +31,21 @@ HOJE = datetime.date.today().isoformat()
 
 def ler(n):
     return (REAL / f"{n}.md").read_text(encoding="utf-8")
+
+
+def _ler2(n):
+    """(texto, hash do que se leu) — o hash é o «esperado» do CAS na escrita que se segue."""
+    b = (REAL / f"{n}.md").read_bytes()
+    return b.decode("utf-8"), cas.sha(b)
+
+
+def _escrever(n, texto, esperado):
+    """troca a nota só se ninguém a mudou desde que a lemos (ronda 8, escrita sem sobrepor); se mudou, não sobrepõe nada e diz porquê."""
+    motivo = cas.escrever(REAL / f"{n}.md", texto.encode("utf-8"), esperado, "auto-arrumar")
+    if motivo:
+        print(f"  não mexi em {n}: {motivo}", file=sys.stderr)
+        return False
+    return True
 
 
 def desc(t):
@@ -51,6 +66,8 @@ def estrela3(n):
 
 def decidir(a, b):
     ta, tb = ler(a), ler(b)
+    if retidas.retida(a, ta) or retidas.retida(b, tb):        # ronda 8 (notas retidas): o texto de uma nota retida nunca vai à IA
+        return {"acao": "deixar", "manter": a, "confianca": 1.0, "motivo": "uma das notas está retida (segredo em claro ou excluída) — não a mando à IA"}
     prompt = f"""Duas notas da memória de trabalho parecem-se. Decide o que fazer. Responde SÓ com JSON numa linha:
 {{"acao":"unir|arquivar|ligar|deixar","manter":"<nome da nota principal>","confianca":0.0-1.0,"motivo":"uma frase curta em português de Portugal"}}
 - unir: as duas dizem essencialmente o mesmo (uma repete a outra ou é um subconjunto dela) e juntas ficam uma nota coerente.
@@ -90,11 +107,10 @@ def _job(tipo, manter, fundir, commit, msg):
 
 def _acrescentar(n, linha, alvo):
     """acrescenta uma linha no fim da nota, se a nota ainda não ligar ao alvo."""
-    t = ler(n)
+    t, h = _ler2(n)
     if alvo in unir.ligacoes(t):
         return False
-    (REAL / f"{n}.md").write_text(t.rstrip("\n") + f"\n\n{linha}\n", encoding="utf-8")
-    return True
+    return _escrever(n, t.rstrip("\n") + f"\n\n{linha}\n", h)
 
 
 def mudar(tipo, descricao, fn):
@@ -122,23 +138,24 @@ def arquivar(principal, velha):
     depois de ligar não fazia nada); a velha ganha no topo a marca de arquivada com a ligação à principal; sai do MEMORY.md."""
     def fn():
         mudou = False
-        tp = ler(principal)
+        tp, hp = _ler2(principal)
         hist = f"Histórico: [[{velha}]] (registo antigo, arquivado pelo Basalt a {HOJE})"
         if f"Histórico: [[{velha}]]" not in tp:
             rel = re.compile(rf"^Relacionado: \[\[{re.escape(velha)}\]\] \(ligado pelo Basalt, [\d-]+\)$", re.M)
             tp2 = rel.sub(hist, tp, count=1) if rel.search(tp) else tp.rstrip("\n") + f"\n\n{hist}\n"
-            (REAL / f"{principal}.md").write_text(tp2, encoding="utf-8"); mudou = True
-        tv = ler(velha)
+            mudou = _escrever(principal, tp2, hp) or mudou
+        tv, hv = _ler2(velha)
         if "🗄 Arquivada" not in tv:
             marca = f"> 🗄 Arquivada pelo Basalt a {HOJE}: registo antigo. A informação actual está em [[{principal}]].\n\n"
             m = re.match(r"^---\n.*?\n---\n\n?", tv, flags=re.S)
             tv2 = tv[:m.end()] + marca + tv[m.end():] if m else marca + tv
-            (REAL / f"{velha}.md").write_text(tv2, encoding="utf-8"); mudou = True
+            mudou = _escrever(velha, tv2, hv) or mudou
         idx = REAL / "MEMORY.md"
-        t = idx.read_text(encoding="utf-8") if idx.exists() else ""     # PORTE: sem índice não há linha a tirar
+        b = idx.read_bytes() if idx.exists() else b""                    # PORTE: sem índice não há linha a tirar
+        t = b.decode("utf-8")
         novo = "".join(l for l in t.splitlines(keepends=True) if f"({velha}.md)" not in l)
         if novo != t:
-            idx.write_text(novo, encoding="utf-8"); mudou = True
+            mudou = _escrever("MEMORY", novo, cas.sha(b)) or mudou
         return mudou
     return mudar("arquivar", f"arquivar {velha} (histórico de {principal})", fn)
 
@@ -163,7 +180,8 @@ def _correr():
     dec_f = ESTADO / "decididos.json"
     decididos = json.loads(dec_f.read_text()) if dec_f.exists() else {}
     agora = time.time()
-    pares = [(s, a, b) for s, a, b in arr.duplicados() if ":" not in a and ":" not in b
+    ret = retidas.nomes_retidos(REAL)
+    pares = [(s, a, b) for s, a, b in arr.duplicados() if ":" not in a and ":" not in b and a not in ret and b not in ret
              and (REAL / f"{a}.md").exists() and (REAL / f"{b}.md").exists()]
     feitos, duvidas, unidas = [], [], 0
     for s, a, b in pares:

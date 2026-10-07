@@ -6,18 +6,35 @@ responsável pelo tratamento dos dados que lá põe. Este texto é um **modelo**
 
 ## O que o Basalt guarda, e onde
 
+No servidor (`<dados>` é a pasta do `basalt.toml`; cada utilizador tem `<dados>/<espaco>/`):
+
 | dados | onde | porquê | quanto tempo |
 |---|---|---|---|
-| as notas (Markdown) e o seu histórico git | `<dados>/<espaco>/memoria/` | é o serviço | até as apagares (o git guarda versões antigas: `git log`) |
-| a cópia editável | `<dados>/<espaco>/copia/` | edição e sincronização | idem |
-| índice semântico (vectores) | `<dados>/<espaco>/dados/` | pesquisa por significado | reconstruível; apaga-se com `basalt indexar` |
-| Entrada (ideias soltas) e o registo das apagadas | `<dados>/<espaco>/dados/` | arrumação | as apagadas ficam num registo para desfazer |
-| cópias de segurança do CAS | `<dados>/<espaco>/dados/cas-salvos/` | nada se perde numa escrita em simultâneo | 60 dias / 500 ficheiros (configurável) |
+| as notas (Markdown) e o seu histórico git | `<espaco>/memoria/` | é o serviço | até as apagares (o git guarda versões antigas: `git log`) |
+| anexos (imagens, PDFs, ficheiros colados no editor) | `<espaco>/memoria/anexos/` | é o serviço | idem |
+| a cópia editável | `<espaco>/copia/` | edição e sincronização | idem |
+| índice de pesquisa: **títulos e excertos das notas em claro** + vectores | `<espaco>/dados/semantica.sqlite` | pesquisa por palavras e por significado | reconstruível com `basalt indexar` (sem as notas apagadas) |
+| Entrada (ideias soltas) e o registo das apagadas | `<espaco>/dados/entrada.jsonl`, `entrada-apagadas.jsonl` | arrumação | as apagadas ficam no registo para desfazer, até as tirares |
+| versões gravadas sem internet que chocaram com outra | `<espaco>/dados/offline-versoes/` | nada se perde num conflito | até as apagares |
+| fusões («Unir») e relatórios da arrumação automática | `<espaco>/dados/unir/`, `auto-arrumar/` | desfazer e explicar | até as apagares |
+| cópias de segurança do CAS | `<espaco>/dados/cas-salvos/` | nada se perde numa escrita em simultâneo | 60 dias / 500 ficheiros (configurável) |
+| nomes das notas usadas (sem conteúdo) | `<espaco>/dados/toques.jsonl` | vistas «ao vivo» | roda aos 2 MB (fica a volta anterior) |
 | e-mail, nome, hash da senha, hash do token MCP | `basalt.toml` | autenticação | enquanto o utilizador existir |
-| sessões (hash do cookie, validade) | `<dados>/sessoes.json` | manter o login | até expirarem (`[auth] sessao_horas`) |
+| sessões: hash do cookie, e-mail, hora de criação e de expiração | `<dados>/sessoes.json` | manter o login | até expirarem (`[auth] sessao_horas`), saíres, o utilizador deixar de existir ou mudar de senha |
 | tentativas de login falhadas por IP | memória do processo | travar força bruta | `[auth] janela_minutos`; perde-se ao reiniciar |
-| registos do servidor (stdout/journal) | onde o systemd/Docker os puser | diagnóstico | rotação do sistema; **não** contêm texto de notas nem chaves |
-| cópia local no browser (IndexedDB) | o dispositivo de cada utilizador | funcionar sem rede | até o utilizador apagar a cópia (botão na interface) ou a sessão expirar (fica trancada) |
+| registos do servidor (stdout/journal) | onde o systemd/Docker os puser | diagnóstico | rotação do sistema; método, caminho (sem os parâmetros) e hora de cada pedido; **não** contêm texto de notas nem chaves |
+
+No browser de cada utilizador (para funcionar sem internet):
+
+| dados | onde | quanto tempo |
+|---|---|---|
+| cópia das notas, fila de edições sem internet e conflitos | IndexedDB do site | até «Terminar sessão», «Apagar cópia deste aparelho», ou entrar outra conta no mesmo browser |
+| respostas da API (texto das notas) | cache do service worker | idem |
+| anexos já vistos | cache HTTP do browser | o browser decide; antes de mostrar um, pergunta sempre ao servidor se ainda pode |
+| fila sem internet de uma conta que saiu | IndexedDB, guardada à parte em nome dessa conta | até essa conta voltar a entrar no mesmo browser (aí é enviada) ou se limparem os dados do site |
+
+A tranca da cópia no browser depende de respostas do servidor (sessão expirada, conta removida). Um dispositivo que nunca mais
+se liga continua a poder ler a cópia que tem. Em computadores partilhados, diz aos utilizadores para usarem «Terminar sessão».
 
 ## Para onde vão os dados
 
@@ -32,8 +49,9 @@ responsável pelo tratamento dos dados que lá põe. Este texto é um **modelo**
 ## Direitos das pessoas
 
 Tudo é ficheiro: **acesso** e **portabilidade** = copiar a pasta `memoria/` (Markdown, formato aberto); **rectificação** =
-editar; **apagamento** = apagar a nota (e, para apagar do histórico, `git filter-repo` ou recriar o repositório), apagar a
-Entrada, `basalt indexar` para refazer o índice, e apagar as cópias em `cas-salvos/`. Um utilizador apaga-se removendo o
+editar; **apagamento** = apagar a nota e os anexos (e, para apagar do histórico, `git filter-repo` ou recriar o repositório),
+apagar a Entrada e o seu registo de apagadas, `basalt indexar` para refazer o índice, e apagar as cópias em `cas-salvos/`,
+`offline-versoes/` e `unir/`. No browser: «Apagar cópia deste aparelho». Um utilizador apaga-se removendo o
 bloco `[[utilizadores]]` e a pasta do espaço.
 
 ## Modelo de aviso (adapta e põe onde os teus utilizadores o vejam)

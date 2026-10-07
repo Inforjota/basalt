@@ -10,9 +10,12 @@ O servidor serve vários utilizadores: cada pedido corre «dentro» do espaço d
 from __future__ import annotations
 
 import contextlib
+import ipaddress
+import re
 import os
 import threading
 import tomllib
+import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -45,6 +48,7 @@ class AuthConfig:
     sessao_horas: int = 24 * 14
     tentativas: int = 5                 # por IP, por janela
     janela_minutos: int = 15
+    proxies_de_confianca: tuple = ()   # ronda 8 (X-Forwarded-For): IPs/redes de onde se acredita nesse cabeçalho (loopback conta sempre)
 
 
 @dataclass
@@ -102,6 +106,8 @@ class Config:
     utilizadores: list = field(default_factory=list)
     fontes_extra: list = field(default_factory=list)   # comandos que imprimem JSON [{fonte, ref, titulo, texto}] para o índice
     origem: Path | None = None          # o toml lido (None = só omissão + ambiente)
+    anfitrioes: tuple = ()              # ronda 8 (Host/Origin): nomes por que o servidor aceita ser chamado, além de loopback e escutar
+    espaco_partilhado: bool = False     # ronda 8 (um espaço por utilizador): dois utilizadores no mesmo espaço só de propósito
 
     # ── consultas ──
     def utilizador(self, email: str) -> Utilizador | None:
@@ -133,6 +139,21 @@ class Config:
             vistos.add(e)
             if not ESPACO_RX_OK(u.espaco):
                 raise ConfigInvalida(f"nome de espaço inválido: {u.espaco!r} (letras, dígitos, _ e -)")
+        donos: dict = {}                                 # ronda 8 (um espaço por utilizador): partilhar só explicitamente
+        for u in self.utilizadores:
+            if u.espaco in donos and not self.espaco_partilhado:
+                raise ConfigInvalida(f"{u.email} e {donos[u.espaco]} ficariam no MESMO espaço «{u.espaco}» — cada um veria e escreveria as notas "
+                                     "do outro. Dá a cada [[utilizadores]] o seu `espaco`; partilhar só de propósito, com [basalt] espaco_partilhado = true")
+            donos.setdefault(u.espaco, u.email)
+        for p in self.auth.proxies_de_confianca:
+            try:
+                ipaddress.ip_network(p, strict=False)
+            except ValueError:
+                raise ConfigInvalida(f"[auth] proxies_de_confianca: {p!r} não é um IP nem uma rede (ex.: \"203.0.113.5\", \"198.51.100.0/24\")")
+        for h in self.anfitrioes:
+            if not nome_de_maquina_ok(h):
+                raise ConfigInvalida(f"[basalt] anfitrioes: {h!r} não é um nome de máquina — só o nome, sem https://, porta nem caminho "
+                                     f"(ex.: \"basalt.exemplo.pt\")")
         if self.auth.modo != "aberto" and not self.utilizadores:
             raise ConfigInvalida("sem utilizadores: acrescenta [[utilizadores]] ou usa `basalt utilizador novo EMAIL`")
 
@@ -345,11 +366,14 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
     cfg.lingua = amb.get("BASALT_LINGUA") or b.get("lingua", "pt")
     cfg.idioma = amb.get("BASALT_IDIOMA") or b.get("idioma", "pt")
     cfg.git = (amb.get("BASALT_GIT") or ("1" if b.get("git", True) else "0")) == "1"
+    cfg.anfitrioes = tuple(str(x).strip().lower() for x in (b.get("anfitrioes") or []))   # validar() exige nomes de máquina
+    cfg.espaco_partilhado = bool(b.get("espaco_partilhado", False))
 
     a = t.get("auth", {})
     cfg.auth = AuthConfig(modo=amb.get("BASALT_AUTH_MODO") or a.get("modo", "senha"),
                           cabecalho=a.get("cabecalho", "X-Basalt-Email"), sessao_horas=int(a.get("sessao_horas", 24 * 14)),
-                          tentativas=int(a.get("tentativas", 5)), janela_minutos=int(a.get("janela_minutos", 15)))
+                          tentativas=int(a.get("tentativas", 5)), janela_minutos=int(a.get("janela_minutos", 15)),
+                          proxies_de_confianca=tuple(str(x) for x in (a.get("proxies_de_confianca") or [])))
     if amb.get("BASALT_WEB_DEV") == "1":          # compatibilidade: o antigo «modo dev» = aberto (só em loopback)
         cfg.auth.modo = "aberto"
 
@@ -393,6 +417,11 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
             cfg.utilizadores.append(Utilizador(email=em))
     fe = t.get("fontes_extra", {})
     cfg.fontes_extra = [str(c) for c in fe.get("comandos", [])] if isinstance(fe, dict) else []
+    if validar and len({u.espaco for u in cfg.utilizadores}) > 1:   # ronda 8 (um espaço por utilizador): BASALT_REAL & co. valem para TODOS os espaços
+        fixas = [v for vs in _AMBIENTE.values() for v in vs if amb.get(v)]
+        if fixas:
+            raise ConfigInvalida(f"há vários espaços mas {', '.join(fixas)} fixa(m) uma pasta para todos — tira essas variáveis do ambiente "
+                                 "(só servem para instalações com um único espaço)")
     if validar:
         cfg.validar()      # os programas auxiliares (sig, 2vias…) pedem validar=False: só querem ler o que lhes interessa
     return cfg
@@ -414,11 +443,55 @@ def exportar_ambiente(cfg: Config) -> None:
     """põe no ambiente do processo (sem sobrepor o que já lá estiver) o que os subprocessos e módulos de linha de comandos
     precisam do toml: BASALT_CONFIG, BASALT_GIT, BASALT_GIT_NOME/EMAIL."""
     if cfg.origem:
-        os.environ.setdefault(ENV_CONFIG, str(Path(cfg.origem).resolve()))   # absoluto: os subprocessos correm noutra pasta
+        os.environ[ENV_CONFIG] = str(Path(cfg.origem).resolve())   # absoluto: os subprocessos correm noutra pasta; ronda 8 (--config para tudo): sobrepõe
+        # um BASALT_CONFIG herdado — senão `--config X` valia para as notas e os filhos (IA, sig, fontes_extra) liam o Y do ambiente
     os.environ.setdefault("BASALT_GIT", "1" if cfg.git else "0")
     os.environ.setdefault("BASALT_GIT_NOME", cfg.git_autor.nome)
     os.environ.setdefault("BASALT_GIT_EMAIL", cfg.git_autor.email)
 
 
+def activar(cfg: Config) -> Config:
+    """torna `cfg` A configuração deste processo: ambiente para os filhos (exportar_ambiente) e a IA de [ia] — para `--config X`
+    valer em TUDO (notas, IA, sig, fontes_extra) e não só nas notas (ronda 8, --config para tudo: cada módulo relia a configuração pelo ambiente)."""
+    exportar_ambiente(cfg)
+    from . import ia as _ia                     # importação tardia: ia importa config
+    _ia.definir(_ia.IA(cfg.ia))
+    return cfg
+
+
+LOOPBACK = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+_NOME_MAQUINA_RX = re.compile(r"^(?=.{1,253}$)[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$")
+
+
+def nome_de_maquina_ok(h: str) -> bool:
+    """um nome DNS (minúsculas) ou um IP — sem esquema, porta nem caminho."""
+    if _NOME_MAQUINA_RX.match(h or ""):
+        return True
+    try:
+        ipaddress.ip_address(h)
+        return True
+    except ValueError:
+        return False
+
+
+def anfitriao_de(host: str | None) -> str:
+    """o nome (minúsculas, sem porta nem [ ]) de um cabeçalho Host/Origin ou de um URL; "" se não há ou não se percebe."""
+    if not host:
+        return ""
+    try:
+        return (urllib.parse.urlsplit(host if "//" in host else "//" + host).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def anfitrioes(cfg: Config) -> frozenset:
+    """ronda 8 (Host/Origin): os nomes por que o servidor aceita ser chamado — loopback, o endereço em que escuta e [basalt] anfitrioes. É contra isto
+    que se confere o Host (e o Origin das escritas) em modo aberto ou quando há anfitrioes: um sítio malicioso que aponte um nome
+    DNS seu para 127.0.0.1 (DNS rebinding) chega com Host = esse nome, e é recusado."""
+    return LOOPBACK | {cfg.escutar.lower()} | set(cfg.anfitrioes)
+
+
 def exemplo() -> str:
-    return (Path(__file__).resolve().parent.parent / "basalt.toml.exemplo").read_text(encoding="utf-8")
+    return Path(__file__).with_name("basalt.toml.exemplo").read_text(encoding="utf-8")   # vai dentro do pacote (pip install)

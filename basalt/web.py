@@ -15,13 +15,33 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import arrumar as arr
-from . import anexos, auth, config, etiquetas, sig
+from . import anexos, auth, caminhos, config, etiquetas, sig
+from . import entrada as entrada_mod
 from . import cas as _cas
 from . import ia as ia_mod
 from . import unir
 from .config import Via
+from .segredos import (MOTIVO as MOTIVO_SEGREDO, PASSWORD_RX, SEGREDO_RX, _DATA_HORA_RX, _VALIDADE_RX,  # noqa: F401
+                       _password_em_claro, tem_segredo_ficheiro, tem_segredo_texto)
 
 STATIC = Path(__file__).resolve().parent / "static"
+
+
+def dono_de(user) -> str:
+    """identificador estável e opaco de quem é a cópia local da página (conta + espaço). Não é segredo nem prova de nada —
+    o servidor continua a decidir pela sessão; serve só para a página não misturar dados de duas contas no mesmo browser."""
+    return hashlib.sha256(f"{(user.email or '').strip().lower()}\0{user.espaco}".encode("utf-8")).hexdigest()[:24]
+
+
+def _erro(e, tipo=True) -> str:
+    """um erro para o registo ou para a página: nunca leva os argumentos do motor (o texto da nota vai na linha de comandos,
+    e o TimeoutExpired/CalledProcessError repetem-na) nem o que pareça uma chave ou password."""
+    if isinstance(e, subprocess.TimeoutExpired):
+        return f"{type(e).__name__}: o motor não respondeu em {e.timeout} s"
+    if isinstance(e, subprocess.CalledProcessError):
+        return f"{type(e).__name__}: o motor saiu com código {e.returncode}"
+    m = SEGREDO_RX.sub("•••", (f"{type(e).__name__}: " if tipo else "") + str(e))
+    return "(mensagem omitida: tinha o que parece uma password ou chave)" if tem_segredo_texto(m) else m
 # PORTE: antes caminhos fixos (+ variáveis); agora as pastas do espaço do utilizador do pedido (config.Via segue o espaço activo do fio)
 REAL = Via("real")
 COPIA = Via("copia")
@@ -29,7 +49,7 @@ LEDGER = Via("ledger")
 TRINCO = Via("trinco")
 EXCL = Via("excluir")
 SEMANTICA = Via("semantica")
-INBOX = Via("inbox")
+INBOX = entrada_mod.INBOX                     # o mesmo objecto que basalt.entrada usa (quem ainda o importa daqui continua a funcionar)
 TOQUES = Via("toques")
 APAGADAS = Via("apagadas")
 PERMISSOES_ENTRADA = Via("permissoes_entrada")
@@ -38,9 +58,6 @@ JOBS = Via("jobs_unir")
 VERSOES_OFFLINE = Via("versoes_offline")
 IGNORA = {"index.md", "CONFIG.md", "MEMORY.md"}
 NOME_RX = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
-SEGREDO_RX = re.compile(r"(sk-ant-[A-Za-z0-9_-]{20,}|sk-[A-Za-z0-9]{40,}|gh[pousr]_[A-Za-z0-9]{30,}|AKIA[A-Z0-9]{16}|"
-                        r"xox[baprs]-[A-Za-z0-9-]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AIza[0-9A-Za-z_-]{35}|"
-                        r"[0-9]{8,10}:[A-Za-z0-9_-]{35})")
 MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
         ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon", ".json": "application/json",
         ".webmanifest": "application/manifest+json", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf"}   # fontes: KaTeX
@@ -151,44 +168,16 @@ def _hash_no_ledger(nome_md):
 
 
 # ───────────────────────── segredos e lista de exclusão ─────────────────────────
-# O SEGREDO_RX só apanha formatos de chaves; uma password escrita à mão («senha do router: Tr0ub4dor&3») passava. Só conta se o
-# valor (6+ caracteres) tiver algarismo ou símbolo e não for caminho/URL — «senha: está no cofre» e «password: ver /root/cofre»
-# continuam a poder escrever-se.
-PASSWORD_RX = re.compile(r"(?i)\b(?:password|passwd|senha|palavra[- ]passe)\b[^\n:=]{0,40}[:=][ \t]*"
-                         r"(?!https?://|[/~])"
-                         r"(?=\S*[0-9!@#$%^&*])(\S{6,})")
-# ronda 6 (achado G7 da ronda 4): um valor com formato de data/hora («2026-10-06», «06/10/2026», «10:30:59») SÓ deixa de contar como
-# password quando o contexto fala de validade («validade da senha: 2026-10-06», «a senha expira: 06/10/2026»). Antes a
-# exclusão era cega ao contexto: «senha: 2026-10-06» e «password: 10:30:59» passavam.
-_DATA_HORA_RX = re.compile(r"^(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}|\d{1,2}[:h]\d{2}(?::\d{2})?)[.,;:)]*$")
-_VALIDADE_RX = re.compile(r"(?i)\b(?:validade|válid[ao]|valid[ao]|expir\w*|venc\w*|prazo|renov\w*|caduc\w*|data|hora|dia|até|desde)\b")
-
-
-def _password_em_claro(txt):
-    for m in PASSWORD_RX.finditer(txt):
-        if _DATA_HORA_RX.match(m.group(1)):
-            inicio = txt.rfind("\n", 0, m.start()) + 1                 # o contexto é a mesma linha, até 80 caracteres antes
-            if _VALIDADE_RX.search(txt[max(inicio, m.start() - 80):m.start(1)]):
-                continue
-        return True
-    return False
-
-
-def tem_segredo_texto(txt):
-    return bool(SEGREDO_RX.search(txt) or _password_em_claro(txt))
-
-
-def tem_segredo_ficheiro(p: Path):
-    # PORTE: antes também passava por um verificador externo do dono; aqui só os padrões acima (SEGREDO_RX + PASSWORD_RX)
-    return tem_segredo_texto(p.read_text(encoding="utf-8", errors="replace"))
+# Os padrões (SEGREDO_RX, PASSWORD_RX) e tem_segredo_texto/tem_segredo_ficheiro vivem em basalt.segredos — o MESMO guarda para
+# a web, o MCP, a entrada por terminal, a importação Obsidian, os anexos de texto e a sincronização (ronda 8, segredos em todas as entradas).
 
 
 def refazer_exclusao():
     """nota da memória real que não está na cópia = retida pelo guarda de segredos do 2vias. Escreve excluidas.txt
     (usado também pelo basalt.sig). PORTE: sem outras memórias de projectos (só este espaço)."""
     novo = set()
-    copia = {p.name for p in COPIA.glob("*.md")}
-    for p in REAL.glob("*.md"):
+    copia = {p.name for p in caminhos.notas(COPIA)}
+    for p in caminhos.notas(REAL):
         if p.name not in IGNORA and ".bak" not in p.name and p.name not in copia:
             novo.add(p.stem)
     EXCL.parent.mkdir(parents=True, exist_ok=True)
@@ -223,7 +212,7 @@ def vigia_exclusao(cfg):
                 with config.dentro(esp.criar()):
                     refazer_exclusao()
             except Exception as e:
-                print("exclusão: erro", str(e)[:120], flush=True)
+                print("exclusão: erro", _erro(e)[:120], flush=True)
         time.sleep(300)
 
 
@@ -237,7 +226,10 @@ def localizar(nome):
     """(caminho, editável) ou None. PORTE: sem prefixo `projecto:nota` (outras memórias só-leitura); todas as notas são editáveis."""
     if not NOME_RX.match(nome or "") or nome in excl() or f"{nome}.md" in IGNORA:
         return None
-    p = (COPIA / f"{nome}.md").resolve()
+    q = COPIA / f"{nome}.md"
+    if not caminhos.regular(q):                     # ronda 8 (ligações simbólicas): uma ligação simbólica com nome de nota não se abre (nem para dentro)
+        return None
+    p = q.resolve()
     return (p, True) if p.parent == COPIA.resolve() and p.exists() else None
 
 
@@ -248,7 +240,7 @@ def sha(b):
 def todas_notas():
     out = []
     ex = excl()
-    for p in COPIA.glob("*.md"):
+    for p in caminhos.notas(COPIA):
         # só nomes que se conseguem abrir (ex.: as cópias «x.CONFLITO-<data>.md» ficam de fora; davam 404)
         if p.name in IGNORA or p.stem in ex or not NOME_RX.match(p.stem):
             continue
@@ -389,12 +381,11 @@ def pergunta(q):
 
 
 def entrada():
-    if not INBOX.exists():
+    pend = entrada_mod.pendentes()
+    if not pend:
         return []
-    regs = [json.loads(l) for l in INBOX.read_text(encoding="utf-8").splitlines() if l.strip()]
-    pend = [r for r in regs if not r.get("arquivado")]
     out = []
-    textos = {p.stem: _norm(p.read_text(encoding="utf-8", errors="replace")) for p in COPIA.glob("*.md")} if pend else {}
+    textos = {p.stem: _norm(p.read_text(encoding="utf-8", errors="replace")) for p in caminhos.notas(COPIA)} if pend else {}
     pal = {n: _palavras(t) for n, t in textos.items()}
     df = {}
     for ws in pal.values():
@@ -434,22 +425,21 @@ def _palavras(t):
 
 # ───────── Entrada: «Juntar à nota» e «Eliminar» ─────────
 def _regs():
-    return [json.loads(l) for l in INBOX.read_text(encoding="utf-8").splitlines() if l.strip()] if INBOX.exists() else []
+    return entrada_mod.ler()
 
 
 def _entrada_mudar(t, fn):
-    """aplica fn(registo) → registo|None (None = apagar) à ideia pendente com o carimbo t; escrita atómica com tranca."""
-    with open(INBOX.with_name(".entrada.lock"), "w") as lk:
-        fcntl.flock(lk, fcntl.LOCK_EX)
-        regs = _regs()
-        alvo = next((r for r in regs if r.get("t") == t and not r.get("arquivado")), None)
-        if not alvo:
-            return None
-        novo = fn(dict(alvo))
-        regs = [(novo if r is alvo else r) for r in regs if not (r is alvo and novo is None)]
-        tmp = INBOX.with_name(".entrada.jsonl.tmp")
-        tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in regs), encoding="utf-8"); tmp.replace(INBOX)
-        return alvo
+    """aplica fn(registo) → registo|None (None = apagar) à ideia pendente com o carimbo t — pelo trinco comum da Entrada
+    (basalt.entrada), o mesmo que o MCP e o CLI usam para acrescentar."""
+    return entrada_mod.mudar(t, fn)
+
+
+def entrada_arquivar(t):
+    """marca a ideia como arrumada sem a juntar a nenhuma nota (a página identifica-a pelo t, não pela posição)."""
+    alvo = _entrada_mudar(t, lambda x: dict(x, arquivado=True, arquivado_em=time.strftime("%Y-%m-%dT%H:%M:%S")))
+    if not alvo:
+        return 404, {"erro": "Essa ideia já não está na Entrada."}
+    return 200, {"ok": True, "mensagem": "Arrumada."}
 
 
 def entrada_juntar(t, nome, auto=None):
@@ -490,7 +480,7 @@ def entrada_apagar(t):
 # PORTE: era um modelo local fixo; agora `ia.actual().chat_json`. Sem IA de chat a entrada automática não faz nada (vigia_entrada
 # nem arranca). Os travões usam `sim` do motor: em pesquisa só por palavras a escala é outra e quase nada passa (fica «dúvida»).
 def _candidatas(texto, n=3):
-    textos = {p.stem: _norm(p.read_text(encoding="utf-8", errors="replace")) for p in COPIA.glob("*.md")}
+    textos = {p.stem: _norm(p.read_text(encoding="utf-8", errors="replace")) for p in caminhos.notas(COPIA)}
     pal = {k: _palavras(v) for k, v in textos.items()}
     df = {}
     for ws in pal.values():
@@ -521,7 +511,7 @@ Responde só JSON: {{"acao":"juntar|lixo|duvida","nota":"<nome exacto de uma can
         if not isinstance(d, dict):
             raise ia_mod.IAIndisponivel("a IA não respondeu com um objecto JSON")
     except Exception as e:
-        return {"acao": "duvida", "nota": cands[0][0] if cands else None, "confianca": 0, "motivo": f"IA indisponível ({str(e)[:60]})"}
+        return {"acao": "duvida", "nota": cands[0][0] if cands else None, "confianca": 0, "motivo": f"IA indisponível ({_erro(e, tipo=False)[:60]})"}
     acao, nota = d.get("acao"), d.get("nota") or None
     try:
         conf = float(d.get("confianca") or 0)
@@ -555,12 +545,14 @@ def pode_auto(autor):
 
 
 def processar_entrada():
-    if not INBOX.exists():
-        return 0
     feitos = 0
-    for r in _regs():
+    for r in entrada_mod.pendentes():       # fotografia; cada decisão volta a ler sob o trinco em _entrada_mudar
         if r.get("arquivado") or r.get("auto") or r.get("auto_bloqueado"):
             continue
+        if tem_segredo_texto(r.get("texto", "")):          # ronda 8 (notas retidas): uma ideia com segredo em claro fica na Entrada, sem ir à IA
+            _entrada_mudar(r["t"], lambda x: dict(x, auto={"acao": "duvida", "nota": None, "confianca": 0, "autor": autor_de(x),
+                                                            "quando": time.strftime("%Y-%m-%dT%H:%M:%S"), "motivo": MOTIVO_SEGREDO}))
+            feitos += 1; continue
         d = decidir_entrada(r["texto"]); d["quando"] = time.strftime("%Y-%m-%dT%H:%M:%S")
         d["autor"] = autor_de(r)
         if not pode_auto(d["autor"]) and d["acao"] in ("juntar", "lixo"):       # sem permissão → só sugestão, espera aprovação
@@ -586,7 +578,7 @@ def vigia_entrada(cfg):
                 with config.dentro(esp.criar()):
                     processar_entrada()
             except Exception as e:
-                print("vigia_entrada:", str(e)[:200], flush=True)
+                print("vigia_entrada:", _erro(e)[:200], flush=True)
         time.sleep(180)
 
 
@@ -614,14 +606,11 @@ def entrada_desfazer(t):
                 if c != 200:
                     return c, g
                 msg = f"Tirei a ideia da nota «{reg['juntado_em']}» e voltou para a Entrada."
-    with open(INBOX.with_name(".entrada.lock"), "w") as lk:
-        fcntl.flock(lk, fcntl.LOCK_EX)
-        regs = _regs()
-        for r in regs:
-            if r.get("t") == t:
-                r.update(arquivado=False, auto_bloqueado=True); r.pop("juntado_em", None); r.pop("linha", None); r.pop("arquivado_em", None)
-        tmp = INBOX.with_name(".entrada.jsonl.tmp")
-        tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in regs), encoding="utf-8"); tmp.replace(INBOX)
+    def _repor(r):
+        if r.get("t") == t:
+            r.update(arquivado=False, auto_bloqueado=True); r.pop("juntado_em", None); r.pop("linha", None); r.pop("arquivado_em", None)
+        return r
+    entrada_mod.mudar_todos(_repor)
     return 200, {"ok": True, "mensagem": msg}
 
 
@@ -721,7 +710,7 @@ def _correr_fusao(j, esp):
             _job_grava(j)
             _reindexar(esp)
         except Exception as e:
-            j.update(estado="falhou", passo="", mensagem=f"Não apliquei: {str(e)[:200]}. (Se chegou a gravar, há fotografia git antes.)"); _job_grava(j)
+            j.update(estado="falhou", passo="", mensagem=f"Não apliquei: {_erro(e, tipo=False)[:200]}. (Se chegou a gravar, há fotografia git antes.)"); _job_grava(j)
         finally:
             if _job_lock.locked():
                 _job_lock.release()
@@ -733,6 +722,8 @@ def iniciar_fusao(manter, fundir):
     for n in (manter, fundir):
         if not NOME_RX.match(n or "") or ":" in n or n in excl() or not (REAL / f"{n}.md").exists():
             return 400, {"erro": f"«{n}» não é uma nota desta memória que se possa unir."}
+        if tem_segredo_ficheiro(REAL / f"{n}.md"):            # ronda 8 (notas retidas): retida pelo conteúdo (a lista pode ainda não a ter)
+            return 400, {"erro": f"«{n}» tem o que parece uma password ou chave em claro — não a mando à IA."}
     if manter == fundir:
         return 400, {"erro": "Escolhe duas notas diferentes."}
     if not _job_lock.acquire(blocking=False):
@@ -775,9 +766,7 @@ def diario(dia):
                 continue
             fich.append(f); (novas if est.startswith("A") else mudadas).add(Path(f).stem)
         commits.append({"hora": data[11:16], "msg": msg, "ficheiros": fich})
-    ent = []
-    if INBOX.exists():
-        ent = [json.loads(l) for l in INBOX.read_text(encoding="utf-8").splitlines() if l.strip() and json.loads(l).get("t", "").startswith(a)]
+    ent = [e for e in _regs() if str(e.get("t", "")).startswith(a)]
     # PORTE: sem «tarefas» no diário (vinham de um sistema de tarefas externo)
     return {"dia": a, "commits": commits, "notas_novas": sorted(novas), "notas_mudadas": sorted(mudadas - novas),
             "entrada": [{"t": e["t"], "de": e.get("de"), "texto": e["texto"]} for e in ent]}
@@ -806,8 +795,7 @@ def estado():
     except Exception:
         pass
     ult = recentes(1)
-    ent = sum(1 for l in (INBOX.read_text(encoding="utf-8").splitlines() if INBOX.exists() else [])
-              if l.strip() and not json.loads(l).get("arquivado"))
+    ent = len(entrada_mod.pendentes())
     desc = ia_mod.actual().descricao()
     # PORTE: «modelo» era uma constante; agora o modelo de chat configurado ("" = IA desligada) e `ia` com o resto
     return {"notas": len(notas), "ligacoes": lig, "entrada": ent, "pedacos": ped,
@@ -1229,6 +1217,40 @@ def reconciliar(nome, base_texto, texto):
 ROTAS_EXTRA: dict = {}
 
 
+def proxy_de_confianca(ip: str, proxies=()) -> bool:
+    """ronda 8 (X-Forwarded-For): loopback conta sempre; outro proxy (Docker, outra máquina) só se estiver em [auth] proxies_de_confianca."""
+    try:
+        a = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if a.is_loopback:
+        return True
+    for p in proxies:
+        try:
+            if a in ipaddress.ip_network(p, strict=False):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
+def ip_do_pedido(ip: str, xff: str | None, proxies=()) -> str:
+    """o IP de quem pediu. Atrás de um proxy de confiança vale o X-Forwarded-For, lido da DIREITA (o último é o que o nosso proxy
+    acrescentou; o 1.º podia vir inventado pelo visitante para fugir ao limite de tentativas), saltando os próprios proxies. De
+    qualquer outro sítio o cabeçalho ignora-se; um valor que não é IP fica no IP da ligação."""
+    if not proxy_de_confianca(ip, proxies):
+        return ip
+    cadeia = [x.strip() for x in (xff or "").split(",") if x.strip()]
+    for x in reversed(cadeia):
+        try:
+            x = str(ipaddress.ip_address(x))
+        except ValueError:
+            return ip
+        if not proxy_de_confianca(x, proxies):
+            return x
+    return ip
+
+
 class H(BaseHTTPRequestHandler):
     server_version = "basalt"
     sys_version = ""
@@ -1244,19 +1266,48 @@ class H(BaseHTTPRequestHandler):
 
     # ── quem é ──
     def _ip(self):
-        """o IP de quem pediu. Atrás de um proxy NA MESMA MÁQUINA (loopback) conta o 1.º X-Forwarded-For; de qualquer outro sítio
-        o cabeçalho não é de confiança (o visitante podia inventá-lo para fugir ao limite de tentativas)."""
-        ip = self.client_address[0]
-        if ip in ("127.0.0.1", "::1"):
-            xff = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
-            try:
-                return str(ipaddress.ip_address(xff)) if xff else ip
-            except ValueError:
-                return ip
-        return ip
+        """o IP de quem pediu (ver ip_do_pedido): atrás de um proxy de confiança vale o X-Forwarded-For lido da DIREITA."""
+        cfg = getattr(self, "cfg", None)
+        proxies = cfg.auth.proxies_de_confianca if cfg is not None else ()
+        return ip_do_pedido(self.client_address[0], self.headers.get("X-Forwarded-For"), proxies)
+
+    def _anfitriao_ok(self):
+        """ronda 8 (Host/Origin): em modo aberto (sem senha) — ou quando [basalt] anfitrioes está definido — o Host do pedido tem de ser um nome nosso.
+        É o que separa a página de um sítio malicioso que aponte um nome DNS seu para 127.0.0.1 (DNS rebinding): o browser da
+        vítima chama o Basalt local com Host = esse nome e, sem isto, lia e escrevia as notas."""
+        if self.cfg.auth.modo != "aberto" and not self.cfg.anfitrioes:
+            return True
+        return config.anfitriao_de(self.headers.get("Host")) in config.anfitrioes(self.cfg)
+
+    def _recusar_anfitriao(self):
+        h = self.headers.get("Host") or ""
+        return self._json(421, {"erro": f"Este servidor não responde pelo nome «{h[:80]}». "
+                                        "Em modo aberto só por localhost/127.0.0.1; para outro nome, põe-no em [basalt] anfitrioes."})
+
+    def _outra_origem(self):
+        """ronda 8 (Host/Origin): numa escrita, um Origin que não é nosso (nos mesmos modos em que se confere o Host) → motivo; senão ""."""
+        if self.cfg.auth.modo != "aberto" and not self.cfg.anfitrioes:
+            return ""
+        origem = self.headers.get("Origin")
+        if origem and config.anfitriao_de(origem) not in config.anfitrioes(self.cfg):
+            return "Pedido de outro sítio (Origin)."
+        if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":
+            return "Pedido de outro sítio."
+        return ""
 
     def _quem(self):
         return self.aut.utilizador_do_pedido(self.headers, self._ip())
+
+    def _dono_errado(self, user):
+        """ronda 8 (contas no mesmo browser): a página manda X-Basalt-Dono = o dono da cópia local com que está a trabalhar.
+        Se outra conta entrou entretanto neste browser, o cookie já é dela — o pedido seria feito (e a edição sem internet
+        enviada) em nome de quem não a escreveu. Recusa-se SEM trancar a cópia (não é falta de acesso) e diz-se porquê."""
+        d = (self.headers.get("X-Basalt-Dono") or "").strip()
+        if d and d != dono_de(user):
+            self._json(403, {"erro": "Entrou outra conta neste browser: recarrega a página antes de continuar.", "outraConta": True},
+                       [("X-Basalt-Outra-Conta", "1")])
+            return True
+        return False
 
     def _sem_acesso(self, caminho):
         modo = self.cfg.auth.modo
@@ -1333,7 +1384,7 @@ class H(BaseHTTPRequestHandler):
         try:
             f(self)
         except Exception as e:
-            print("erro", metodo, self.path.split("?")[0], str(e)[:200], flush=True)
+            print("erro", metodo, self.path.split("?")[0], _erro(e)[:200], flush=True)
             try:
                 self._json(500, {"erro": "Erro interno."})
             except OSError:
@@ -1341,11 +1392,15 @@ class H(BaseHTTPRequestHandler):
         return True
 
     def do_GET(self):
+        if not self._anfitriao_ok():
+            return self._recusar_anfitriao()
         if self._extra("GET"):
             return
         u = urllib.parse.urlparse(self.path); q = urllib.parse.parse_qs(u.query)
         if u.path in self.PWA_PUBLICOS:             # o Chrome pede o manifesto/ícones SEM cookies
             return self._static(u.path)
+        if u.path == "/api/saude":                   # ronda 8 (instalação): healthcheck (Docker/monitorização) sem sessão — só diz que está vivo
+            return self._json(200, {"ok": True})
         if u.path == "/entrar":
             if self.cfg.auth.modo != "senha":
                 self.send_response(302); self.send_header("Location", "/"); self.send_header("Content-Length", "0"); self.end_headers(); return
@@ -1354,10 +1409,12 @@ class H(BaseHTTPRequestHandler):
         if user is None:
             return self._sem_acesso(u.path)
         g = lambda k, d="": (q.get(k) or [d])[0]
+        if u.path.startswith("/api/") and self._dono_errado(user):
+            return
         try:
             with self._dentro(user):
                 if u.path.startswith("/anexos/"):                                           # ficheiros das notas (![[foto.png]])
-                    return self._anexo(urllib.parse.unquote(u.path[len("/anexos/"):]))
+                    return self._anexo(urllib.parse.unquote(u.path[len("/anexos/"):]), user)
                 if not u.path.startswith("/api/"):
                     return self._static(u.path)
                 if u.path == "/api/etiquetas":                                              # autocompletar #etiquetas no editor
@@ -1365,7 +1422,7 @@ class H(BaseHTTPRequestHandler):
                 if u.path == "/api/eu":
                     return self._json(200, {"email": user.email, "nome": user.nome or user.email.split("@")[0], "admin": user.admin,
                                             "modo": self.cfg.auth.modo, "espaco": user.espaco, "lingua": self.cfg.lingua,
-                                            "ia": ia_mod.actual().descricao()})
+                                            "ia": ia_mod.actual().descricao(), "dono": dono_de(user)})
                 if u.path == "/api/estado": return self._json(200, estado())
                 if u.path == "/api/notas": return self._json(200, todas_notas())
                 if u.path == "/api/pacote": return self._json(200, pacote())                      # para funcionar sem internet
@@ -1400,23 +1457,35 @@ class H(BaseHTTPRequestHandler):
                 if u.path == "/api/recentes": return self._json(200, recentes(int(g("n", "20") or 20)))
                 return self._json(404, {"erro": "Rota desconhecida."})
         except Exception as e:
-            print("erro GET", u.path, str(e)[:200], flush=True)
+            print("erro GET", u.path, _erro(e)[:200], flush=True)
             return self._json(500, {"erro": "Erro interno."})
 
     # ── escritas ──
     def _escrita(self, user):
         if self.headers.get("X-Basalt") != "1":
             self._json(403, {"erro": "Pedido sem o cabeçalho X-Basalt."}); return False
+        motivo = self._outra_origem()
+        if motivo:
+            self._json(403, {"erro": motivo}); return False
+        if self._dono_errado(user):
+            return False
         return True
 
     # ── anexos: imagens, PDFs, áudio… guardados ao lado das notas (basalt/anexos.py) e etiquetas ──
-    def _anexo(self, nome):
+    def _anexo(self, nome, user):
         estado, cab, corpo = anexos.ler(config.actual(), nome)
         if estado != 200:
             return self._json(estado, {"erro": "Nome de anexo inválido." if estado == 400 else "Não existe."})
+        # ronda 8: o anexo guardava-se 1 h na cache do browser («private, max-age=3600») — depois de sair e entrar outra conta,
+        # o browser mostrava o anexo da anterior sem perguntar. Agora revalida sempre, e a etiqueta muda com o dono.
+        etag = '"' + hashlib.sha256(dono_de(user).encode("utf-8") + b"\0" + corpo).hexdigest()[:32] + '"'
+        if etag in [e.strip() for e in (self.headers.get("If-None-Match") or "").split(",")]:
+            self.send_response(304); self.send_header("ETag", etag); self.send_header("Cache-Control", anexos.CACHE)
+            self.send_header("Vary", "Cookie"); self.end_headers(); return
         self.send_response(200)
         for k, v in (cab.items() if hasattr(cab, "items") else cab):
             self.send_header(k, v)
+        self.send_header("ETag", etag); self.send_header("Vary", "Cookie")
         self.end_headers(); self.wfile.write(corpo)
 
     def _anexo_enviar(self, user, u):
@@ -1437,10 +1506,12 @@ class H(BaseHTTPRequestHandler):
             with self._dentro(user):
                 final = anexos.guardar(config.actual(), nome, dados)
         except ValueError as e:
-            return self._json(400, {"erro": str(e)})
+            return self._json(400, {"erro": _erro(e, tipo=False)})
         return self._json(201, {"nome": final, "bytes": len(dados)})
 
     def do_PUT(self):
+        if not self._anfitriao_ok():
+            return self._recusar_anfitriao()
         if self._extra("PUT"):
             return
         user = self._quem()
@@ -1461,7 +1532,7 @@ class H(BaseHTTPRequestHandler):
                     return self._json(cod, r)
                 return self._json(404, {"erro": "Rota desconhecida."})
         except Exception as e:
-            print("erro PUT", str(e)[:200], flush=True); return self._json(400, {"erro": "Pedido inválido."})
+            print("erro PUT", _erro(e)[:200], flush=True); return self._json(400, {"erro": "Pedido inválido."})
 
     def _entrar(self):
         """POST /api/entrar {email, senha} (modo senha): cookie de sessão HttpOnly/SameSite=Strict."""
@@ -1477,17 +1548,20 @@ class H(BaseHTTPRequestHandler):
             return self._json(400, {"erro": "Pedido inválido."})
         ok, res = self.aut.entrar(str(c.get("email", "")), str(c.get("senha", "")), self._ip())
         if not ok:
-            return self._json(429 if res.startswith("Demasiadas") else 401, {"erro": res})
+            return self._json(429 if res.startswith("Demasiadas") else 500 if res.startswith("Não consegui") else 401, {"erro": res})
         seguro = (self.headers.get("X-Forwarded-Proto") or "").lower() == "https"
         return self._json(200, {"ok": True}, [("Set-Cookie", self.aut.cabecalho_cookie(res, seguro))])
 
     def _sair(self):
         if self.headers.get("X-Basalt") != "1":
             return self._json(403, {"erro": "Pedido sem o cabeçalho X-Basalt."})
-        self.aut.sair(self.aut.token_do_pedido(self.headers))
-        return self._json(200, {"ok": True}, [("Set-Cookie", self.aut.cabecalho_apagar_cookie())])
+        ok, motivo = self.aut.sair(self.aut.token_do_pedido(self.headers))
+        return self._json(200 if ok else 500, {"ok": ok, **({} if ok else {"erro": motivo})},   # ronda 8 (configuração relida em execução): «saí» só quando ficou gravado
+                          [("Set-Cookie", self.aut.cabecalho_apagar_cookie())])
 
     def do_POST(self):
+        if not self._anfitriao_ok():
+            return self._recusar_anfitriao()
         if self._extra("POST"):
             return
         u = urllib.parse.urlparse(self.path)
@@ -1545,11 +1619,13 @@ class H(BaseHTTPRequestHandler):
                 if u.path == "/api/entrada/apagar":
                     return self._json(*entrada_apagar(str(c.get("t", ""))))
                 if u.path == "/api/entrada/arquivar":
+                    if c.get("t"):                                  # a página manda o t (único); o n é só para páginas antigas
+                        return self._json(*entrada_arquivar(str(c.get("t"))))
                     r = motor(["arquivar", str(int(c.get("n", 0)))])
                     return self._json(200 if r.returncode == 0 else 400, {"ok": r.returncode == 0, "mensagem": (r.stdout or r.stderr).strip()})
                 return self._json(404, {"erro": "Rota desconhecida."})
         except Exception as e:
-            print("erro POST", str(e)[:200], flush=True); return self._json(400, {"erro": "Pedido inválido."})
+            print("erro POST", _erro(e)[:200], flush=True); return self._json(400, {"erro": "Pedido inválido."})
 
 
 # ───────────────────────── arranque ─────────────────────────
@@ -1564,7 +1640,7 @@ def git_iniciar(esp):
         subprocess.run(["git", "-C", str(esp.real), *config.git_c(), "commit", "-q", "--allow-empty", "-m", "basalt: início"],
                        capture_output=True, timeout=30)
     except (OSError, subprocess.TimeoutExpired) as e:
-        print("aviso: não consegui iniciar o git da memória:", str(e)[:100], flush=True)
+        print("aviso: não consegui iniciar o git da memória:", _erro(e)[:100], flush=True)
 
 
 def vigia_copia(cfg, segundos):
@@ -1577,7 +1653,7 @@ def vigia_copia(cfg, segundos):
                 with config.dentro(esp):
                     duasvias.ciclo()
             except Exception as e:
-                print("vigia da cópia:", str(e)[:200], flush=True)
+                print("vigia da cópia:", _erro(e)[:200], flush=True)
         time.sleep(segundos)
 
 
@@ -1588,18 +1664,17 @@ def indexar_se_vazio(cfg):
     for esp in _espacos(cfg):
         try:
             with config.dentro(esp):
-                vazio = int(estado().get("pedacos") or 0) == 0 and any(COPIA.glob("*.md"))
+                vazio = int(estado().get("pedacos") or 0) == 0 and any(caminhos.notas(COPIA))
             if vazio:
                 subprocess.run([sys.executable, "-m", "basalt.sig", "indexar"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                env=config.ambiente_filho(esp), cwd=str(Path(__file__).resolve().parent.parent), timeout=3600)
         except Exception as e:
-            print("indexação inicial:", str(e)[:200], flush=True)
+            print("indexação inicial:", _erro(e)[:200], flush=True)
 
 
 def criar_servidor(cfg, host=None, porta=None):
     """o servidor HTTP pronto a servir (não arranca fios nem vigias). porta=0 → o sistema escolhe uma livre (testes)."""
-    config.exportar_ambiente(cfg)
-    ia_mod.definir(ia_mod.IA(cfg.ia))
+    config.activar(cfg)                       # ambiente para os filhos + IA de [ia] (ronda 8, --config para tudo: o mesmo que a linha de comandos faz)
     for esp in _espacos(cfg):
         esp.criar()
         git_iniciar(esp)
@@ -1625,7 +1700,7 @@ def servir(cfg, vigias=True, host=None, porta=None):
                 with config.dentro(esp):
                     duasvias.ciclo()
             except Exception as e:
-                print("sincronização inicial:", str(e)[:200], flush=True)
+                print("sincronização inicial:", _erro(e)[:200], flush=True)
     for esp in _espacos(cfg):
         with config.dentro(esp):
             refazer_exclusao()

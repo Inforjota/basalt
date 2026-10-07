@@ -6,6 +6,8 @@ import os
 import subprocess
 import time
 
+import sys
+
 import pytest
 
 from basalt import arrumar, config, sig
@@ -322,14 +324,18 @@ class TestRelatorio:
         assert d["pendentes"] == [[30, "barragem_a", ["⏳ rever o limite"]]]
         assert d["commits_hoje"] == [] and d["notas_hoje"] == ["barragem_b", "bolo"]
 
-    def test_texto(self, no_ambiente, capsys):
+    def test_texto(self, no_ambiente, capsys, monkeypatch):
         self.montar(no_ambiente)
         arrumar.main([])
         out = capsys.readouterr().out
         assert "Basalt — arrumação" in out
         assert "● Notas muito parecidas (rever se juntar): 1" in out and "barragem_a  ≈  barragem_b" in out
-        assert "● Pendentes soltos em notas com ≥21 dias: 1" in out and "barragem_a (30d): ⏳ rever o limite" in out
+        assert "● Pendentes soltos em notas com ≥21 dias: 1" in out and "barragem_a (30d): 1 pendente(s)" in out
+        assert "rever o limite" not in out                  # sem terminal (journal/cron) o texto da nota não sai
         assert "● Hoje: 0 gravações na memória · 2 notas mexidas" in out
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)   # num terminal, a linha do pendente aparece
+        arrumar.main([])
+        assert "barragem_a (30d): ⏳ rever o limite" in capsys.readouterr().out
 
     def test_o_texto_mostra_no_maximo_8_de_cada(self, no_ambiente, capsys):
         for i in range(10):

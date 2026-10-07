@@ -11,6 +11,9 @@ import os
 import re
 from pathlib import Path
 
+from . import caminhos
+from .segredos import SEGREDO_RX, SegredoEmClaro, tem_segredo_texto
+
 NOME_RX = re.compile(r"[A-Za-z0-9\u00C0-\u024F][A-Za-z0-9\u00C0-\u024F._ \-]{0,118}[A-Za-z0-9]")
 SUFIXOS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf", ".mp3", ".m4a", ".wav", ".ogg", ".mp4", ".webm",
            ".csv", ".json", ".txt"}
@@ -18,6 +21,7 @@ IMAGENS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 TAMANHO_MAX = 25 * 1024 * 1024
 _EMBED_RX = re.compile(r"!\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]")
 _TEXTO = "text/plain; charset=utf-8"
+TEXTO = {".txt", ".csv", ".json", ".svg"}      # anexos de texto: guarda inteiro (chaves E passwords escritas à mão)
 
 
 def nome_ok(nome: str) -> bool:
@@ -34,16 +38,22 @@ def tipo_de(nome: str) -> str:
     return t + ("; charset=utf-8" if t.startswith("text/") or t == "application/json" else "")
 
 
+# ronda 8: revalida sempre (o servidor responde 304 se não mudou) — com max-age o browser servia o anexo de outra conta
+CACHE = "private, no-cache"
+
+
 def ler(esp, nome: str):
     """(estado, cabeçalhos, corpo). 400 nome inválido · 404 não há · 200 com o tipo pelo sufixo (nunca pelo conteúdo)."""
     if not nome_ok(nome):
         return 400, {"Content-Type": _TEXTO}, "nome de anexo inválido".encode("utf-8")
     try:
+        if not caminhos.regular(pasta(esp) / nome):      # ronda 8 (ligações simbólicas): uma ligação simbólica na pasta não se serve (podia apontar para fora)
+            raise FileNotFoundError(nome)
         dados = (pasta(esp) / nome).read_bytes()
     except (FileNotFoundError, IsADirectoryError, NotADirectoryError, PermissionError):
         return 404, {"Content-Type": _TEXTO}, "anexo não encontrado".encode("utf-8")
     tipo = tipo_de(nome)
-    cab = {"Content-Type": tipo, "Content-Length": str(len(dados)), "Cache-Control": "private, max-age=3600",
+    cab = {"Content-Type": tipo, "Content-Length": str(len(dados)), "Cache-Control": CACHE,
            "X-Content-Type-Options": "nosniff"}
     if tipo.startswith("image/svg"):          # um SVG aberto directamente é um documento: sem scripts nem pedidos para fora
         cab["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'"
@@ -57,6 +67,9 @@ def guardar(esp, nome: str, dados: bytes) -> str:
         raise ValueError("nome de anexo inválido (letras, números, ponto, espaço, - e _; sufixo conhecido)")
     if len(dados) > TAMANHO_MAX:
         raise ValueError("anexo demasiado grande (máximo %d MB)" % (TAMANHO_MAX // 1024 // 1024))
+    txt = dados.decode("utf-8", errors="replace")
+    if SEGREDO_RX.search(txt) or (Path(nome).suffix.lower() in TEXTO and tem_segredo_texto(txt)):
+        raise SegredoEmClaro()
     d = pasta(esp)
     d.mkdir(parents=True, exist_ok=True)
     base, suf = Path(nome).stem, Path(nome).suffix
@@ -66,7 +79,7 @@ def guardar(esp, nome: str, dados: bytes) -> str:
             fd = os.open(d / final, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         except FileExistsError:
             try:
-                if (d / final).read_bytes() == dados:
+                if caminhos.regular(d / final) and (d / final).read_bytes() == dados:
                     return final
             except OSError:
                 pass

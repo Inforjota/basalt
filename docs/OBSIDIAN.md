@@ -3,6 +3,8 @@
 A memória do Basalt **já é um cofre Obsidian**: uma pasta de ficheiros `.md` com `[[ligações]]`, histórico git e sem formato
 próprio. Não há «sincronizar com o Obsidian» — há uma pasta que os dois abrem.
 
+Os comandos desta página supõem `export BASALT_CONFIG=~/basalt-dados/basalt.toml` (o caminho que o `iniciar` mostrou).
+
 ## Usar o Obsidian em cima do Basalt
 Abre no Obsidian a pasta **`copia/`** do teu espaço (o caminho exacto aparece em `python3 -m basalt estado`). O Basalt
 mantém `copia/` e `memoria/` iguais nas duas direcções: o que editas no Obsidian entra na memória, o que os agentes escrevem

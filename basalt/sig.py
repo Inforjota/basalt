@@ -23,10 +23,12 @@ try:                                    # PORTE: o numpy era obrigatório; agora
 except ImportError:
     np = None
 
-from . import config
+from . import config, retidas
+from . import entrada as entrada_mod      # «entrada» aqui é o comando do CLI
 from .config import Via
 from .ia import IA, IAIndisponivel, actual as ia, definir as definir_ia   # noqa: F401  (IA, definir_ia: para quem importa o sig)
 from .lexical import IndiceLexical
+from .segredos import SegredoEmClaro, tem_segredo_texto
 
 PASTA = Via("real")                     # PORTE: antes BASALT_DIR/caminhos fixos; agora as pastas do espaço activo
 DB = Via("semantica")
@@ -145,10 +147,7 @@ def _extras():
 def fontes():
     """Devolve [(fonte, ref, titulo, trecho)] de tudo o que se indexa."""
     itens = []
-    for p in sorted(PASTA.glob("*.md")):
-        if p.name == "MEMORY.md":      # índice de memórias do Claude Code: não é uma nota
-            continue
-        t = p.read_text(encoding="utf-8", errors="replace")
+    for p, t in retidas.notas(PASTA):          # ronda 8 (notas retidas): uma nota retida (lista ou segredo em claro) nunca chega ao índice nem aos embeddings
         nome, desc = campo(t, "name") or p.stem, campo(t, "description")
         corpo = re.sub(r"^---\n.*?\n---\n", "", t, count=1, flags=re.S)
         # o nome+descrição viajam com cada pedaço, para o contexto não se perder
@@ -205,10 +204,11 @@ def _excluidas():
 
 
 def carregar(c):
-    """[(fonte, ref, titulo, trecho, vec_bytes)] — sem as notas excluídas."""
+    """[(fonte, ref, titulo, trecho, vec_bytes)] — sem as notas excluídas, nem pedaços com segredo em claro (um índice feito
+    antes de a nota ficar retida ainda os pode ter: saem na próxima indexação, mas entretanto também não chegam ao modelo)."""
     excl = _excluidas()
     return [(f, r, t, tr, v or b"") for f, r, t, tr, v in c.execute("SELECT fonte,ref,titulo,trecho,vec FROM pedaco")
-            if not (excl and f == "nota" and r.split("#")[0] in excl)]
+            if not (excl and f == "nota" and r.split("#")[0] in excl) and not tem_segredo_texto(tr or "")]
 
 
 BANAIS = {"como", "para", "pelo", "pela", "esta", "este", "isso", "fazer", "feito", "sobre", "mais", "menos", "quando",
@@ -405,11 +405,9 @@ def pergunta(termo, como_json=False):
 # ───────────────────────────── caixa de entrada ─────────────────────────────
 def guardar(texto, de="terminal"):
     """Captura rápida de qualquer lado → caixa de entrada (uma linha JSON). Arruma-se depois (basalt.auto_arrumar ou à mão)."""
-    import datetime
-    INBOX.parent.mkdir(parents=True, exist_ok=True)
-    reg = {"t": datetime.datetime.now().isoformat(timespec="seconds"), "de": de, "texto": texto.strip(), "arquivado": False}
-    with open(INBOX, "a", encoding="utf-8") as f:
-        f.write(json.dumps(reg, ensure_ascii=False) + "\n")
+    if tem_segredo_texto(texto):
+        raise SegredoEmClaro()            # o mesmo guarda da web/MCP: a ideia NÃO fica na entrada
+    entrada_mod.acrescentar(texto, de)           # pelo trinco comum da Entrada (a web/MCP/arrumação reescrevem o mesmo ficheiro)
     # sugere a nota mais parecida (não decide nada), se houver índice
     try:
         fortes, _ = _procurar(texto, 1)
@@ -420,9 +418,7 @@ def guardar(texto, de="terminal"):
 
 
 def _ler_inbox():
-    if not Path(INBOX).exists():
-        return []
-    return [json.loads(l) for l in Path(INBOX).read_text(encoding="utf-8").splitlines() if l.strip()]
+    return entrada_mod.ler()
 
 
 def entrada(como_json=False):
@@ -438,14 +434,10 @@ def entrada(como_json=False):
 
 
 def arquivar(n):
-    regs = _ler_inbox(); pend = [r for r in regs if not r.get("arquivado")]
-    if not (1 <= n <= len(pend)):
-        sys.exit(f"nº fora do intervalo (há {len(pend)} por arrumar)")
-    alvo = pend[n - 1]
-    for r in regs:
-        if r is alvo:
-            r["arquivado"] = True
-    Path(INBOX).write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in regs) + "\n", encoding="utf-8")
+    try:
+        alvo = entrada_mod.arquivar_n(n)
+    except IndexError as e:
+        sys.exit(f"nº fora do intervalo (há {e.args[0]} por arrumar)")
     print(f"marcado como arrumado: {alvo['texto'][:80]}")
 
 
@@ -488,6 +480,9 @@ def main(argv=None):
         sys.exit(f"configuração inválida: {e}")
     except IAIndisponivel as e:
         print(f"IA indisponível: {e}", file=sys.stderr)
+        sys.exit(2)
+    except SegredoEmClaro as e:
+        print(e, file=sys.stderr)
         sys.exit(2)
 
 

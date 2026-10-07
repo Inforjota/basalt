@@ -1,4 +1,8 @@
-# docker compose up -d   → http://localhost:8121  (modo «aberto» em localhost; em rede, pôr [auth] modo = "senha" no basalt.toml)
+# Arranque do zero (na pasta docker/; a imagem corre como o utilizador 1000 e precisa de um basalt.toml antes do `up`):
+#   mkdir -p dados && sudo chown 1000:1000 dados
+#   docker compose run --rm basalt iniciar --dados /dados --email tu@exemplo.pt --modo senha --escutar 0.0.0.0   (pede a senha)
+#   docker compose up -d        → http://127.0.0.1:8121
+# O `iniciar` cria /dados/basalt.toml (BASALT_CONFIG já aponta para lá). Na rede, o login é sempre obrigatório.
 services:
   basalt:
     build:

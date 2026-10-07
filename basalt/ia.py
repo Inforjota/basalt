@@ -18,6 +18,7 @@ import urllib.request
 from pathlib import Path
 
 from .config import IAConfig
+from .segredos import SEGREDO_RX
 
 
 class IAIndisponivel(RuntimeError):
@@ -40,17 +41,59 @@ def _chave(nome_env: str, ficheiro: str) -> str:
     return (os.environ.get(nome_env) or "").strip() if nome_env else ""
 
 
+class _SemRedirect(urllib.request.HTTPRedirectHandler):
+    """nunca seguimos um redirect: o urllib de série repete o Authorization/x-api-key no endereço novo, e a chave iria parar
+    a outro servidor. Devolver None faz o 3xx chegar como HTTPError, tratado em _post_json."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_abrir = urllib.request.build_opener(_SemRedirect()).open
+_REDIRECTS = {301, 302, 303, 307, 308}
+_CREDENCIAL = ("auth", "key", "token", "secret")
+
+
+def _mascarar(texto: str, cabecalhos: dict) -> str:
+    """o texto de um erro sem credenciais: os valores dos cabeçalhos de autenticação (inteiros ou só o token a seguir a
+    «Bearer») e tudo o que pareça uma chave pela forma."""
+    for k, v in cabecalhos.items():
+        if not any(x in k.lower() for x in _CREDENCIAL):
+            continue
+        for parte in {str(v), str(v).split(" ", 1)[-1]}:
+            if len(parte) >= 8:
+                texto = texto.replace(parte, "•••")
+    return SEGREDO_RX.sub("•••", texto)
+
+
+def _mensagem_http(bruto: bytes) -> str:
+    """a parte útil de um corpo de erro: `error.message` / `error` / `message` se for JSON; senão a 1.ª linha de texto sem
+    marcação. Nunca o corpo inteiro — um proxy mal configurado pode ecoar os cabeçalhos do pedido."""
+    texto = bruto.decode("utf-8", "replace")
+    try:
+        j = json.loads(texto)
+        e = j.get("error", j) if isinstance(j, dict) else None
+        m = e.get("message", e.get("error")) if isinstance(e, dict) else e
+        texto = m if isinstance(m, str) else ""
+    except ValueError:
+        texto = re.sub(r"<[^>]*>", " ", texto)
+    return " ".join(texto.split())[:120]
+
+
 def _post_json(url: str, corpo: dict, cabecalhos: dict, tempo: int) -> dict:
     dados = json.dumps(corpo).encode("utf-8")
     req = urllib.request.Request(url, data=dados, headers={"Content-Type": "application/json", **cabecalhos}, method="POST")
+    origem = url.split("/v1")[0]
     try:
-        with urllib.request.urlopen(req, timeout=tempo) as r:
+        with _abrir(req, timeout=tempo) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
-        texto = e.read(300).decode("utf-8", "replace")
-        raise IAIndisponivel(f"{url.split('/v1')[0]}: HTTP {e.code} {texto[:200]}")
+        if e.code in _REDIRECTS:
+            raise IAIndisponivel(_mascarar(f"{origem}: HTTP {e.code} — redireccionou para outro endereço e não o sigo (a chave iria "
+                                           f"com o pedido). Põe em [ia] url o endereço final.", cabecalhos))
+        raise IAIndisponivel(_mascarar(f"{origem}: HTTP {e.code} {_mensagem_http(e.read(2000))}".rstrip(), cabecalhos))
     except (urllib.error.URLError, TimeoutError, OSError) as e:
-        raise IAIndisponivel(f"sem resposta de {url}: {getattr(e, 'reason', e)}")
+        raise IAIndisponivel(_mascarar(f"sem resposta de {url}: {getattr(e, 'reason', e)}", cabecalhos))
     except ValueError:
         raise IAIndisponivel(f"{url}: resposta não é JSON")
 

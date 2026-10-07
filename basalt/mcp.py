@@ -18,9 +18,10 @@ import re
 import sys
 import urllib.parse
 
-from . import __version__, config
+from . import __version__, config, entrada
 from .config import Config, Utilizador
 from .lexical import IndiceLexical, tokens
+from .segredos import MOTIVO as MOTIVO_SEGREDO, SEGREDO_RX, tem_segredo_texto
 
 VERSOES = ("2025-06-18", "2025-03-26", "2024-11-05")   # a primeira é a nossa; aceitam-se as outras se o cliente as pedir
 CORPO_MAX = 1024 * 1024
@@ -172,7 +173,9 @@ class ServidorMCP:
         except ParametrosInvalidos as e:
             return _erro(id_, -32602, str(e))
         except Exception as e:                 # nunca se deixa cair o transporte por causa de uma ferramenta
-            return _erro(id_, -32603, f"erro interno: {type(e).__name__}: {e}"[:300])
+            # o cliente recebe só o tipo; o detalhe (caminhos, textos) fica no stderr do servidor, sem o que pareça uma chave
+            print(f"mcp: erro interno em {metodo}: {type(e).__name__}: {SEGREDO_RX.sub('•••', str(e))[:300]}", file=sys.stderr, flush=True)
+            return _erro(id_, -32603, f"erro interno: {type(e).__name__}")
         return {"jsonrpc": "2.0", "id": id_, "result": r}
 
     def _initialize(self, params):
@@ -220,6 +223,8 @@ class ServidorMCP:
 
     def _t_escrever_nota(self, a, u):
         nome, texto, base = _str(a, "nome", True, 200), _str(a, "texto", True), _str(a, "base_hash", True, 64)
+        if not texto.strip():                             # ronda 8 (o MCP não esvazia notas): «texto» só com espaços esvaziava a nota — esta ferramenta não apaga
+            return {"erro": "o texto está vazio — escrever_nota não apaga nem esvazia notas; isso faz-se na página"}, True
         estado, d = self.web.gravar(nome, texto, base)
         if estado == 200:
             return {"ok": True, "nome": nome, "hash": d.get("hash")}, False
@@ -229,6 +234,8 @@ class ServidorMCP:
 
     def _t_acrescentar_nota(self, a, u):
         nome, texto = _str(a, "nome", True, 200), _str(a, "texto", True)
+        if not texto.strip():
+            return {"erro": "o texto está vazio — nada a acrescentar"}, True
         ultimo = {}
         for _ in range(3):
             n = self._nota(nome)
@@ -303,11 +310,11 @@ class ServidorMCP:
 
     def _t_guardar_ideia(self, a, u):
         texto = _str(a, "texto", True, 20_000).strip()
-        inbox = config.actual().inbox
-        inbox.parent.mkdir(parents=True, exist_ok=True)
-        reg = {"t": datetime.datetime.now().isoformat(timespec="seconds"), "de": "mcp", "autor": u.email, "texto": texto, "arquivado": False}
-        with open(inbox, "a", encoding="utf-8") as f:
-            f.write(json.dumps(reg, ensure_ascii=False) + "\n")
+        if not texto:
+            return {"erro": "falta «texto»"}, True
+        if tem_segredo_texto(texto):
+            return {"erro": MOTIVO_SEGREDO}, True
+        reg = entrada.acrescentar(texto, "mcp", autor=u.email)    # pelo trinco comum da Entrada (ronda 8, trinco da Entrada) e com t único (ronda 8, carimbos únicos)
         return {"ok": True, "guardada_em": "entrada", "quando": reg["t"]}, False
 
     # ───────────────────────────── recursos ─────────────────────────────
@@ -362,14 +369,20 @@ def _responder(handler, estado, obj, extra=None):
     handler.wfile.write(corpo)
 
 
-def origem_ok(origem: str, host: str) -> bool:
-    """Origin (se vier) tem de ser o próprio sítio ou loopback — defesa contra DNS rebinding em servidores locais."""
-    try:
-        o = urllib.parse.urlsplit(origem).hostname or ""
-    except ValueError:
-        return False
-    h = urllib.parse.urlsplit("//" + host).hostname or ""
-    return bool(o) and (o == h or o in ("localhost", "127.0.0.1", "::1"))
+def origem_ok(origem: str, permitidos) -> bool:
+    """o Origin (se vier) tem de ser um dos nomes do servidor — defesa contra DNS rebinding em servidores locais. Ronda 8 (Host/Origin): antes
+    comparava-se com o Host do MESMO pedido (os dois vêm de quem ataca) e aceitava-se qualquer loopback."""
+    o = config.anfitriao_de(origem)
+    return bool(o) and o in permitidos
+
+
+def anfitrioes_mcp(cfg: Config, host: str | None) -> frozenset:
+    """contra que nomes se confere o Origin: os do servidor (loopback, escutar, [basalt] anfitrioes). Quando o servidor não sabe o
+    seu nome público (modo senha/cabecalho sem anfitrioes) vale também a mesma origem que o Host do pedido."""
+    p = config.anfitrioes(cfg)
+    if cfg.auth.modo != "aberto" and not cfg.anfitrioes:
+        p = p | {config.anfitriao_de(host)}
+    return p
 
 
 def http(handler, servidor: ServidorMCP, autenticador):
@@ -378,7 +391,7 @@ def http(handler, servidor: ServidorMCP, autenticador):
     if handler.command != "POST":
         return _responder(handler, 405, {"erro": "o MCP por HTTP só aceita POST"}, {"Allow": "POST"})
     origem = h.get("Origin")
-    if origem and not origem_ok(origem, h.get("Host") or ""):
+    if origem and not origem_ok(origem, anfitrioes_mcp(servidor.cfg, h.get("Host"))):
         return _responder(handler, 403, {"erro": "Origin não permitido"})
     desafio = {"WWW-Authenticate": 'Bearer realm="basalt"'}
     auth = (h.get("Authorization") or "").strip()
@@ -434,7 +447,7 @@ def main(argv=None):
     ap.add_argument("--config", help="basalt.toml (omissão: BASALT_CONFIG, ./basalt.toml, ~/.config/basalt/basalt.toml)")
     ap.add_argument("--utilizador", default="", help="e-mail do utilizador em nome de quem o agente escreve")
     a = ap.parse_args(argv)
-    cfg = config.carregar(a.config)
+    cfg = config.activar(config.carregar(a.config))   # ronda 8 (--config para tudo): a IA e os filhos (sig, fontes_extra) usam ESTA configuração
     u = utilizador_local(cfg, a.utilizador)
     esp = cfg.espaco_de(u).criar()
     print(f"basalt mcp {__version__}: {u.email} · espaço «{esp.nome}» · {len(FERRAMENTAS)} ferramentas", file=sys.stderr, flush=True)

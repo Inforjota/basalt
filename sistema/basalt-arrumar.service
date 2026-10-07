@@ -1,3 +1,6 @@
+# /etc/systemd/system/basalt-arrumar.service — arrumação nocturna (chamada por basalt-arrumar.timer)
+# Por cada espaço: trata a Entrada, a arrumação automática e a reindexação; no fim imprime o relatório.
+# Mesmo utilizador, mesmo código (/opt/basalt) e mesmo endurecimento que basalt.service.
 [Unit]
 Description=Basalt — arrumar (Entrada → notas, ligações, índice)
 After=basalt.service
@@ -5,6 +8,19 @@ After=basalt.service
 [Service]
 Type=oneshot
 User=basalt
+Group=basalt
 WorkingDirectory=/var/lib/basalt
 Environment=BASALT_CONFIG=/var/lib/basalt/basalt.toml
-ExecStart=/usr/bin/python3 -m basalt arrumar
+Environment=PYTHONPATH=/opt/basalt
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m basalt arrumar --auto
+# endurecimento: o Basalt só precisa de escrever nos seus dados
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/basalt
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+UMask=0077

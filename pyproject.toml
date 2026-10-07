@@ -31,7 +31,8 @@ basalt = "basalt.__main__:main"
 packages = ["basalt"]
 
 [tool.setuptools.package-data]
-basalt = ["../static/*", "../basalt.toml.exemplo"]
+# a interface vive em basalt/static/ (com subpastas: vendor/, vendor/katex/fonts/…); `**` apanha toda a árvore
+basalt = ["static/*", "static/**/*", "basalt.toml.exemplo"]
 
 [tool.pytest.ini_options]
 testpaths = ["testes"]

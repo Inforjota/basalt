@@ -8,6 +8,8 @@ escutar = "127.0.0.1"              # põe um proxy (nginx/caddy) com HTTPS à fr
 lingua = "pt"
 idioma = "pt"                     # língua da interface: pt (omissão) · en (inglês) · auto (pelo Accept-Language do browser); também BASALT_IDIOMA
 git = true                         # fotografias git da memória: histórico, diário, desfazer fusões (precisa do `git`)
+# anfitrioes = ["basalt.exemplo.pt"]   # atrás de um proxy: o nome público; Host/Origin com outro nome recebem 421 (DNS rebinding)
+# espaco_partilhado = false        # true = dois utilizadores podem partilhar o mesmo `espaco` (vêem e editam as mesmas notas)
 
 [git]                              # quem assina as fotografias git da memória
 nome = "Basalt"
@@ -20,6 +22,8 @@ cabecalho = "X-Basalt-Email"       # modo cabecalho: o proxy TEM de substituir e
 sessao_horas = 336                 # 14 dias
 tentativas = 5                     # falhas de login por IP em `janela_minutos`
 janela_minutos = 15
+# proxies_de_confianca = ["203.0.113.5"]   # proxy noutra máquina ou no Docker: IP/rede de onde se lê o X-Forwarded-For
+                                   # (o loopback conta sempre; sem isto, atrás desse proxy todos partilham o mesmo limite)
 
 [[utilizadores]]
 email = "eu@exemplo.pt"

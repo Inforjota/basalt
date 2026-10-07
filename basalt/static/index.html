@@ -868,6 +868,10 @@ const EN = {
   "Proposta da IA — revê antes de usar": "AI proposal — review before using",
   "A cópia deste aparelho foi apagada entretanto — não lhe toquei.": "This device's copy was deleted in the meantime — I did not touch it.",
   "há outra alteração deste aparelho por enviar nesta nota — vai ser juntada a seguir.": "This note has another unsent change from this device — it will be merged next.",
+  "a cópia deste aparelho foi apagada entretanto (noutro separador) — não guardo esta edição nela; copia o teu texto e grava outra vez": "This device's copy was deleted in the meantime (in another tab) — this edit is not saved in it; copy your text and save again",
+  "Entrou outra conta neste browser": "Another account signed in on this browser",
+  "Este separador ainda era da conta anterior. Recarrega para continuar com a conta que entrou agora. O que estava por enviar fica guardado à parte e volta quando essa conta entrar outra vez; o que ainda não gravaste neste separador, copia-o antes.": "This tab still belonged to the previous account. Reload to continue with the account that just signed in. Anything waiting to be sent is kept aside and comes back when that account signs in again; copy anything you have not saved in this tab first.",
+  "Recarregar": "Reload",
   "a cópia deste aparelho foi apagada entretanto — a nota ficou gravada no servidor, não lhe toquei aqui.": "this device's copy was deleted in the meantime — the note is saved on the server; the copy here was left untouched.",
   "a nota mudou outra vez no servidor — vê a versão nova e escolhe de novo.": "The note changed on the server again — look at the new version and choose again.",
   "ficaste com a versão do servidor — há outra alteração deste aparelho por enviar, que fica.": "You kept the server's version — another unsent change from this device is kept and will still be sent.",
@@ -1204,15 +1208,15 @@ async function handleRes(res){
 }
 
 async function apiGet(path){
-  var res, bloqAntes = BLOQUEIO_ID;
+  var res, bloqAntes = BLOQUEIO_ID, geracaoAntes = GERACAO_COPIA;   // ronda 7: a geração com que este pedido partiu
   var trancasAntes = COPIA_BLOQUEADA ? chavesDe(await trancasNaMarca()) : null;   // ronda 6 G5: as trancas que JÁ existiam ao partir (só importa se está trancada)
   var inicio = agora();
-  try{ res = await fetch(path, {credentials:"same-origin"}); }
+  try{ res = await fetch(path, {credentials:"same-origin", headers: cabecalhoDono()}); }   // ronda 8: o dono da cópia
   catch(e){ return apiGetFalhaRede(path); }
   var doSw = res.headers && res.headers.get && res.headers.get("X-Basalt-Inicio");   // ronda 6 G5: a hora (monótona) com que o service worker viu partir este pedido
   if(doSw){ viuInstante(doSw); inicio = Number(doSw) || inicio; }
   var daCache = !!(res.headers && res.headers.get && res.headers.get("X-Basalt-From-Cache") === "1");
-  if(!daCache) await reagirResposta(res, path, bloqAntes, inicio, trancasAntes);
+  if(!daCache) await reagirResposta(res, path, bloqAntes, inicio, trancasAntes, geracaoAntes);
   else if(await copiaTrancadaAqui()) throw erroCopiaTrancada();   // a página consulta a SUA tranca antes de aceitar cópia do service worker
   return handleRes(res);
 }
@@ -1236,7 +1240,7 @@ function erroCopiaTrancada(){
 
 /* o servidor respondeu (não é falta de rede) — uma recusa tranca a cópia deste aparelho; uma nota que deixou
    de existir (404) sai também da cópia; qualquer resposta boa destranca. */
-async function reagirResposta(res, path, bloqAntes, inicio, trancasAntes){
+async function reagirResposta(res, path, bloqAntes, inicio, trancasAntes, geracaoAntes){
   try{
     // só destranca o trancar que já existia quando ESTE pedido partiu (uma resposta boa atrasada, de antes de
     // a sessão expirar, não pode destrancar o que outro pedido/separador acabou de trancar)
@@ -1248,21 +1252,25 @@ async function reagirResposta(res, path, bloqAntes, inicio, trancasAntes){
       return;
     }
     if(res.status === 401){ mostrarSessaoExpirada(); return; }      // inclui o 401 que o service worker faz do login
+    if(ehOutraConta(res)){ mostrarOutraConta(); return; }          // ronda 8: entrou outra conta — não é a sessão, não tranca
     if(res.status === 403){ await bloquearCopiaLocal(); return; }
     if((res.status === 404 || res.status === 410) && path.indexOf("/api/nota?") === 0){   // o 410 também tira a nota da cópia
       var nomeApagado = new URLSearchParams(path.split("?")[1] || "").get("nome");
-      if(nomeApagado) await marcarApagadaAqui(nomeApagado, inicio);   // ronda 6 M8: com lápide — um pacote que partiu antes não a repõe
+      if(nomeApagado) await marcarApagadaAqui(nomeApagado, inicio, geracaoAntes);   // ronda 6 M8: com lápide — um pacote que partiu antes não a repõe
     }
   }catch(e){}
 }
 
 async function apiSend(method, path, body, opcoes){
-  var res, inicio = agora();
+  // ronda 8: uma escrita logo ao abrir, antes de o servidor dizer de quem é a cópia, seguia sem dono — confirma-se primeiro
+  // (um pedido só por separador; sem rede falha depressa e a escrita segue para a fila como antes)
+  if(!DONO_OK && !OUTRA_CONTA){ try{ await verificarDono(); }catch(e){} }
+  var res, inicio = agora(), geracaoAntes = GERACAO_COPIA;   // ronda 7
   try{
     res = await fetch(path, {
       method: method,
       credentials: "same-origin",
-      headers: {"Content-Type":"application/json","X-Basalt":"1"},
+      headers: cabecalhoDono({"Content-Type":"application/json","X-Basalt":"1"}),   // ronda 8
       body: JSON.stringify(body || {}),
       signal: (opcoes && opcoes.signal) || undefined,
     });
@@ -1270,12 +1278,13 @@ async function apiSend(method, path, body, opcoes){
     if(e && e.name === "AbortError") throw e;   // cancelado por quem pediu — não é «sem rede»
     return apiSendFalhaRede();
   }
+  if(ehOutraConta(res)) mostrarOutraConta();   // ronda 8: nada se gravou (o servidor recusou antes de tocar na nota)
   // ronda 6 (achado M8 da ronda 4): um 404/410 a um PUT (a nota foi apagada no servidor com o editor aberto) também a tira da cópia
   // deste aparelho, como no GET. Só isso: um 403 num PUT é «nota de outro projecto», não é a sessão — não tranca nada.
   if((res.status === 404 || res.status === 410) && path.indexOf("/api/nota?") === 0){
     try{
       var nomeIdo = new URLSearchParams(path.split("?")[1] || "").get("nome");
-      if(nomeIdo) await marcarApagadaAqui(nomeIdo, inicio);
+      if(nomeIdo) await marcarApagadaAqui(nomeIdo, inicio, geracaoAntes);
     }catch(e){}
   }
   return handleRes(res);
@@ -1289,17 +1298,32 @@ async function apiSend(method, path, body, opcoes){
 var OFFLINE_ESTADO = {semRede:false, quando:null, fila:0, aSincronizar:false};
 
 /* 
-   - COPIA_DESLIGADA (G5): o utilizador carregou em «Apagar cópia deste aparelho» → não se volta a descarregar nada sozinho
+   - COPIA_DESLIGADA (ronda 2, apagar cópia): o utilizador carregou em «Apagar cópia deste aparelho» → não se volta a descarregar nada sozinho
      (nem temporizador, nem evento «online», nem service worker) até ele voltar a ligar.
-   - COPIA_BLOQUEADA (G2): a sessão expirou ou o servidor recusou o acesso → a cópia deste aparelho não se mostra
+   - COPIA_BLOQUEADA (ronda 2, sessão recusada): a sessão expirou ou o servidor recusou o acesso → a cópia deste aparelho não se mostra
      (nem sem rede) até uma resposta boa do servidor, depois de entrar outra vez. */
 var MARCA_DESLIGADA = "basaltcfg-copia-desligada";
 var COPIA_DESLIGADA = lerLocal("basalt-copia-desligada") === "1";
+var MARCA_GERACAO = "basaltcfg-copia-geracao";      // ronda 7: muda a cada «apagar cópia» — o SW não guarda respostas de pedidos de antes
 var MARCA_TRANCADA = "basaltcfg-copia-trancada";     // o service worker não serve cópia enquanto existir
 var BLOQUEIO_ID = lerLocal("basalt-copia-bloqueada") || "";   // cada trancar tem um id ("" = destrancada)
 var COPIA_BLOQUEADA = !!BLOQUEIO_ID;
 var GERACAO_COPIA = Number(lerLocal("basalt-copia-geracao")) || 0;          // sobe a cada «apagar»: um pacote que chegue depois não repõe nada ronda 6 G6: persistente (localStorage + meta.geracao na IndexedDB), nunca desce
 var PACOTE_CONTROLO = null;     // AbortController do pedido /api/pacote em curso
+/* ronda 8 (contas no mesmo browser): a cópia local (notas, fila, conflitos) é de UMA conta — a que o servidor diz em
+   /api/eu («dono»: opaco, conta + espaço). DONO = o dono da cópia que este separador conhece; DONO_OK = o servidor já
+   confirmou que é a conta que está agora no browser (só então se sincroniza e se manda X-Basalt-Dono); OUTRA_CONTA = o
+   servidor recusou um pedido deste separador por ser de outra conta (alguém entrou noutro separador) — pede-se para
+   recarregar e não se tranca nada (a sessão não expirou: mudou de dono). */
+var DONO = "", DONO_OK = false, OUTRA_CONTA = false, DONO_A_VERIFICAR = null, OUTRA_CONTA_MOSTRADA = false;
+function cabecalhoDono(h){
+  h = h || {};
+  if(DONO_OK && DONO) h["X-Basalt-Dono"] = DONO;
+  return h;
+}
+function ehOutraConta(res){
+  return !!(res && res.status === 403 && res.headers && res.headers.get && res.headers.get("X-Basalt-Outra-Conta") === "1");
+}
 function lerLocal(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
 function gravarLocal(k, v){ try{ if(v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); }catch(e){} }
 /* ronda 6 (achado G5 da ronda 4): hora monótona para ordenar pedidos, trancas e lápides — nunca desce, mesmo que o relógio ande
@@ -1346,7 +1370,8 @@ async function trancasNaMarca(){
 }
 // ronda 6 G5: a chave (URL) de uma tranca e a fotografia de um conjunto delas — «já existia quando o pedido partiu» sem relógio
 function chaveDe(t){ return t && t.chave ? (t.chave.url || String(t.chave)) : ""; }
-function chavesDe(lista){ var s = {}; for(var i = 0; i < lista.length; i++){ var u = chaveDe(lista[i]); if(u) s[u] = true; } return s; }
+// ronda 7 (chave reutilizada): chave → hora; a mesma chave com outra hora é uma tranca nova
+function chavesDe(lista){ var s = {}; for(var i = 0; i < lista.length; i++){ var u = chaveDe(lista[i]); if(u) s[u] = String(lista[i].quando); } return s; }
 async function trancaDoServiceWorker(){
   var lista = await trancasNaMarca();
   return lista.length ? lista[0].id : "";
@@ -1381,8 +1406,8 @@ async function desbloquearCopiaLocal(id, inicio, chavesAntes){
     if(lista.length && "caches" in window){
       var c = await caches.open(MARCA_TRANCADA);
       for(var i = 0; i < lista.length; i++){
-        var deAntes = chavesAntes ? !!chavesAntes[chaveDe(lista[i])] : lista[i].quando < inicio;   // ronda 6 G5: pela fotografia das chaves (se a há), não pela hora
-        if(lista[i].chave && (lista[i].id === id || deAntes)) await c.delete(lista[i].chave);
+        var deAntes = chavesAntes ? chavesAntes[chaveDe(lista[i])] === String(lista[i].quando) : lista[i].quando < inicio;   // ronda 6 G5: pela fotografia das chaves (se a há), não pela hora
+        if(lista[i].chave && ((lista[i].id === id && id !== "antigo") || deAntes)) await c.delete(lista[i].chave);   // ronda 7: «antigo» = chave fixa, só pela fotografia
       }
     }
   }catch(e){}
@@ -1459,6 +1484,29 @@ function mostrarSessaoExpirada(){
         '<button id="sessao-expirada-entrar" class="btn btn-primary" type="button">' + t("Entrar") + '</button>' +
       "</div></div>";
   document.getElementById("sessao-expirada-entrar").addEventListener("click", function(){ location.reload(); });
+}
+
+/* ronda 8: este separador ainda é da conta anterior. Não se tranca nada nem se apaga nada daqui: a página que abrir com a
+   conta nova é que arruma a cópia (guarda à parte o que a anterior tinha por enviar). Fechar deixa copiar o que estava a meio;
+   este separador não sincroniza nem grava na cópia até recarregar. */
+function mostrarOutraConta(){
+  OUTRA_CONTA = true;
+  if(PACOTE_CONTROLO){ try{ PACOTE_CONTROLO.abort(); }catch(e){} }
+  if(OUTRA_CONTA_MOSTRADA) return;
+  OUTRA_CONTA_MOSTRADA = true;
+  var root = document.getElementById("modal-root");
+  if(!root) return;
+  root.innerHTML =
+    '<div class="modal-backdrop" id="outra-conta-backdrop">' +
+      '<div class="modal" role="dialog" aria-modal="true" aria-labelledby="outra-conta-titulo">' +
+        '<h2 id="outra-conta-titulo">' + t("Entrou outra conta neste browser") + '</h2>' +
+        '<p class="dim-note">' + t("Este separador ainda era da conta anterior. Recarrega para continuar com a conta que entrou agora. O que estava por enviar fica guardado à parte e volta quando essa conta entrar outra vez; o que ainda não gravaste neste separador, copia-o antes.") + '</p>' +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">' +
+          '<button id="outra-conta-fechar" class="btn" type="button">' + t("Fechar") + '</button>' +
+          '<button id="outra-conta-recarregar" class="btn btn-primary" type="button">' + t("Recarregar") + '</button>' +
+      "</div></div></div>";
+  document.getElementById("outra-conta-recarregar").addEventListener("click", function(){ location.reload(); });
+  document.getElementById("outra-conta-fechar").addEventListener("click", function(){ root.innerHTML = ""; });
 }
 
 async function apiGetFalhaRede(path){
@@ -1592,7 +1640,9 @@ var A_SINCRONIZAR_PACOTE = false;
 async function sincronizarPacote(){
   if(!navigator.onLine || A_SINCRONIZAR_PACOTE || COPIA_DESLIGADA) return false;
   A_SINCRONIZAR_PACOTE = true;
+  if(!(await donoConfirmado())){ A_SINCRONIZAR_PACOTE = false; return false; }   // ronda 8: só se sabe de quem é a cópia
   var geracao = await geracaoActual();                     // ronda 6 G6: a geração persistente (e a deste separador posta em dia)
+  try{ var piAntes = await idbGet("meta", "pacoteInicio"); if(piAntes) viuInstante(piAntes.valor); }catch(e){}   // ronda 7: acima do último pacote guardado
   var inicio = agora();                                  // a hora a que o pedido partiu — destranca só o que é anterior
   var bloqAntes = await marcaPersistente("bloqueada");      // o trancar que já existia quando o pedido partiu
   var trancasAntes = (COPIA_BLOQUEADA || bloqAntes) ? chavesDe(await trancasNaMarca()) : null;   // ronda 6 G5: fotografia das trancas ao partir
@@ -1600,7 +1650,8 @@ async function sincronizarPacote(){
   PACOTE_CONTROLO = controlo;
   try{
     var res = await fetch("/api/pacote", {credentials:"same-origin", cache:"no-store", redirect:"manual",
-                                           signal: controlo ? controlo.signal : undefined});
+                                           headers: cabecalhoDono(), signal: controlo ? controlo.signal : undefined});
+    if(ehOutraConta(res)){ mostrarOutraConta(); return false; }   // ronda 8: o pacote seria de outra conta — nada entra, nada tranca
     if(res.type === "opaqueredirect" || res.status === 401 || res.status === 403){ await bloquearCopiaLocal(); return false; }
     if(!res.ok) return false;
     var tipo = res.headers.get("content-type") || "";
@@ -1640,18 +1691,24 @@ function guardarPacoteLocal(notas, gerado, geracao, bloqAntes, inicio){
           if(actual && actual !== (bloqAntes || "")){ recusado = true; return; }     // trancou-se durante o pedido
           if(COPIA_DESLIGADA || geracao !== GERACAO_COPIA){ recusado = true; return; }
           // ronda 6 (achado G6 da ronda 4): a geração PERSISTENTE compara-se aqui dentro — outro separador pode ter apagado e religado
-          // sem este saber (sem localStorage, ou com este pedido já em curso). M8: as lápides de notas apagadas DEPOIS de este
+          // sem este saber (sem localStorage, ou com este pedido já em curso). Ronda 6 M8: as lápides de notas apagadas DEPOIS de este
           // pacote partir protegem-nas de voltar; as anteriores a ele saem (se a nota foi recriada, este pacote traz-a).
           seGeracaoIgual(tx, sg, geracao, function(){
+            var gp = meta.get("pacoteInicio");
+            gp.onsuccess = function(){
+            // ronda 7 (ordem dos pacotes): um pacote que partiu ANTES do último guardado (noutro separador) é mais velho — não entra
+            if(inicio != null && ((gp.result && Number(gp.result.valor)) || 0) > inicio){ recusado = true; return; }
             var lapides = {}, cur = meta.openCursor(IDBKeyRange.bound("apagada:", "apagada:\uffff"));
             cur.onsuccess = function(){
               var k = cur.result;
               if(k){ lapides[String(k.key).slice(8)] = Number(k.value && k.value.valor) || 0; k.continue(); return; }
               loja.clear();
-              notas.forEach(function(v){ if(!(inicio != null && lapides[v.nome] >= inicio)) loja.put(v); });
+              notas.forEach(function(v){ if(!(inicio != null && lapides[v.nome] >= inicio)){ v.guardadoEm = inicio != null ? inicio : agora(); loja.put(v); } });   // ronda 7: guardadoEm
               Object.keys(lapides).forEach(function(n){ if(inicio == null || lapides[n] < inicio) meta.delete("apagada:" + n); });
               meta.put({chave:"pacoteGerado", valor: gerado});
               meta.put({chave:"ultimaSync", valor: Date.now()});
+              if(inicio != null) meta.put({chave:"pacoteInicio", valor: inicio});
+            };
             };
           });
         };
@@ -1665,15 +1722,25 @@ function guardarPacoteLocal(notas, gerado, geracao, bloqAntes, inicio){
 /* ronda 6 (achado M8 da ronda 4): a nota sai da cópia E fica uma lápide em «meta» (apagada:<nome> = hora a que partiu o pedido que
    trouxe o 404/410, monótona). Um pacote que tenha partido ANTES dessa hora (atrasado) já não a repõe; um pacote posterior
    limpa as lápides anteriores a ele. */
-function marcarApagadaAqui(nome, inicio){
+/* ronda 7 (404/410 atrasado): só com a MESMA geração da cópia com que o pedido partiu, e só se a nota guardada é de antes
+   dele (guardadoEm = hora do pedido/escrita que a pôs lá). Uma nota recriada que um pacote posterior já trouxe fica.
+   Sem guardadoEm (cópias de antes desta versão) sai, como antes. */
+function marcarApagadaAqui(nome, inicio, geracao){
   if(inicio == null) inicio = agora();
-  return transacao(["notas", "meta"], function(tx){
-    var meta = tx.objectStore("meta"), g = meta.get("apagada:" + nome);
-    g.onsuccess = function(){
-      var q = (g.result && Number(g.result.valor)) || 0;
-      meta.put({chave:"apagada:" + nome, valor: Math.max(q, inicio)});
-      tx.objectStore("notas").delete(nome);
-    };
+  return transacao(["notas", "meta"], function(tx, saida){
+    seGeracaoIgual(tx, saida, geracao, function(){
+      var meta = tx.objectStore("meta"), notas = tx.objectStore("notas"), n = notas.get(nome);
+      n.onsuccess = function(){
+        var local = n.result;
+        if(local && Number(local.guardadoEm) > inicio){ saida.valor = "mais-nova"; return; }
+        var g = meta.get("apagada:" + nome);
+        g.onsuccess = function(){
+          var q = (g.result && Number(g.result.valor)) || 0;
+          meta.put({chave:"apagada:" + nome, valor: Math.max(q, inicio)});
+          notas.delete(nome);
+        };
+      };
+    });
   });
 }
 /* ronda 6 (achado G6 da ronda 4): a geração da cópia lê-se DENTRO da transacção que escreve — se já não é a que o pedido capturou,
@@ -1685,9 +1752,125 @@ function seGeracaoIgual(tx, saida, geracao, fn){
     var actual = (g.result && Number(g.result.valor)) || 0;
     if(actual > GERACAO_COPIA) GERACAO_COPIA = actual;
     if(geracao != null && (actual !== geracao || GERACAO_COPIA !== geracao)){ saida.valor = "desligada"; return; }
-    fn();
+    // ronda 8: a cópia passou a ser de outra conta (a página dela abriu noutro separador) — este já não escreve nela.
+    // Sem dono gravado (cópia de antes desta versão, ainda por confirmar) não há com que comparar.
+    var d = tx.objectStore("meta").get("dono");
+    d.onsuccess = function(){
+      var md = d.result ? d.result.valor : undefined;
+      if(md !== undefined && md !== null && md !== DONO){ saida.valor = "desligada"; return; }
+      fn();
+    };
   };
 }
+
+/* ronda 8 (contas no mesmo browser): pergunta ao servidor quem está no browser (/api/eu, sem cache e sem seguir o login) e
+   põe a cópia em nome dessa conta. Só depois disto se sincroniza. Falha (sem rede, sessão caída, servidor sem «dono"):
+   DONO_OK fica falso e nada sobe nem desce — tenta-se outra vez na próxima sincronização. Um pedido de cada vez. */
+function verificarDono(){
+  if(DONO_A_VERIFICAR) return DONO_A_VERIFICAR;
+  DONO_A_VERIFICAR = (async function(){
+    try{
+      var r = await fetch("/api/eu", {credentials:"same-origin", cache:"no-store", redirect:"manual"});
+      // a sessão caiu (login, 401, 403 que não é «outra conta»): tranca-se como faria o pacote a seguir — sem isto, a
+      // verificação do dono calava a tranca que o pedido do pacote punha
+      if(r.type === "opaqueredirect" || r.status === 401 || (r.status === 403 && !ehOutraConta(r))){ await bloquearCopiaLocal(); return; }
+      var tipo = (r.headers && r.headers.get && r.headers.get("content-type")) || "";
+      if(!r.ok || !/json/i.test(tipo)) return;
+      var eu = await r.json();
+      if(!eu || typeof eu.dono !== "string" || !eu.dono) return;
+      await trocarDono(eu.dono);
+      DONO_OK = (DONO === eu.dono);
+    }catch(e){}
+  })();
+  DONO_A_VERIFICAR.then(function(){ DONO_A_VERIFICAR = null; });
+  return DONO_A_VERIFICAR;
+}
+async function donoConfirmado(){
+  if(OUTRA_CONTA) return false;
+  if(!DONO_OK) await verificarDono();
+  return DONO_OK && !OUTRA_CONTA;
+}
+/* ronda 8: a cópia passa a ser de `novo` ("" = ninguém: terminou a sessão). Mesmo dono: nada. Cópia sem dono gravado (de
+   antes desta versão) e alguém a entrar: fica dele — é a única adopção sem prova, porque não há como saber de quem era.
+   Outro dono: o que a conta anterior tinha por enviar (fila e conflitos) fica guardado À PARTE em «pendentes-de:<dono>» —
+   nunca sobe em nome de outra conta e volta quando ela entrar outra vez —, a cópia (notas, cursores do pacote, lápides)
+   apaga-se, e a geração sobe: nada que estivesse a meio (pacote, gravação, resposta do service worker) escreve nela. */
+function juntarPorNome(velhos, novos){
+  var vistos = {}, out = [];
+  (novos || []).forEach(function(i){ vistos[i.nome] = true; out.push(i); });
+  (velhos || []).forEach(function(i){ if(!vistos[i.nome]) out.push(i); });
+  return out;
+}
+async function trocarDono(novo){
+  var r = await transacao(["notas", "fila", "conflitos", "meta"], function(tx, saida){
+    var meta = tx.objectStore("meta"), fila = tx.objectStore("fila"), confl = tx.objectStore("conflitos");
+    saida.valor = {mudou: false};
+    var gd = meta.get("dono");
+    gd.onsuccess = function(){
+      var antigo = gd.result ? gd.result.valor : undefined;
+      if(antigo === novo) return;
+      if((antigo === undefined || antigo === null) && novo){ meta.put({chave:"dono", valor: novo}); return; }
+      var gf = fila.getAll();
+      gf.onsuccess = function(){
+        var gc = confl.getAll();
+        gc.onsuccess = function(){
+          var gg = meta.get("geracao");
+          gg.onsuccess = function(){
+            var gv = antigo ? meta.get("pendentes-de:" + antigo) : null;
+            function guardarAntigo(){
+              if(antigo && (gf.result.length || gc.result.length)){
+                var ja = gv && gv.result;
+                meta.put({chave:"pendentes-de:" + antigo, fila: juntarPorNome(ja && ja.fila, gf.result),
+                          conflitos: juntarPorNome(ja && ja.conflitos, gc.result)});
+              }
+              var gn = novo ? meta.get("pendentes-de:" + novo) : null;
+              function arrumar(){
+                tx.objectStore("notas").clear(); fila.clear(); confl.clear();
+                ["ultimaSync", "pacoteInicio", "pacoteGerado"].forEach(function(k){ meta.delete(k); });
+                meta.delete(IDBKeyRange.bound("apagada:", "apagada:\uffff"));
+                var nossos = gn && gn.result, devolvidas = 0;
+                if(nossos){
+                  (nossos.fila || []).forEach(function(i){ fila.put(i); devolvidas++; });
+                  (nossos.conflitos || []).forEach(function(c){ confl.put(c); });
+                  meta.delete("pendentes-de:" + novo);
+                }
+                var n = Math.max(((gg.result && Number(gg.result.valor)) || 0) + 1, GERACAO_COPIA + 1);
+                meta.put({chave:"dono", valor: novo});
+                meta.put({chave:"geracao", valor: n});
+                saida.valor = {mudou: true, geracao: n, devolvidas: devolvidas};
+              }
+              if(gn) gn.onsuccess = arrumar; else arrumar();
+            }
+            if(gv) gv.onsuccess = guardarAntigo; else guardarAntigo();
+          };
+        };
+      };
+    };
+  });
+  DONO = novo;                                               // logo a seguir à transacção: os escritores deste separador comparam com isto
+  if(!r || !r.mudou) return r;
+  if(r.geracao > GERACAO_COPIA){ GERACAO_COPIA = r.geracao; gravarLocal("basalt-copia-geracao", String(r.geracao)); }
+  if(PACOTE_CONTROLO){ try{ PACOTE_CONTROLO.abort(); }catch(e){} }
+  if("caches" in window){
+    // 1.º a geração do service worker (um pedido que partiu antes não guarda nada), depois as caches da API fora
+    try{ await (await caches.open(MARCA_GERACAO)).put("/__geracao", new Response(String(GERACAO_COPIA) + "-" + Math.random().toString(36).slice(2, 10))); }catch(e){}
+  }
+  await apagarCachesApi();
+  OFFLINE_ESTADO.quando = null;
+  atualizarIndicador();
+  atualizarContadorFila();
+  return r;
+}
+/* ronda 8: «Terminar sessão» — antes de sair tenta enviar o que está por enviar (até 5 s) e tira a cópia deste browser; o que
+   não subiu fica guardado à parte, em nome desta conta, e volta quando ela entrar outra vez. */
+window.basaltAntesDeSair = async function(){
+  try{
+    if(!DONO_OK) await verificarDono();
+    if(DONO_OK) await Promise.race([sincronizarFila(), new Promise(function(r){ setTimeout(r, 5000); })]);
+  }catch(e){}
+  try{ await trocarDono(""); }catch(e){}
+  DONO_OK = false;
+};
 /* ronda 6 G6: a geração que vale AGORA — a persistente, posta em dia com a deste separador nos dois sentidos (a IndexedDB
    pode ter sido limpa pelo browser e o localStorage não, ou o contrário). É o que cada pedido captura antes de partir. */
 function geracaoActual(){
@@ -1725,6 +1908,9 @@ function transacao(lojas, fn){
 function erroCopiaDesligada(){
   return new Error(t("a cópia deste aparelho está apagada — não guardo edições aqui até voltares a ligar a cópia (no Início)"));
 }
+function erroCopiaRefeita(){
+  return new Error(t("a cópia deste aparelho foi apagada entretanto (noutro separador) — não guardo esta edição nela; copia o teu texto e grava outra vez"));
+}
 function seCopiaLigada(tx, saida, fn){
   var gd = tx.objectStore("meta").get("copiaDesligada");
   gd.onsuccess = function(){
@@ -1732,11 +1918,13 @@ function seCopiaLigada(tx, saida, fn){
     fn();
   };
 }
-function guardarEdicaoOffline(nome, baseTexto, texto){
+/* ronda 7 (geração na gravação offline): `geracao` é a da cópia quando a edição começou a gravar — se outro separador apagou
+   e religou a cópia entretanto (sem localStorage este não sabe), a edição é de uma cópia que já não existe: não entra */
+function guardarEdicaoOffline(nome, baseTexto, texto, geracao){
   if(COPIA_DESLIGADA) return Promise.reject(erroCopiaDesligada());
   return transacao(["fila", "notas", "meta"], function(tx, saida){
     var fila = tx.objectStore("fila"), notas = tx.objectStore("notas");
-    seCopiaLigada(tx, saida, function(){
+    seCopiaLigada(tx, saida, function(){ seGeracaoIgual(tx, saida, geracao, function(){
       var g = fila.get(nome);
       g.onsuccess = function(){
         var item = g.result || {nome: nome, base_texto: baseTexto};
@@ -1747,12 +1935,12 @@ function guardarEdicaoOffline(nome, baseTexto, texto){
         var n = notas.get(nome);
         n.onsuccess = function(){
           var local = n.result;
-          if(local){ local.texto = texto; local.porEnviar = true; notas.put(local); }
+          if(local){ local.texto = texto; local.porEnviar = true; local.guardadoEm = agora(); notas.put(local); }
         };
       };
-    });
+    }); });
   }).then(function(v){
-    if(v === "desligada") throw erroCopiaDesligada();
+    if(v === "desligada") throw (COPIA_DESLIGADA ? erroCopiaDesligada() : erroCopiaRefeita());
     return atualizarContadorFila();
   });
 }
@@ -1774,6 +1962,7 @@ function confirmarEnvioFila(nome, rev, textoEnviado, textoServidor, hash, geraca
           if(!local) return;
           local.hash = hash;
           if(!maisNova){ local.texto = textoServidor; local.porEnviar = false; }
+          local.guardadoEm = agora();
           notas.put(local);
         };
       };
@@ -1820,7 +2009,7 @@ function confirmarGravacaoComRede(nome, revIncluida, texto, hash, geracao){
       n.onsuccess = function(){
         var local = n.result;
         if(!local || ficou) return;
-        local.texto = texto; local.hash = hash; local.porEnviar = false;
+        local.texto = texto; local.hash = hash; local.porEnviar = false; local.guardadoEm = agora();
         notas.put(local);
       };
     };
@@ -1869,6 +2058,7 @@ function atualizarNotaCacheAposGravar(nome, texto, hash){
     local.texto = texto;
     local.hash = hash;
     local.porEnviar = false;
+    local.guardadoEm = agora();
     return idbPut("notas", local);
   }).catch(function(){});
 }
@@ -1885,14 +2075,16 @@ function sincronizarFila(){
 }
 async function sincronizarFilaAqui(){
   if(A_SINCRONIZAR_FILA || COPIA_DESLIGADA) return;
+  if(!(await donoConfirmado())) return;                    // ronda 8: a fila sobe só em nome da conta de quem é
   var pendentes, geracao = await geracaoActual();          // ronda 6 G6: a geração persistente
+  try{ var mdFila = await idbGet("meta", "dono"); if(mdFila && mdFila.valor !== DONO) return; }catch(e){ return; }
   try{ pendentes = await idbGetAll("fila"); }catch(e){ return; }
   if(!pendentes.length) return;
   A_SINCRONIZAR_FILA = true;
   OFFLINE_ESTADO.aSincronizar = true;
   atualizarIndicador();
   // «apagar cópia» a meio (neste ou noutro separador) pára o ciclo — o que o utilizador descartou não sobe
-  function apagada(){ return COPIA_DESLIGADA || geracao !== GERACAO_COPIA; }
+  function apagada(){ return COPIA_DESLIGADA || OUTRA_CONTA || geracao !== GERACAO_COPIA; }   // ronda 8: ou entrou outra conta
   try{
     for(var i = 0; i < pendentes.length; i++){
       var item = pendentes[i];
@@ -2024,6 +2216,8 @@ function offlineProcura(q, n){
 async function tentarOffline(path){
   if(COPIA_DESLIGADA || lerLocal("basalt-copia-desligada") === "1" || await marcaPersistente("copiaDesligada")) return undefined;
   if(await copiaTrancadaAqui()) throw erroCopiaTrancada();   // inclui a tranca que só o service worker pôs
+  if(OUTRA_CONTA) return undefined;                         // ronda 8: a cópia já não é deste separador
+  try{ var mdLer = await idbGet("meta", "dono"); if(mdLer && mdLer.valor !== DONO) return undefined; }catch(e){ return undefined; }
   var u = path.split("?")[0];
   var qs = new URLSearchParams(path.indexOf("?") !== -1 ? path.split("?")[1] : "");
   if(u === "/api/notas") return offlineListaNotas();
@@ -2083,13 +2277,23 @@ async function desligarCopiaLocal(){
     g.onsuccess = function(){
       var n = Math.max(((g.result && Number(g.result.valor)) || 0) + 1, GERACAO_COPIA);
       saida.valor = n;
-      ["notas", "fila", "meta", "conflitos"].forEach(function(l){ tx.objectStore(l).clear(); });
-      meta.put({chave:"copiaDesligada", valor:true});
-      meta.put({chave:"geracao", valor:n});
+      // ronda 8: o que OUTRAS contas deixaram por enviar neste browser (guardado à parte) não é de quem apaga — fica
+      var gp = meta.getAll(IDBKeyRange.bound("pendentes-de:", "pendentes-de:\uffff"));
+      gp.onsuccess = function(){ var gd = meta.get("dono"); gd.onsuccess = function(){
+        var deOutras = gp.result || [], dono = gd.result;
+        ["notas", "fila", "meta", "conflitos"].forEach(function(l){ tx.objectStore(l).clear(); });
+        deOutras.forEach(function(v){ meta.put(v); });
+        if(dono) meta.put(dono);
+        meta.put({chave:"copiaDesligada", valor:true});
+        meta.put({chave:"geracao", valor:n});
+      }; };
     };
   });
   if(nova > GERACAO_COPIA){ GERACAO_COPIA = nova; gravarLocal("basalt-copia-geracao", String(nova)); }
   if("caches" in window){
+    // ronda 7 (geração): 0.º a geração nova da cópia — um pedido do SW que partiu antes não guarda nada, mesmo que a cópia
+    // seja religada antes de a resposta chegar
+    try{ await (await caches.open(MARCA_GERACAO)).put("/__geracao", new Response(String(GERACAO_COPIA) + "-" + Math.random().toString(36).slice(2, 10))); }catch(e){}
     await caches.open(MARCA_DESLIGADA);          // 1.º a marca (o service worker deixa de guardar e de servir), depois apagar
     var nomes = await caches.keys();
     await Promise.all(nomes.filter(function(n){ return n.indexOf("basalt-") === 0; }).map(function(n){ return caches.delete(n); }));
@@ -2109,6 +2313,8 @@ async function religarCopiaLocal(){
 
 async function iniciarOffline(){
   try{
+    var mdono = await idbGet("meta", "dono");                  // ronda 8: de quem é a cópia (confirma-se com o servidor antes de sincronizar)
+    if(mdono && typeof mdono.valor === "string") DONO = mdono.valor;
     var md = await idbGet("meta", "copiaDesligada");
     if(md && md.valor){ COPIA_DESLIGADA = true; gravarLocal("basalt-copia-desligada", "1"); }
     await geracaoActual();                                     // ronda 6 G6: a geração persistente passa a ser a deste separador
@@ -3951,7 +4157,7 @@ function renderNotaCompleta(nota, centro, contexto){
       var geracao = await geracaoActual();   // se a cópia for apagada (e religada) enquanto o PUT corre, o resultado já não toca na cópia
       if(editaSobreFila){
         try{
-          await guardarEdicaoOffline(nota.nome, baseTextoEdicao, textoActual);
+          await guardarEdicaoOffline(nota.nome, baseTextoEdicao, textoActual, geracao);
           nota.texto = textoActual;
           banner.innerHTML = "";
           showToast(t("guardado — a juntar com a versão do servidor…"));
@@ -4020,7 +4226,7 @@ function renderNotaCompleta(nota, centro, contexto){
         }else if(e.semRede){
           // #41: sem rede — guarda no aparelho em vez de perder a edição; sobe sozinho quando houver rede
           try{
-            await guardarEdicaoOffline(nota.nome, baseTextoEdicao, textoActual);
+            await guardarEdicaoOffline(nota.nome, baseTextoEdicao, textoActual, geracao);
             if(nota.resolveConflito){ nota.resolveConflito = false; await apagarConflitoSeIgual(nota.nome, nota.conflitoQuando, geracao).catch(function(){}); }   // 
             nota.texto = textoActual;
             nota.porEnviar = true;
@@ -4329,7 +4535,7 @@ async function viewEntrada(main){
           btn.disabled = true;
           btn.textContent = t("a arquivar…");
           try{
-            await apiSend("POST", "/api/entrada/arquivar", {n: Number(btn.dataset.n)});
+            await apiSend("POST", "/api/entrada/arquivar", {t: btn.dataset.t});   // pelo carimbo (único), não pela posição
             showToast(t("arquivado."));
             await carregar();
           }catch(e){
@@ -4415,7 +4621,7 @@ function renderEntradaItem(item){
     (motivoDuvida ? '<p class="dim-note entrada-porque">' + escapeHtml(motivoDuvida) + "</p>" : "") +
     '<div class="entrada-acoes">' +
       acaoPrincipal +
-      '<button class="btn arquivar-btn" type="button" data-n="' + item.n + '">' + t("Arquivar") + '</button>' +
+      '<button class="btn arquivar-btn" type="button" data-t="' + tAttr + '">' + t("Arquivar") + '</button>' +
       '<button class="btn btn-perigo eliminar-btn" type="button" data-t="' + tAttr + '">' + t("Eliminar") + '</button>' +
       '<span class="dim-note rede-aviso hidden">' + t("precisa de rede") + '</span>' +
     "</div></li>";
@@ -5497,8 +5703,11 @@ document.addEventListener("DOMContentLoaded", function(){
     b.hidden = false;
     b.title = window.basaltTf("Terminar sessão ({quem})", {quem: eu.nome || eu.email});
     b.addEventListener("click", function(){
-      fetch("/api/sair", {method:"POST", credentials:"same-origin", headers:{"X-Basalt":"1"}})
-        .catch(function(){}).then(function(){ location.href = "/entrar"; });
+      b.disabled = true;
+      // ronda 8: antes de sair, a cópia deste browser deixa de ser desta conta (o que estava por enviar fica guardado à parte)
+      Promise.resolve(window.basaltAntesDeSair ? window.basaltAntesDeSair() : null).catch(function(){}).then(function(){
+        return fetch("/api/sair", {method:"POST", credentials:"same-origin", headers:{"X-Basalt":"1"}});
+      }).catch(function(){}).then(function(){ location.href = "/entrar"; });
     });
   }).catch(function(){});
 })();

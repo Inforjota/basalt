@@ -425,10 +425,11 @@ class TestModoSenhaPeloHttp:
         assert r.codigo == 429 and "Demasiadas" in r.json["erro"] and "Set-Cookie" not in r.cabecalhos
 
     def test_atras_de_um_proxy_local_cada_visitante_tem_o_seu_limite(self, senha_srv):
-        for _ in range(5):
+        for i in range(5):                                    # o visitante 198.51.100.1 muda o prefixo inventado a cada tentativa
             senha_srv.pedido("POST", "/api/entrar", {"email": EMAIL, "senha": "errada errada"}, email=None,
-                             cabecalhos={"X-Forwarded-For": "9.9.9.9, 198.51.100.1"})
-        mau = senha_srv.pedido("POST", "/api/entrar", {"email": EMAIL, "senha": SENHA}, email=None, cabecalhos={"X-Forwarded-For": "9.9.9.9"})
+                             cabecalhos={"X-Forwarded-For": f"9.9.9.{i}, 198.51.100.1"})
+        mau = senha_srv.pedido("POST", "/api/entrar", {"email": EMAIL, "senha": SENHA}, email=None,
+                               cabecalhos={"X-Forwarded-For": "7.7.7.7, 198.51.100.1"})
         outro = senha_srv.pedido("POST", "/api/entrar", {"email": EMAIL, "senha": SENHA}, email=None, cabecalhos={"X-Forwarded-For": "8.8.8.8"})
         assert mau.codigo == 429 and outro.codigo == 200
 
@@ -534,8 +535,11 @@ class TestIpDoPedido:
         return web.H._ip(SimpleNamespace(client_address=(cliente, 40000), headers=cab))
 
     @pytest.mark.parametrize("cliente", ["127.0.0.1", "::1"])
-    def test_de_loopback_conta_o_primeiro_xff(self, cliente):
-        assert self.ip(cliente, "9.9.9.9, 198.51.100.1") == "9.9.9.9"
+    def test_de_loopback_conta_o_ultimo_xff_que_nao_e_proxy(self, cliente):
+        # o proxy local ACRESCENTA o IP de quem lhe falou (o último); o que vem antes pode ter sido inventado pelo visitante
+        assert self.ip(cliente, "9.9.9.9, 198.51.100.1") == "198.51.100.1"
+        assert self.ip(cliente, "198.51.100.1") == "198.51.100.1"
+        assert self.ip(cliente, "9.9.9.9, 198.51.100.1, 127.0.0.1") == "198.51.100.1"   # dois proxies locais em cadeia
 
     @pytest.mark.parametrize("xff", [None, "", "lixo", "9.9.9"])
     def test_de_loopback_sem_xff_valido_fica_o_ip_da_ligacao(self, xff):

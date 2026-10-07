@@ -5,7 +5,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
  && useradd --create-home --uid 1000 basalt
 WORKDIR /app
 COPY basalt/ /app/basalt/
-COPY basalt.toml.exemplo /app/
+# Dentro do contentor o servidor escuta em 0.0.0.0 (senão a porta publicada não chega lá); o compose só a publica em
+# 127.0.0.1. Por isso a imagem exige login ([auth] modo = "senha", criado por `iniciar`) — arranque do zero em docker/compose.yml.
 ENV BASALT_CONFIG=/dados/basalt.toml \
     BASALT_DADOS=/dados \
     BASALT_ESCUTAR=0.0.0.0 \
@@ -14,6 +15,7 @@ ENV BASALT_CONFIG=/dados/basalt.toml \
 USER basalt
 VOLUME ["/dados"]
 EXPOSE 8121
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD python3 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8121/api/estado', timeout=4).status == 200 else 1)"
+# /api/saude é pública (sem login) e só diz {"ok": true}; o /api/estado exige sessão e daria sempre «unhealthy»
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD python3 -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8121/api/saude', timeout=5).status==200 else 1)"
 ENTRYPOINT ["python3", "-m", "basalt"]
 CMD ["serve"]

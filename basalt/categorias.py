@@ -12,7 +12,7 @@ valem as regras (e «Diversos» para o resto).
 import hashlib, json, re, sys
 from pathlib import Path
 
-from . import config
+from . import config, retidas
 from .config import Via
 from .ia import IAIndisponivel, actual as ia
 
@@ -98,11 +98,9 @@ def main(tudo=False):
     saida = Path(SAIDA)
     antes = json.loads(saida.read_text()) if saida.exists() and not tudo else {}
     novo, feitos = {}, 0
-    for p in sorted(Path(PASTA).glob("*.md")):
-        if p.name in ("MEMORY.md", "index.md", "CONFIG.md") or ".bak" in p.name or ".CONFLITO-" in p.name:
-            continue
+    for p, t in retidas.notas(PASTA, ignora=("MEMORY.md", "index.md", "CONFIG.md")):   # ronda 8 (notas retidas): uma nota retida não vai ao modelo
         nome = p.stem
-        t = p.read_text(encoding="utf-8", errors="replace"); h = hashlib.sha1(t.encode()).hexdigest()
+        h = hashlib.sha1(t.encode()).hexdigest()
         if nome in antes and antes[nome].get("hash") == h:
             novo[nome] = antes[nome]; continue
         corpo = re.sub(r"^---\n.*?\n---\n", "", t, count=1, flags=re.S)
