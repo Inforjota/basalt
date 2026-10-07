@@ -47,9 +47,6 @@ modelo = "nomic-embed-text"
 [entrada]
 automatica = true                  # ideias de fontes de confiança são arrumadas sozinhas (com Desfazer)
 fontes_de_confianca = ["web", "terminal", "cli", "mcp"]
-# [entrada.telegram]               # opcional: guardar ideias por um bot Telegram
-# token_env = "BASALT_TG_TOKEN"
-# chats = ["123456789"]
 
 # [categorias]                     # opcional: as TUAS categorias (a IA escolhe 1-2 por nota) e regras seguras pelo nome da nota
 # regras = [["^trabalho|reuniao", "Trabalho"], ["receita|cozinha", "Casa"]]

@@ -71,8 +71,6 @@ class IAConfig:
 class EntradaConfig:
     automatica: bool = True             # o vigia arruma sozinho as ideias de fontes autorizadas
     fontes_de_confianca: tuple = ("web", "terminal", "cli", "mcp")
-    telegram_token_env: str = ""        # opcional: bot Telegram para «guardar ideias» (BASALT_TG_TOKEN)
-    telegram_chats: tuple = ()          # ids de chat autorizados
 
 
 @dataclass
@@ -367,10 +365,8 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
         cfg.ia.embeddings_fornecedor = "ollama" if "/api/" in cfg.ia.embeddings_url or ":11434" in cfg.ia.embeddings_url else "openai"
 
     en = t.get("entrada", {})
-    tg = en.get("telegram", {}) if isinstance(en.get("telegram"), dict) else {}
     cfg.entrada = EntradaConfig(automatica=bool(en.get("automatica", True)),
-                                fontes_de_confianca=tuple(en.get("fontes_de_confianca", ("web", "terminal", "cli", "mcp"))),
-                                telegram_token_env=tg.get("token_env", ""), telegram_chats=tuple(str(c) for c in tg.get("chats", ())))
+                                fontes_de_confianca=tuple(en.get("fontes_de_confianca", ("web", "terminal", "cli", "mcp"))))
 
     g = t.get("git", {})
     cfg.git_autor = GitConfig(nome=amb.get("BASALT_GIT_NOME") or str(g.get("nome", "Basalt")),

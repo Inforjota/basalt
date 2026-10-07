@@ -82,13 +82,16 @@ def vec_por_nota():
     return out
 
 
-def _tfidf_por_nota():
-    """{nota: {termo: peso normalizado}} a partir do texto dos ficheiros (recurso quando o índice não tem vectores)."""
+def _tfidf_por_nota(extra=None):
+    """{nota: {termo: peso normalizado}} a partir do texto dos ficheiros (recurso quando o índice não tem vectores).
+    `extra` = {nome: texto} de textos que ainda não são ficheiros (a página compara o que se está a escrever com as notas)."""
     docs = {}
     for p in sorted(PASTA.glob("*.md")):
         if p.name == "MEMORY.md":
             continue
         docs[p.stem] = Counter(tokens(p.read_text(encoding="utf-8", errors="replace")))
+    for nome, texto in (extra or {}).items():
+        docs[nome] = Counter(tokens(texto))
     df, N = Counter(), len(docs)
     for c in docs.values():
         df.update(c.keys())
