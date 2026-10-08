@@ -60,6 +60,10 @@ _PALAVRAS_CORRENTES = {
     "desactivada", "desativada", "recuperada", "renovada", "expirada", "caducada", "alterada", "esquecida", "perdida",
     "unavailable", "unchanged", "temporarily", "confidential", "administrator", "unspecified", "uninitialized",
     "placeholder", "deactivated", "regenerated", "requested", "mandatory", "passphrase", "undefined", "unknown",
+    # descrições soltas, uma a uma (antes cobertas pela regra dos sufixos, que deixava passar passwords)
+    "criptografada", "criptografado", "encriptada", "encriptado", "sincronizada", "sincronizado", "alfanumerica",
+    "alfanumérica", "alfanumerico", "alfanumérico", "automaticamente", "alphanumeric", "alphanumerical", "synchronized",
+    "synchronised", "automatically",
 }
 
 
@@ -71,7 +75,15 @@ _DATA_HORA_SOLTA_RX = re.compile(r"\d+(?:[/.:h-]\d+)*")          # qualquer núm
 # ronda 9 (contexto e descrições): só para as passwords só de letras — a palavra-chave como complemento («estado DA senha», «tipo DE password», «type
 # OF password») descreve a password, não a dá; e uma palavra longa com sufixo de adjectivo/advérbio («sincronizada»,
 # «alfanumérica», «automaticamente») é descrição. Uma maiúscula no meio continua a contar como password.
-_PROPRIEDADE_RX = re.compile(r"(?i)\b(?:d[aoe]s?|of|the)\s*$")
+# ronda 9 (passwords só de letras, outra vez): a excepção de cima deixava passar passwords — «senha: minhapalavracomplicada» (sufixo «-ada»), «O valor da senha:
+# minhaSenhaSecreta» («da» antes, e a maiúscula no meio só se via depois), «The password: …». Agora falha fechada: uma maiúscula no
+# meio conta SEMPRE; a descrição só se aceita com um substantivo de PROPRIEDADE desta lista antes do «da/de/of» E uma palavra com
+# sufixo de adjectivo/advérbio de até 16 letras; o resto (de 12 letras para cima) é password. As palavras soltas que descrevem
+# («senha: criptografada») vão para _PALAVRAS_CORRENTES, uma a uma.
+_PROPRIEDADE_RX = re.compile(r"(?i)\b(?:estado|tipo|formato|for[çc]a|comprimento|tamanho|pol[ií]tica|regras?|requisitos?|n[ií]vel|"
+                             r"qualidade|complexidade|status|state|type|format|strength|length|policy|rules?|requirements?|level|"
+                             r"quality|complexity)\s+(?:d[aoe]s?|of)\s*$")
+_DESCRICAO_MAX = 16
 _DESCRITIVA_RX = re.compile(r"(?i)(?:[aií]d[ao]s?|ic[ao]s?|[áa]vel|[íi]vel|veis|mente|[çc][ãa]o|[çc][õo]es)$")
 
 
@@ -96,12 +108,14 @@ def _password_em_claro(txt: str) -> bool:
         return True
     for m in SO_LETRAS_RX.finditer(txt):
         v = m.group(1)
+        if _MAIUSCULA_NO_MEIO_RX.search(v):
+            return True
         if v.lower() in _PALAVRAS_CORRENTES:
             continue
         antes, _ = _contexto(txt, m)                  # ronda 9 (contexto e descrições): «Estado da senha: …», «Tipo de password: …» descrevem-na
-        if _PROPRIEDADE_RX.search(antes) or (_DESCRITIVA_RX.search(v) and not _MAIUSCULA_NO_MEIO_RX.search(v)):
+        if _PROPRIEDADE_RX.search(antes) and _DESCRITIVA_RX.search(v) and len(v) <= _DESCRICAO_MAX:
             continue
-        if len(v) >= 12 or _MAIUSCULA_NO_MEIO_RX.search(v):
+        if len(v) >= 12:
             return True
     return False
 

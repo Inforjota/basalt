@@ -59,6 +59,26 @@ def test_descricoes_da_password_sao_texto_e_as_passwords_de_letras_continuam_rec
     assert bool(tem_segredo_texto(linha)) == e_segredo, f"«{linha}» devia ser {'segredo' if e_segredo else 'texto'}"
 
 
+
+# «ronda 9 (passwords só de letras, outra vez)» — a excepção das descrições deixava passar passwords: um sufixo de adjectivo
+# chegava («-ada», «-ico», «-mente», «-ção»), «da»/«the» antes da palavra-chave também, e a maiúscula no meio via-se depois.
+# Cada caso marcado True falha no código anterior; os False são controlos (descrições que continuam a ser texto).
+@pytest.mark.parametrize("linha, e_segredo", [
+    ("senha: minhapalavracomplicada", True),
+    ("senha: meuacessomagico", True),
+    ("senha: abacaximente", True),
+    ("senha: superautenticação", True),
+    ("O valor da senha: minhaSenhaSecreta", True),
+    ("O valor da senha: minhapalavracomplicada", True),
+    ("The password: correcthorsebattery", True),
+    ("Estado da senha: minhapalavracomplicada", True),
+    ("Estado da senha: sincronizada", False),
+    ("Formato das senhas: automaticamente", False),
+    ("senha: criptografada", False),
+])
+def test_descricao_so_com_propriedade_e_palavra_curta(linha, e_segredo):
+    assert bool(tem_segredo_texto(linha)) == e_segredo, f"«{linha}» devia ser {'segredo' if e_segredo else 'texto'}"
+
 # C1 — controlo (passa antes e depois)
 @pytest.mark.parametrize("linha, e_segredo", [
     ("senha do router: Tr0ub4dor&3", True), ("password = hunter2!", True), ("senha: 2026-10-06", True),

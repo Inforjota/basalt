@@ -99,5 +99,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   - **Erros da IA sem o que lhe mandámos:** de um erro HTTP do fornecedor diz-se o código, o tipo (`invalid_request_error`…) e
     uma dica nossa — a mensagem dele nunca, porque pode repetir o texto da nota ou um bocado da chave; o mesmo para o `claude`
     (só se dizem os erros que se reconhecem: sem saldo, sem sessão). O registo de uma proposta recusada já não cita linhas.
+  - **Passwords só de letras, falha fechada:** uma maiúscula no meio do valor conta sempre; «senha: X» só fica como texto se X
+    for uma palavra corrente da lista (`criptografada`, `sincronizada`…) ou numa descrição explícita («Estado/Tipo/Formato da
+    senha: …») com uma palavra até 16 letras — `senha: minhapalavracomplicada` volta a ser uma password.
   - Testes: `testes/test_ronda9_donos.py`, `testes/test_ronda9_pagina_donos.py`, `testes/test_sw.py` (`TestUmaCachePorDono`),
     `testes/test_ronda9_ficheiros.py`, `testes/test_ronda9_revogar.py`, `testes/test_ronda9_ia.py`.
