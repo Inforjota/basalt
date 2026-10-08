@@ -69,6 +69,12 @@ class Sessao:
     email: str
     expira: float
     criada: float
+    cred: str = ""          # ronda 9 (achado G4 da ronda 2): a impressão da senha com que a sessão abriu ("" = de antes: não vale)
+
+
+def impressao_credencial(senha_hash: str) -> str:
+    """a sessão só vale enquanto a senha for a mesma com que abriu — mesmo que a senha mude com o servidor parado."""
+    return hashlib.sha256(("basalt-sessao\0" + (senha_hash or "")).encode("utf-8")).hexdigest()[:32] if senha_hash else ""
 
 
 class Autenticador:
@@ -81,13 +87,15 @@ class Autenticador:
         self._carregar()
         self._origem = Path(cfg.origem) if cfg.origem else None   # ronda 8 (configuração relida em execução): o basalt.toml relê-se quando muda (revogar sem reiniciar)
         self._marca = self._marca_do_toml()
+        self._fechado = ""          # ronda 9 (achado G4 da ronda 2): o basalt.toml mudou e não carrega → ninguém entra (o motivo)
 
     # ── persistência ──
     def _carregar(self):
         try:
             d = json.loads(self.ficheiro.read_text(encoding="utf-8"))
             agora = time.time()
-            self._sessoes = {k: Sessao(**v) for k, v in d.items() if v.get("expira", 0) > agora}
+            campos = set(Sessao.__dataclass_fields__)
+            self._sessoes = {k: Sessao(**{c: x for c, x in v.items() if c in campos}) for k, v in d.items() if v.get("expira", 0) > agora}
         except (OSError, ValueError, TypeError, AttributeError):   # PORTE: JSON válido mas de outra forma ([] ou {"x": 5}) também arranca limpo
             self._sessoes = {}
 
@@ -109,24 +117,28 @@ class Autenticador:
             st = self._origem.stat()
             return (st.st_mtime_ns, st.st_size, st.st_ino)
         except OSError:
-            return None
+            return ("sem-ficheiro",)       # ronda 9 (achado G4 da ronda 2): apagar o basalt.toml também conta como mudança
 
     def reler_se_mudou(self) -> bool:
         """se o basalt.toml mudou desde a última leitura, os utilizadores passam a ser os novos (apagar um token ou um utilizador
-        revoga-o no pedido seguinte) e as sessões de quem deixou de existir, ou mudou de senha, terminam. Um toml que não carrega não derruba o
-        servidor: ficam os utilizadores anteriores e avisa-se no stderr."""
+        revoga-o no pedido seguinte) e as sessões de quem deixou de existir, ou mudou de senha, terminam.
+        ronda 9 (achado G4 da ronda 2): um toml que mudou e não carrega (erro, sem utilizadores, apagado) FECHA a porta — ninguém
+        entra, nem por token, até voltar a carregar (diz-se porquê no stderr); antes ficavam os utilizadores anteriores, e apagar o
+        último utilizador (ou o ficheiro) não revogava nada. A marca do ficheiro só se actualiza DEPOIS de lido, dentro do trinco:
+        um pedido que chegue a meio da releitura espera por ela em vez de entrar com os utilizadores antigos."""
         marca = self._marca_do_toml()
         if marca is None or marca == self._marca:
             return False
         with self._lock:
             if marca == self._marca:
                 return False
-            self._marca = marca
             try:
                 novo = config.carregar(self._origem)
             except (config.ConfigInvalida, OSError, ValueError) as e:
-                print(f"basalt.toml mudou mas não carrega ({e}); fico com os utilizadores anteriores", file=sys.stderr, flush=True)
+                self._marca, self._fechado = marca, str(e) or e.__class__.__name__
+                print(f"basalt.toml mudou mas não carrega ({e}): ninguém entra até o corrigires", file=sys.stderr, flush=True)
                 return False
+            self._marca, self._fechado = marca, ""
             antes = {u.email.lower(): u.senha_hash for u in self.cfg.utilizadores}
             self.cfg.utilizadores = novo.utilizadores            # o mesmo objecto Config que o servidor web usa
             vivos = {u.email.lower(): u.senha_hash for u in novo.utilizadores}
@@ -159,6 +171,8 @@ class Autenticador:
         """(ok, token-ou-motivo). Sempre o mesmo tempo e a mesma mensagem para e-mail inexistente e senha errada."""
         self.reler_se_mudou()
         with self._lock:
+            if self._fechado:
+                return False, "O basalt.toml do servidor tem um erro: ninguém entra até ser corrigido."
             if self._bloqueado(ip):
                 return False, "Demasiadas tentativas; espera %d minutos." % self.cfg.auth.janela_minutos
             u = self.cfg.utilizador(email)
@@ -168,7 +182,8 @@ class Autenticador:
                 return False, "E-mail ou senha errados."
             token = secrets.token_urlsafe(32)
             agora = time.time()
-            self._sessoes[hash_token(token)] = Sessao(email=u.email, expira=agora + self.cfg.auth.sessao_horas * 3600, criada=agora)
+            self._sessoes[hash_token(token)] = Sessao(email=u.email, expira=agora + self.cfg.auth.sessao_horas * 3600, criada=agora,
+                                                      cred=impressao_credencial(u.senha_hash))
             self._falhas.pop(ip, None)
             try:
                 self._guardar()
@@ -200,6 +215,8 @@ class Autenticador:
     def utilizador_do_pedido(self, cabecalhos, ip: str = "") -> Utilizador | None:
         """`cabecalhos` é o `self.headers` do handler (ou um dict). None = 401."""
         self.reler_se_mudou()
+        if self._fechado:
+            return None
         get = cabecalhos.get
         # agentes: Bearer (vale em todos os modos; é o único caminho para o MCP por HTTP)
         auth = (get("Authorization") or "").strip()
@@ -230,7 +247,11 @@ class Autenticador:
                 self._sessoes.pop(hash_token(m.value), None)
                 self._guardar()
                 return None
-        return self.cfg.utilizador(s.email)
+        u = self.cfg.utilizador(s.email)
+        # ronda 9 (achado G4 da ronda 2): a senha mudou desde que a sessão abriu (também com o servidor parado) → já não vale
+        if u is None or not s.cred or not hmac.compare_digest(s.cred, impressao_credencial(u.senha_hash)):
+            return None
+        return u
 
     def token_do_pedido(self, cabecalhos) -> str:
         c = SimpleCookie()

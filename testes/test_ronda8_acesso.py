@@ -116,7 +116,10 @@ def test_toml_relido_sem_reiniciar(servidor):
     assert s.get("/", email=ANA).codigo == 200
     _rescrever(s.toml, toml_de(0, s.dados, "cabecalho", None, [{"email": ANA, "espaco": "a"}, {"email": CEA, "espaco": "c"}]))
     assert s.get("/", email=CEA).codigo == 200                                # acrescentada sem reiniciar
-    _rescrever(s.toml, "isto não é um toml [[[")                              # inválido: ficam os anteriores
+    com_cea = s.toml.read_text(encoding="utf-8")
+    _rescrever(s.toml, "isto não é um toml [[[")                              # inválido: ronda 9 (achado G4 da ronda 2) — ninguém entra
+    assert s.get("/", email=CEA).codigo in (401, 403) and s.get("/", email=ANA).codigo in (401, 403)
+    _rescrever(s.toml, com_cea)                                               # corrigido: volta sem reiniciar
     assert s.get("/", email=CEA).codigo == 200 and s.get("/", email=BEA).codigo == 403
 
 

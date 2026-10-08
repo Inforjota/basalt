@@ -32,9 +32,11 @@
   Os agentes e scripts entram por token (`Authorization: Bearer`) e não precisam de dono; um script que use a sessão do browser
   ou o cabeçalho do proxy tem de mandar o `X-Basalt-Dono` que `GET /api/eu` lhe der.
 - **Revogar sem reiniciar.** O servidor relê os utilizadores do `basalt.toml` quando ele muda. Apagar um utilizador ou o hash
-  do token MCP vale no pedido seguinte, para as sessões e para o `/mcp`. Mudar a senha termina as sessões abertas dessa conta.
-  Um `basalt.toml` que não carrega não substitui o que está em uso. As outras opções (modo, `anfitrioes`, proxies) só mudam
-  ao reiniciar.
+  do token MCP vale no pedido seguinte, para as sessões e para o `/mcp`. Cada sessão guarda uma impressão da senha com que
+  abriu e só vale com ela: mudar a senha termina as sessões dessa conta, também se a mudares com o servidor parado.
+  Um `basalt.toml` que mudou e não carrega (um erro ao editar, sem utilizadores, o ficheiro apagado) **fecha a porta**: ninguém
+  entra, nem por token, até ele voltar a carregar — o motivo aparece no registo do servidor. Um pedido que chegue a meio da
+  releitura espera por ela. As outras opções (modo, `anfitrioes`, proxies) só mudam ao reiniciar.
 - **Contra CSRF e DNS rebinding.** As escritas da interface exigem o cabeçalho `X-Basalt`. Cookies `HttpOnly; SameSite=Strict`.
   Em modo `aberto`, e em qualquer modo quando `[basalt] anfitrioes` está definido, o servidor confere o `Host` de cada pedido
   e o `Origin` das escritas contra os nomes dele (loopback, o endereço em que escuta e `anfitrioes`). Um nome estranho recebe

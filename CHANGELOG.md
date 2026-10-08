@@ -75,6 +75,11 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
     nunca sobem em nome de quem entrou.
   - **Actualizar de uma versão anterior:** abrir a página com rede em cada aparelho até a fila sem internet ficar vazia antes de
     actualizar; o que ficar por enviar numa cópia sem dono não sobe sozinho.
+  - **Revogar vale sempre:** cada sessão guarda uma impressão da senha com que abriu e só vale com ela (mudar a senha com o
+    servidor parado também termina as sessões); um `basalt.toml` que mudou e não carrega — erro, sem utilizadores, apagado —
+    fecha a porta a todos, também aos tokens, até voltar a carregar (antes ficavam os utilizadores anteriores: apagar o último
+    utilizador não revogava nada); um pedido a meio da releitura espera por ela. **Ao actualizar:** as sessões abertas antes
+    desta versão deixam de valer — cada pessoa entra outra vez uma vez.
   - **Ligações simbólicas:** o que o Basalt abre, lista, serve, importa ou exporta não atravessa uma ligação simbólica em nenhum
     componente do caminho, nem se ela aparecer entre a verificação e a abertura (`basalt.caminhos`: abre pasta a pasta com
     `O_NOFOLLOW`). Uma pasta de anexos que seja uma ligação não se serve, não se lista e não se escreve.
@@ -88,4 +93,4 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   - **Carimbos da Entrada:** nunca se repetem, nem depois de apagar todas as notas nem com o relógio a andar para trás (o último
     fica gravado ao lado da Entrada, com escrita atómica); a ordem é numérica.
   - Testes: `testes/test_ronda9_donos.py`, `testes/test_ronda9_pagina_donos.py`, `testes/test_sw.py` (`TestUmaCachePorDono`),
-    `testes/test_ronda9_ficheiros.py`.
+    `testes/test_ronda9_ficheiros.py`, `testes/test_ronda9_revogar.py`.

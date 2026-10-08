@@ -52,7 +52,8 @@ Tudo é ficheiro: **acesso** e **portabilidade** = copiar a pasta `memoria/` (Ma
 editar; **apagamento** = apagar a nota e os anexos (e, para apagar do histórico, `git filter-repo` ou recriar o repositório),
 apagar a Entrada e o seu registo de apagadas, `basalt indexar` para refazer o índice, e apagar as cópias em `cas-salvos/`,
 `offline-versoes/` e `unir/`. No browser: «Apagar cópia deste aparelho». Um utilizador apaga-se removendo o
-bloco `[[utilizadores]]` e a pasta do espaço.
+bloco `[[utilizadores]]` e a pasta do espaço (se era o último, ninguém volta a entrar até haver outro; se é para desligar de
+vez, pára também o servidor).
 
 ## Modelo de aviso (adapta e põe onde os teus utilizadores o vejam)
 

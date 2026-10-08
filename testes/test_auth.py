@@ -156,8 +156,8 @@ class TestEntrar:
     def test_sessoes_expiradas_nao_sao_carregadas(self, tmp_path):
         agora = time.time()
         (tmp_path / "sessoes.json").write_text(json.dumps({
-            hash_token("velha"): {"email": EMAIL, "expira": agora - 1, "criada": agora - 100},
-            hash_token("nova"): {"email": EMAIL, "expira": agora + 100, "criada": agora}}))
+            hash_token("velha"): {"email": EMAIL, "expira": agora - 1, "criada": agora - 100, "cred": auth.impressao_credencial(HASH)},
+            hash_token("nova"): {"email": EMAIL, "expira": agora + 100, "criada": agora, "cred": auth.impressao_credencial(HASH)}}))
         a = autenticador(tmp_path)
         assert a.utilizador_do_pedido(cookie("velha")) is None
         assert a.utilizador_do_pedido(cookie("nova")).email == EMAIL
