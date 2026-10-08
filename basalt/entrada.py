@@ -7,7 +7,9 @@ Entrada, o MCP acrescentava uma ideia, e a web substituía o ficheiro pela fotog
 já ter sido confirmada a quem a guardou.
 
 Cada ideia tem um `t` único (carimbo ISO aos segundos; se o segundo já estiver ocupado, `~2`, `~3`…), porque a página, o
-«juntar», o «apagar» e o «desfazer» identificam a ideia por ele. Uma linha ilegível (um processo morto a meio do append) é
+«juntar», o «apagar» e o «desfazer» identificam a ideia por ele. Um carimbo nunca se emite duas vezes no mesmo espaço: o último
+emitido fica em `.entrada.ultimo` (ao lado da Entrada, gravado sob o mesmo trinco) e o seguinte é sempre maior que ele e que
+todos os presentes — apagar uma ideia não liberta o seu carimbo. Uma linha ilegível (um processo morto a meio do append) é
 saltada na leitura e não derruba a Entrada; o append seguinte começa sempre numa linha nova.
 """
 from __future__ import annotations
@@ -69,19 +71,53 @@ def _agora() -> str:
     return datetime.datetime.now().isoformat(timespec="seconds")
 
 
-def novo_t(ocupados) -> str:
-    base = t = _agora()
-    n = 1
-    while t in ocupados:
-        n += 1
-        t = f"{base}~{n}"
-    return t
+def _chave(t: str) -> tuple[str, int]:
+    """a ordem de um carimbo: (data aos segundos, número) — `…:05` é 1, `…:05~2` é 2, `…:05~10` vem DEPOIS de `…:05~9`."""
+    base, _, n = t.partition("~")
+    try:
+        return base, (int(n) if n else 1)
+    except ValueError:
+        return t, 1
+
+
+def _ficheiro_ultimo(p: Path) -> Path:
+    return p.with_name(".entrada.ultimo")
+
+
+def _ler_ultimo(p: Path) -> str:
+    try:
+        return _ficheiro_ultimo(p).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _gravar_ultimo(p: Path, t: str) -> None:
+    """ronda 9 (carimbos nunca repetidos): o último carimbo emitido fica ao lado da Entrada (atómico: temporário + replace)."""
+    f = _ficheiro_ultimo(p)
+    tmp = f.with_name(f.name + ".tmp")
+    tmp.write_text(t + "\n", encoding="utf-8")
+    tmp.replace(f)
+
+
+def novo_t(ocupados, ultimo: str = "") -> str:
+    """um carimbo ESTRITAMENTE maior que o último emitido e que todos os presentes. ronda 9 (carimbos nunca repetidos): antes
+    escolhia-se «o primeiro livre desse segundo», e apagada a ideia `…:05` (ou a `…:05~2`) o seguinte pedido voltava a emitir
+    o mesmo carimbo — quem ainda guardava o antigo (a página aberta, um «desfazer») passava a mexer noutra ideia."""
+    chaves = [_chave(t) for t in ocupados if isinstance(t, str) and t]
+    if ultimo:
+        chaves.append(_chave(ultimo))
+    base = _agora()
+    if not chaves or base > max(chaves)[0]:
+        return base
+    b, n = max(chaves)                                  # o segundo já foi usado (ou o relógio andou para trás): o seguinte do maior
+    return f"{b}~{n + 1}"
 
 
 def acrescentar(texto: str, de: str, **extra) -> dict:
     """guarda uma ideia nova e devolve o registo (com o `t` único). Quem chama já recusou o que parecia um segredo em claro."""
     with trinco() as p:
-        reg = {"t": novo_t({r.get("t") for r in ler(p)}), "de": de, **extra, "texto": texto.strip(), "arquivado": False}
+        reg = {"t": novo_t({r.get("t") for r in ler(p)}, _ler_ultimo(p)), "de": de, **extra, "texto": texto.strip(), "arquivado": False}
+        _gravar_ultimo(p, reg["t"])                     # primeiro o carimbo, depois a ideia: se falhar a meio, sobra um carimbo por usar, nunca um repetido
         with open(p, "a+b") as f:
             f.seek(0, 2)
             if f.tell():

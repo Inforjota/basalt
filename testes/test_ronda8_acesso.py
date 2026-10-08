@@ -298,13 +298,15 @@ def test_importar_anexos_em_subpastas_duplicados_e_tamanho(tmp_path):
     (esp.anexos / "igual.png").write_bytes(b"igual")
     (esp.anexos / "dup.png").write_bytes(b"conteudo velho")
     r = obsidian.importar(cofre, esp)
-    assert sorted(r["anexos"]) == ["foto.png", "igual.png"]
+    # ronda 9 (achado M3 da ronda 2): o anexo com o mesmo nome e outro conteúdo entra com outro nome, e a nota aponta para ele
+    assert sorted(r["anexos"]) == ["dup_2.png", "foto.png", "igual.png"]
     assert (esp.anexos / "foto.png").read_bytes() == b"\x89PNG nova"
-    assert (esp.anexos / "dup.png").read_bytes() == b"conteudo velho" and not (esp.anexos / "grande.png").exists()
+    assert (esp.anexos / "dup.png").read_bytes() == b"conteudo velho" and (esp.anexos / "dup_2.png").read_bytes() == b"conteudo novo"
+    assert not (esp.anexos / "grande.png").exists()
     texto = (esp.real / "nota.md").read_text(encoding="utf-8")
-    assert "![[foto.png]]" in texto and "imagens/" not in texto and "![[dup.png|a foto]]" in texto
+    assert "![[foto.png]]" in texto and "imagens/" not in texto and "![[dup_2.png|a foto]]" in texto
     motivos = dict(r["saltadas"])
-    assert "grande" in motivos["grande.png"] and "diferente" in motivos["dup.png"]
+    assert "grande" in motivos["grande.png"] and "dup.png" not in motivos
 
 
 # ───────────────────────── /api/saude e o toml validado antes de substituir ─────────────────────────

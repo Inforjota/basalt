@@ -6,9 +6,11 @@ Independente do servidor HTTP: `ler` devolve (estado, cabeçalhos, corpo) e quem
 """
 from __future__ import annotations
 
+import errno
 import mimetypes
 import os
 import re
+import secrets
 from pathlib import Path
 
 from . import caminhos
@@ -33,6 +35,17 @@ def pasta(esp) -> Path:
     return Path(getattr(esp, "anexos", None) or (esp.real / "anexos"))
 
 
+def _raiz(esp):
+    """(raiz de confiança, componentes abaixo dela até à pasta dos anexos). ronda 9 (anexos sem ligações simbólicas): a raiz é
+    a memória do espaço e `anexos` conta como componente a verificar (uma pasta `anexos` que seja uma ligação não se segue);
+    se a pasta estiver noutro sítio, é ela própria a raiz."""
+    d = pasta(esp)
+    try:
+        return Path(esp.real), Path(d).relative_to(Path(esp.real)).parts
+    except (AttributeError, ValueError):
+        return d, ()
+
+
 def tipo_de(nome: str) -> str:
     t = mimetypes.guess_type(nome)[0] or "application/octet-stream"
     return t + ("; charset=utf-8" if t.startswith("text/") or t == "application/json" else "")
@@ -46,11 +59,12 @@ def ler(esp, nome: str):
     """(estado, cabeçalhos, corpo). 400 nome inválido · 404 não há · 200 com o tipo pelo sufixo (nunca pelo conteúdo)."""
     if not nome_ok(nome):
         return 400, {"Content-Type": _TEXTO}, "nome de anexo inválido".encode("utf-8")
+    raiz, pre = _raiz(esp)
     try:
-        if not caminhos.regular(pasta(esp) / nome):      # ronda 8 (ligações simbólicas): uma ligação simbólica na pasta não se serve (podia apontar para fora)
-            raise FileNotFoundError(nome)
-        dados = (pasta(esp) / nome).read_bytes()
-    except (FileNotFoundError, IsADirectoryError, NotADirectoryError, PermissionError):
+        # ronda 9 (anexos sem ligações simbólicas): verificar e abrir são uma só operação, sem seguir ligações em NENHUM componente
+        # (a pasta `anexos` incluída) — antes só se olhava para o último e depois abria-se o caminho outra vez
+        dados = caminhos.ler_bytes(raiz, [*pre, nome])
+    except OSError:                                      # não há · é uma ligação · não é um ficheiro normal · sem permissão
         return 404, {"Content-Type": _TEXTO}, "anexo não encontrado".encode("utf-8")
     tipo = tipo_de(nome)
     cab = {"Content-Type": tipo, "Content-Length": str(len(dados)), "Cache-Control": CACHE,
@@ -60,8 +74,8 @@ def ler(esp, nome: str):
     return 200, cab, dados
 
 
-def guardar(esp, nome: str, dados: bytes) -> str:
-    """grava e devolve o nome final. Nunca sobrepõe: o mesmo conteúdo → o mesmo nome; outro conteúdo → nome_2.ext."""
+def _validar(nome: str, dados: bytes) -> str:
+    """o nome limpo, ou ValueError / SegredoEmClaro — o mesmo critério para gravar e para prever."""
     nome = (nome or "").strip()
     if not nome_ok(nome):
         raise ValueError("nome de anexo inválido (letras, números, ponto, espaço, - e _; sufixo conhecido)")
@@ -70,37 +84,126 @@ def guardar(esp, nome: str, dados: bytes) -> str:
     txt = dados.decode("utf-8", errors="replace")
     if SEGREDO_RX.search(txt) or (Path(nome).suffix.lower() in TEXTO and tem_segredo_texto(txt)):
         raise SegredoEmClaro()
-    d = pasta(esp)
-    d.mkdir(parents=True, exist_ok=True)
+    return nome
+
+
+def _igual(dfd: int, nome: str, dados: bytes) -> bool:
+    """o ficheiro `nome` da pasta `dfd` existe, é normal e tem exactamente estes bytes."""
+    try:
+        fd = caminhos.abrir_ficheiro(dfd, nome)
+    except OSError:
+        return False
+    with os.fdopen(fd, "rb") as f:
+        return os.fstat(f.fileno()).st_size == len(dados) and f.read(len(dados) + 1) == dados
+
+
+# erros de os.link em sistemas de ficheiros sem ligações duras (alguns volumes de rede): grava-se então directamente com O_EXCL
+_SEM_LIGACAO = {errno.EPERM, errno.EOPNOTSUPP, errno.ENOTSUP, errno.EXDEV, errno.ENOSYS, errno.EMLINK}
+
+
+def _escrever_fd(fd: int, dados: bytes) -> None:
+    with os.fdopen(fd, "wb") as f:
+        f.write(dados)
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def _publicar(dfd: int, nome: str, dados: bytes) -> str:
+    """ronda 9 (anexos sem ligações simbólicas): os bytes vão para um temporário escondido na própria pasta (fsync) e só depois
+    aparecem com o nome final por `link` — que nunca sobrepõe: ou cria o nome ou falha com «já existe». Assim ninguém vê um
+    anexo a meio e dois a gravar o mesmo nome não se atropelam (o que chegou primeiro fica intacto)."""
+    base, suf = Path(nome).stem, Path(nome).suffix
+    tmp = f".{os.getpid()}-{secrets.token_hex(8)}.tmp"
+    _escrever_fd(caminhos.abrir_ficheiro(dfd, tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644), dados)
+    try:
+        final, i = nome, 1
+        while True:
+            try:
+                os.link(tmp, final, src_dir_fd=dfd, dst_dir_fd=dfd, follow_symlinks=False)
+                return final
+            except FileExistsError:
+                if _igual(dfd, final, dados):             # o mesmo conteúdo reutiliza o nome
+                    return final
+                i += 1
+                final = f"{base}_{i}{suf}"
+            except OSError as e:
+                if e.errno not in _SEM_LIGACAO:
+                    raise
+                return _publicar_directo(dfd, nome, dados)
+    finally:
+        try:
+            os.unlink(tmp, dir_fd=dfd)
+        except OSError:
+            pass
+
+
+def _publicar_directo(dfd: int, nome: str, dados: bytes) -> str:
     base, suf = Path(nome).stem, Path(nome).suffix
     final, i = nome, 1
     while True:
         try:
-            fd = os.open(d / final, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+            fd = caminhos.abrir_ficheiro(dfd, final, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
         except FileExistsError:
-            try:
-                if caminhos.regular(d / final) and (d / final).read_bytes() == dados:
-                    return final
-            except OSError:
-                pass
+            if _igual(dfd, final, dados):
+                return final
             i += 1
             final = f"{base}_{i}{suf}"
             continue
-        with os.fdopen(fd, "wb") as f:
-            f.write(dados)
+        _escrever_fd(fd, dados)
         return final
 
 
+def guardar(esp, nome: str, dados: bytes) -> str:
+    """grava e devolve o nome final. Nunca sobrepõe: o mesmo conteúdo → o mesmo nome; outro conteúdo → nome_2.ext."""
+    nome = _validar(nome, dados)
+    raiz, pre = _raiz(esp)
+    try:
+        dfd = caminhos.abrir_pasta(raiz, pre, criar=True)
+    except caminhos.Recusado as e:                       # a pasta dos anexos (ou um ancestral) é uma ligação simbólica
+        raise ValueError("a pasta dos anexos não é segura (passa por uma ligação simbólica) — não guardei nada") from e
+    try:
+        return _publicar(dfd, nome, dados)
+    finally:
+        os.close(dfd)
+
+
+def prever(esp, nome: str, dados: bytes, reservados: dict | None = None) -> str:
+    """o nome que `guardar` daria a estes bytes — sem escrever nada (a importação em simulação). `reservados` (nome → bytes) é o que
+    a própria simulação já «pôs»: assim dois anexos diferentes com o mesmo nome dão `nome` e `nome_2`, tal como na gravação.
+    Levanta o mesmo que `guardar` para nome inválido, tamanho e segredo."""
+    nome = _validar(nome, dados)
+    reservados = {} if reservados is None else reservados
+    raiz, pre = _raiz(esp)
+    base, suf = Path(nome).stem, Path(nome).suffix
+    final, i = nome, 1
+    while True:
+        if final in reservados:
+            ocupado = reservados[final] != dados
+        else:
+            try:
+                ocupado = caminhos.ler_bytes(raiz, [*pre, final], len(dados)) != dados
+            except FileNotFoundError:
+                ocupado = None                           # livre
+            except OSError:                              # uma ligação, uma pasta, ou maior que estes bytes: está ocupado
+                ocupado = True
+        if ocupado is None or ocupado is False:
+            reservados[final] = dados
+            return final
+        i += 1
+        final = f"{base}_{i}{suf}"
+
+
 def listar(esp) -> list[dict]:
-    d = pasta(esp)
-    if not d.is_dir():
+    raiz, pre = _raiz(esp)
+    try:
+        entradas = caminhos.listar_dir(raiz, pre)        # ronda 9 (anexos sem ligações simbólicas): sem ligações, nem na pasta nem acima
+    except OSError:
         return []
     out = []
-    for p in sorted(d.iterdir()):
-        if p.is_file() and nome_ok(p.name):
-            st = p.stat()
-            out.append({"nome": p.name, "bytes": st.st_size, "quando": int(st.st_mtime), "tipo": tipo_de(p.name),
-                        "imagem": p.suffix.lower() in IMAGENS})
+    for nome, tipo, st in entradas:
+        if tipo == "f" and nome_ok(nome):
+            out.append({"nome": nome, "bytes": st.st_size, "quando": int(st.st_mtime), "tipo": tipo_de(nome),
+                        "imagem": Path(nome).suffix.lower() in IMAGENS})
     return out
 
 

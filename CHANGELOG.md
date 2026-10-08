@@ -75,4 +75,17 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
     nunca sobem em nome de quem entrou.
   - **Actualizar de uma versão anterior:** abrir a página com rede em cada aparelho até a fila sem internet ficar vazia antes de
     actualizar; o que ficar por enviar numa cópia sem dono não sobe sozinho.
-  - Testes: `testes/test_ronda9_donos.py`, `testes/test_ronda9_pagina_donos.py`, `testes/test_sw.py` (`TestUmaCachePorDono`).
+  - **Ligações simbólicas:** o que o Basalt abre, lista, serve, importa ou exporta não atravessa uma ligação simbólica em nenhum
+    componente do caminho, nem se ela aparecer entre a verificação e a abertura (`basalt.caminhos`: abre pasta a pasta com
+    `O_NOFOLLOW`). Uma pasta de anexos que seja uma ligação não se serve, não se lista e não se escreve.
+  - **Importar do Obsidian:** os anexos passam pelo mesmo caminho da página (detector de segredos; um anexo com uma password não
+    entra e o embed fica como estava); o texto validado é o FINAL, depois de reescrever as ligações; os anexos gravam-se antes
+    das notas; `--simular` diz o mesmo que a gravação e não escreve nada. Um nome sozinho resolve para o anexo da pasta da nota
+    e um caminho para esse ficheiro; um nome ambíguo salta e deixa o embed. Um anexo com o nome de outro e conteúdo diferente
+    entra com outro nome (`foto_2.png`) e a nota aponta para ele.
+  - **Anexos sem sobreposição:** a gravação vai por um temporário e uma ligação dura (`link`, que falha se o nome já existir);
+    um anexo que apareceu entretanto fica intacto.
+  - **Carimbos da Entrada:** nunca se repetem, nem depois de apagar todas as notas nem com o relógio a andar para trás (o último
+    fica gravado ao lado da Entrada, com escrita atómica); a ordem é numérica.
+  - Testes: `testes/test_ronda9_donos.py`, `testes/test_ronda9_pagina_donos.py`, `testes/test_sw.py` (`TestUmaCachePorDono`),
+    `testes/test_ronda9_ficheiros.py`.
