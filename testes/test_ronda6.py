@@ -243,12 +243,12 @@ async ([fonte, api]) => {
   var sw = new Function("self", "caches", "fetch", "Date", fonte + "\nreturn {tratarApi: tratarApi, trancas: trancas};")(self, caches, fetchFalso, DateFalso);
   var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
   var url = location.origin + "/api/nota?nome=n1";
-  function resp200(t){ return new Response(JSON.stringify({texto: t}), {status: 200, headers: {"Content-Type": "application/json"}}); }
+  function resp200(t){ return new Response(JSON.stringify({texto: t}), {status: 200, headers: {"Content-Type": "application/json", "X-Basalt-Dono": "d-ana"}}); }
   function resp401(){ return new Response(JSON.stringify({erro: "sessão expirada"}), {status: 401, headers: {"Content-Type": "application/json"}}); }
-  function resp410(){ return new Response(JSON.stringify({erro: "apagada"}), {status: 410, headers: {"Content-Type": "application/json"}}); }
+  function resp410(){ return new Response(JSON.stringify({erro: "apagada"}), {status: 410, headers: {"Content-Type": "application/json", "X-Basalt-Dono": "d-ana"}}); }
   // devolve {p: promessa} e não a promessa: um `return p` numa função async fazia o `await pedir()` esperar pela resposta
   // da rede que o teste ainda não soltou (bloqueio mútuo).
-  async function pedir(){ var n = pendentes.length; var p = sw.tratarApi(new Request(url));
+  async function pedir(){ var n = pendentes.length; var p = sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}}));
     for(var i = 0; i < 200 && pendentes.length === n; i++) await dormir(5); return {p: p}; }
   async function guardada(){ var c = lojas.get(api); var g = c ? await c.match(url) : undefined; if(!g) return null;
     return {inicio: g.headers.get("X-Basalt-Inicio"), texto: (await g.json()).texto}; }
@@ -256,7 +256,7 @@ async ([fonte, api]) => {
   async function lapide(){ var c = lojas.get("basaltcfg-apagadas"); var r = c ? await c.match(url) : undefined; return r ? await r.text() : null; }
   async function porTranca(id, hora){ var c = await caches.open("basaltcfg-copia-trancada"); await c.put("/__tranca/" + id, new Response(String(hora))); }
   async function offline(){ semRede = true;
-    try { var r = await sw.tratarApi(new Request(url)); return r ? (r.status + (r.headers.get("X-Basalt-From-Cache") ? " cache" : "")) : "nada"; }
+    try { var r = await sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}})); return r ? (r.status + (r.headers.get("X-Basalt-From-Cache") ? " cache" : "")) : "nada"; }
     catch(e){ return "recusou"; } finally { semRede = false; } }
 """
 
@@ -329,7 +329,7 @@ def _avaliar_sw(base, contexto, cenario):
     page = contexto().new_page()
     page.goto(base + "/")
     pronta(page)
-    return page.evaluate(cenario, [fonte_sw(), versao_cache() + "-api"])
+    return page.evaluate(cenario, [fonte_sw(), versao_cache() + "-api-d-ana"])
 
 
 # SW5a (G5)

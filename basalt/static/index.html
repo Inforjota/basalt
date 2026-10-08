@@ -1119,7 +1119,8 @@ const EN = {
   "Gravações feitas na memória nesse dia, com os ficheiros tocados em cada uma.": "Snapshots taken that day, with the files touched in each one.",
   "Ideias que entraram na Entrada neste dia.": "Ideas that came into the Inbox on this day.",
   "nada para explicar aqui.": "Nothing to explain here.",
-  "Terminar sessão ({quem})": "Sign out ({quem})"
+  "Terminar sessão ({quem})": "Sign out ({quem})",
+  "ainda não sei de que conta é este browser — não gravei; tenta outra vez daqui a pouco (o texto continua aqui).": "I don’t know yet which account this browser belongs to — nothing was saved; try again in a moment (your text is still here)."
 };
 function t(s){ return IDIOMA === "en" && Object.prototype.hasOwnProperty.call(EN, s) ? EN[s] : s; }
 function tf(s, vars){ return t(s).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)); }
@@ -1212,7 +1213,10 @@ async function handleRes(res){
   return data;
 }
 
-async function apiGet(path){
+async function apiGet(path, repetido){
+  // ronda 9 (achado G1 da ronda 2): o dono vai sempre no pedido (o da cópia, mesmo por confirmar) — com rede, confirma-se antes
+  // quem está no browser; sem isto a página arrancava com o dono gravado de outra conta e levava «outra conta» em ciclo
+  if(!DONO_OK && !OUTRA_CONTA && navigator.onLine){ try{ await verificarDono(); }catch(e){} }
   var res, bloqAntes = BLOQUEIO_ID, geracaoAntes = GERACAO_COPIA;   // ronda 7: a geração com que este pedido partiu
   var trancasAntes = COPIA_BLOQUEADA ? chavesDe(await trancasNaMarca()) : null;   // ronda 6 G5: as trancas que JÁ existiam ao partir (só importa se está trancada)
   var inicio = agora();
@@ -1223,6 +1227,11 @@ async function apiGet(path){
   var daCache = !!(res.headers && res.headers.get && res.headers.get("X-Basalt-From-Cache") === "1");
   if(!daCache) await reagirResposta(res, path, bloqAntes, inicio, trancasAntes, geracaoAntes);
   else if(await copiaTrancadaAqui()) throw erroCopiaTrancada();   // a página consulta a SUA tranca antes de aceitar cópia do service worker
+  // ronda 9 (achado G1 da ronda 2): uma cópia do service worker só vale se for do dono desta cópia (um SW antigo, de cache comum,
+  // podia servir a de outra conta) — senão é como não haver rede
+  else if(!DONO || res.headers.get("X-Basalt-Dono") !== DONO) return apiGetFalhaRede(path);
+  // ronda 9: 428 = o pedido foi sem dono (ainda não se sabia) — confirma-se e repete-se uma vez
+  if(res.status === 428 && !repetido){ DONO_OK = false; try{ await verificarDono(); }catch(e){} if(DONO) return apiGet(path, true); }
   return handleRes(res);
 }
 /* a cópia está trancada se QUALQUER das marcas o diz — memória, localStorage, IndexedDB ou a marca que só o
@@ -1270,6 +1279,7 @@ async function apiSend(method, path, body, opcoes){
   // ronda 8: uma escrita logo ao abrir, antes de o servidor dizer de quem é a cópia, seguia sem dono — confirma-se primeiro
   // (um pedido só por separador; sem rede falha depressa e a escrita segue para a fila como antes)
   if(!DONO_OK && !OUTRA_CONTA){ try{ await verificarDono(); }catch(e){} }
+  if(!DONO) throw erroSemDono();                         // ronda 9 (achado G2 da ronda 2): antes seguia sem dono
   var res, inicio = agora(), geracaoAntes = GERACAO_COPIA;   // ronda 7
   try{
     res = await fetch(path, {
@@ -1317,14 +1327,22 @@ var GERACAO_COPIA = Number(lerLocal("basalt-copia-geracao")) || 0;          // s
 var PACOTE_CONTROLO = null;     // AbortController do pedido /api/pacote em curso
 /* ronda 8 (contas no mesmo browser): a cópia local (notas, fila, conflitos) é de UMA conta — a que o servidor diz em
    /api/eu («dono»: opaco, conta + espaço). DONO = o dono da cópia que este separador conhece; DONO_OK = o servidor já
-   confirmou que é a conta que está agora no browser (só então se sincroniza e se manda X-Basalt-Dono); OUTRA_CONTA = o
+   confirmou que é a conta que está agora no browser (só então se sincroniza; o X-Basalt-Dono vai sempre que haja DONO — ronda 9); OUTRA_CONTA = o
    servidor recusou um pedido deste separador por ser de outra conta (alguém entrou noutro separador) — pede-se para
    recarregar e não se tranca nada (a sessão não expirou: mudou de dono). */
 var DONO = "", DONO_OK = false, OUTRA_CONTA = false, DONO_A_VERIFICAR = null, OUTRA_CONTA_MOSTRADA = false;
+/* ronda 9 (achados G1/G2 da ronda 2): o cabeçalho leva o dono da cópia mesmo antes de confirmado (sem rede é o gravado no
+   aparelho) — o service worker guarda e serve por dono, e o servidor recusa um pedido sem ele (428). Ninguém é dono (nunca
+   se confirmou, ou terminou a sessão): não vai cabeçalho, e nada se escreve. */
 function cabecalhoDono(h){
   h = h || {};
-  if(DONO_OK && DONO) h["X-Basalt-Dono"] = DONO;
+  if(DONO) h["X-Basalt-Dono"] = DONO;
   return h;
+}
+function erroSemDono(){
+  var e = new Error(t("ainda não sei de que conta é este browser — não gravei; tenta outra vez daqui a pouco (o texto continua aqui)."));
+  e.semDono = true;
+  return e;
 }
 function ehOutraConta(res){
   return !!(res && res.status === 403 && res.headers && res.headers.get && res.headers.get("X-Basalt-Outra-Conta") === "1");
@@ -1368,7 +1386,7 @@ async function apagarCachesApi(){
   if(!("caches" in window)) return;
   try{
     var nomes = await caches.keys();
-    await Promise.all(nomes.filter(function(n){ return /^basalt-.*-api$/.test(n); }).map(function(n){ return caches.delete(n); }));
+    await Promise.all(nomes.filter(function(n){ return /^basalt-.*-api(-[A-Za-z0-9_-]+)?$/.test(n); }).map(function(n){ return caches.delete(n); }));   // ronda 9: uma por dono
   }catch(e){}
 }
 async function bloquearCopiaLocal(){
@@ -1521,7 +1539,7 @@ var SESSAO_EXPIRADA_MOSTRADA = false;
 function diagnosticarFalha(){
   // já não se reaproveita o diagnóstico de há 4 s — «sem rede» há 2 s não diz nada sobre a sessão agora
   if(DIAGNOSTICO_EM_CURSO) return DIAGNOSTICO_EM_CURSO;
-  DIAGNOSTICO_EM_CURSO = fetch("/api/estado", {redirect:"manual", cache:"no-store", credentials:"same-origin"})
+  DIAGNOSTICO_EM_CURSO = fetch("/api/estado", {redirect:"manual", cache:"no-store", credentials:"same-origin", headers: cabecalhoDono()})
     .then(function(resp){
       var tipo = (resp && resp.type === "opaqueredirect") ? "sessao-expirada" : null;
       DIAGNOSTICO_CACHE = {tipo: tipo, quando: Date.now()};
@@ -1895,7 +1913,9 @@ async function donoConfirmado(){
   return DONO_OK && !OUTRA_CONTA;
 }
 /* ronda 8: a cópia passa a ser de `novo` ("" = ninguém: terminou a sessão). Mesmo dono: nada. Cópia sem dono gravado (de
-   antes desta versão) e alguém a entrar: fica dele — é a única adopção sem prova, porque não há como saber de quem era.
+   antes desta versão) e alguém a entrar: fica dele só se estiver VAZIA (ronda 9, achado G3 da ronda 2: não há como saber de quem
+   eram as notas e as edições por enviar). Com alguma coisa, trata-se como de outra conta e o que havia por enviar fica à parte
+   em «pendentes-de:?» — nunca sobe em nome de quem entrou.
    Outro dono: o que a conta anterior tinha por enviar (fila e conflitos) fica guardado À PARTE em «pendentes-de:<dono>» —
    nunca sobe em nome de outra conta e volta quando ela entrar outra vez —, a cópia (notas, cursores do pacote, lápides)
    apaga-se, e a geração sobe: nada que estivesse a meio (pacote, gravação, resposta do service worker) escreve nela. */
@@ -1913,18 +1933,22 @@ async function trocarDono(novo){
     gd.onsuccess = function(){
       var antigo = gd.result ? gd.result.valor : undefined;
       if(antigo === novo) return;
-      if((antigo === undefined || antigo === null) && novo){ meta.put({chave:"dono", valor: novo}); return; }
+      var semDono = (antigo === undefined || antigo === null);
       var gf = fila.getAll();
       gf.onsuccess = function(){
         var gc = confl.getAll();
         gc.onsuccess = function(){
+          var gq = tx.objectStore("notas").count();
+          gq.onsuccess = function(){
+          if(semDono && novo && !gf.result.length && !gc.result.length && !gq.result){ meta.put({chave:"dono", valor: novo}); return; }
+          var chaveAntigo = semDono ? "?" : antigo;            // ronda 9: de quem não se sabe
           var gg = meta.get("geracao");
           gg.onsuccess = function(){
-            var gv = antigo ? meta.get("pendentes-de:" + antigo) : null;
+            var gv = chaveAntigo ? meta.get("pendentes-de:" + chaveAntigo) : null;
             function guardarAntigo(){
-              if(antigo && (gf.result.length || gc.result.length)){
+              if(chaveAntigo && (gf.result.length || gc.result.length)){
                 var ja = gv && gv.result;
-                meta.put({chave:"pendentes-de:" + antigo, fila: juntarPorNome(ja && ja.fila, gf.result),
+                meta.put({chave:"pendentes-de:" + chaveAntigo, fila: juntarPorNome(ja && ja.fila, gf.result),
                           conflitos: juntarPorNome(ja && ja.conflitos, gc.result)});
               }
               var gn = novo ? meta.get("pendentes-de:" + novo) : null;
@@ -1946,6 +1970,7 @@ async function trocarDono(novo){
               if(gn) gn.onsuccess = arrumar; else arrumar();
             }
             if(gv) gv.onsuccess = guardarAntigo; else guardarAntigo();
+          };
           };
         };
       };
@@ -2086,7 +2111,8 @@ function registarConflitoFila(nome, rev, d, geracao){
           nome: nome, actual: d.actual, teu: maisNova ? item.texto : d.teu, hash_actual: d.hash_actual, copia: d.copia,
           proposta: maisNova ? null : (d.proposta || null), proposta_hash: maisNova ? null : (d.proposta_hash || null),
           proposta_tipo: maisNova ? null : (d.proposta_tipo || "ia"),
-          resumo: maisNova ? "" : (d.resumo || ""), quando: Date.now()
+          resumo: maisNova ? "" : (d.resumo || ""), quando: Date.now(),
+          rev: item ? item.rev : rev                            // ronda 9 (achado G3 da ronda 2): a revisão que ficou «a tua»
         });
         if(item) fila.delete(nome);
       };
@@ -2145,9 +2171,10 @@ function apagarConflitoSeIgual(nome, quando, geracao){
   });
 }
 /* ronda 9 (achado 5 da ronda 7): «ficar com a do servidor» numa SÓ transacção — o conflito tem de ser ainda o do ecrã (mesmo
-   `quando`) e a cópia a mesma geração de quando ele foi mostrado; só então sai, e da fila só o texto que estava no ecrã
-   como «a tua». Devolve "ok", "outra" (há outra alteração por enviar, que fica), "mudou" ou "desligada" (nada se tocou). */
-function ficarComServidor(nome, quando, teu, geracao){
+   `quando`) e a cópia a mesma geração (e o mesmo dono) de quando ele foi mostrado; só então sai, e da fila só a REVISÃO que o
+   conflito guardou como «a tua» (achado G3 da ronda 2: o texto igual não prova que é a mesma edição — nem a mesma conta).
+   Devolve "ok", "outra" (há outra alteração por enviar, que fica), "mudou" ou "desligada" (nada se tocou). */
+function ficarComServidor(nome, quando, geracao){
   return transacao(["conflitos", "fila", "meta"], function(tx, saida){
     var conflitos = tx.objectStore("conflitos"), fila = tx.objectStore("fila");
     saida.valor = "mudou";
@@ -2160,21 +2187,10 @@ function ficarComServidor(nome, quando, teu, geracao){
         var gf = fila.get(nome);
         gf.onsuccess = function(){
           if(!gf.result) return;
-          if(gf.result.texto === teu) fila.delete(nome); else saida.valor = "outra";
+          if(gc.result.rev != null && gf.result.rev === gc.result.rev) fila.delete(nome); else saida.valor = "outra";
         };
       };
     });
-  });
-}
-/* «ficar com a do servidor» descarta da fila só o texto que o utilizador viu como «a tua» */
-function apagarFilaSeTexto(nome, texto){
-  return transacao(["fila"], function(tx, saida){
-    var loja = tx.objectStore("fila"), g = loja.get(nome);
-    saida.valor = false;
-    g.onsuccess = function(){
-      if(!g.result) return;
-      if(g.result.texto === texto) loja.delete(nome); else saida.valor = true;
-    };
   });
 }
 
@@ -2433,7 +2449,7 @@ async function desligarCopiaLocal(){
 
 /* ronda 9 (achado 2 da ronda 7): a versão do protocolo da cópia que esta página espera do service worker. O SW activo (o que
    serve TODOS os separadores) responde a {tipo:"protocolo"}; um SW antigo não responde. */
-var PROTOCOLO_COPIA = 3;
+var PROTOCOLO_COPIA = 4;   // ronda 9: 4 = cache da API por dono
 function perguntarProtocolo(sw, ms){
   return new Promise(function(resolve){
     var feito = false, canal;
@@ -2597,7 +2613,9 @@ function renderAnexo(nome){
   if(!ANEXO_RX.test(nome) || !ext){
     return '<div class="embed-nota embed-nota-ficheiro">📎 ' + escapeHtml(nome) + "</div>";
   }
-  var url = "/anexos/" + encodeURIComponent(nome), nomeHtml = escapeHtml(nome);
+  // ronda 9 (achado G2 da ronda 2): ?d= é o dono da cópia (uma <img> não manda cabeçalhos) — o servidor recusa o de outra conta,
+  // e a cache do browser fica separada por conta
+  var url = "/anexos/" + encodeURIComponent(nome) + "?d=" + encodeURIComponent(DONO), nomeHtml = escapeHtml(nome);
   if(/^(png|jpe?g|gif|webp|svg)$/.test(ext)){
     return '<a class="embed-anexo-img" href="' + url + '" target="_blank" rel="noopener"><img class="embed-img" src="' + url + '" alt="' + nomeHtml + '" loading="lazy"></a>';
   }
@@ -3109,13 +3127,21 @@ function nomeParaAnexo(ficheiro){
   }
   return nome.replace(/[^A-Za-z0-9À-ɏ._ \-]+/g, "_").slice(0, 120);
 }
-function enviarAnexo(ficheiro){
+async function enviarAnexo(ficheiro){
   var nome = nomeParaAnexo(ficheiro);
-  return fetch("/api/anexos?nome=" + encodeURIComponent(nome), {
-    method: "POST", credentials: "same-origin",
-    headers: {"X-Basalt": "1", "Content-Type": ficheiro.type || "application/octet-stream"},
-    body: ficheiro,
-  }).then(handleRes, function(){ return apiSendFalhaRede(); });
+  // ronda 9 (achado G2 da ronda 2): o envio ia sem dono — com outra conta entrada noutro separador, gravava no espaço dela
+  if(!DONO_OK && !OUTRA_CONTA){ try{ await verificarDono(); }catch(e){} }
+  if(!DONO) throw erroSemDono();
+  var res;
+  try{
+    res = await fetch("/api/anexos?nome=" + encodeURIComponent(nome), {
+      method: "POST", credentials: "same-origin",
+      headers: cabecalhoDono({"X-Basalt": "1", "Content-Type": ficheiro.type || "application/octet-stream"}),
+      body: ficheiro,
+    });
+  }catch(e){ return apiSendFalhaRede(); }
+  if(ehOutraConta(res)) mostrarOutraConta();
+  return handleRes(res);
 }
 function ligarAnexosNoEditor(alvo, obterEditor){
   function tratar(e, lista){
@@ -3916,7 +3942,7 @@ function renderConflito(nota, conflito, centro, contexto, geracaoVista){
   centro.querySelector("#conf-servidor").addEventListener("click", async function(){
     try{
       var g = geracaoVista != null ? geracaoVista : await geracaoActual();
-      var feito = await ficarComServidor(nota.nome, conflito.quando, conflito.teu, g);   // ronda 9 (achado 5): tudo numa transacção
+      var feito = await ficarComServidor(nota.nome, conflito.quando, g);   // ronda 9 (achado 5): tudo numa transacção
       await atualizarContadorFila();
       if(feito === "desligada") showToast(t("a cópia deste aparelho foi apagada entretanto — não lhe toquei; vê a nota outra vez."));
       else if(feito === "mudou") showToast(t("este conflito mudou entretanto (noutro separador) — vê a versão actual e escolhe de novo."));

@@ -162,27 +162,27 @@ async ([fonte, api]) => {
   var guardar = async function(c, req, r, inicio){
     if(sw.guardarSeMaisNova) return sw.guardarSeMaisNova(c, req, r, inicio);
     var corpo = await r.clone().arrayBuffer();
-    return sw.aceitar(req, corpo, r, inicio, {geracao: await sw.geracaoDaCopia(), trancas: {}});
+    return sw.aceitar(req, corpo, r, inicio, {geracao: await sw.geracaoDaCopia(), trancas: {}, dono: "d-ana"});
   };
   var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
-  var resp = function(t){ return new Response(JSON.stringify({texto: t}), {status: 200, headers: {"Content-Type": "application/json"}}); };
+  var resp = function(t){ return new Response(JSON.stringify({texto: t}), {status: 200, headers: {"Content-Type": "application/json", "X-Basalt-Dono": "d-ana"}}); };
   var url = location.origin + "/api/nota?nome=n1";
   async function lida(c){ var g = await c.match(url); if(!g) return null; return {inicio: g.headers.get("X-Basalt-Inicio"), texto: (await g.json()).texto}; }
   // o caso: a ANTIGA (partiu a 100) chega e começa a guardar; a leitura dela à cache demora 120 ms; 10 ms depois chega a
   // NOVA (partiu a 200), lê a cache (vazia, sem atraso) e grava. A antiga acaba de ler «vazia» e gravava por cima.
   var c = await caches.open(api);
   atrasos = [120, 0];
-  var p1 = guardar(c, new Request(url), resp("ANTIGA"), 100);
+  var p1 = guardar(c, new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}}), resp("ANTIGA"), 100);
   await dormir(10);
-  var p2 = guardar(c, new Request(url), resp("NOVA"), 200);
+  var p2 = guardar(c, new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}}), resp("NOVA"), 200);
   var r1 = await p1, r2 = await p2;
   await dormir(20);
   var caso = await lida(c);
   // controlo: nova e depois antiga, em sequência — a antiga tem de ser recusada (ronda 9: outra nota na MESMA cache,
   // porque aceitar() guarda sempre na cache de API do SW)
   var url2 = location.origin + "/api/nota?nome=n2";
-  var s1 = await guardar(c, new Request(url2), resp("NOVA"), 200);
-  var s2 = await guardar(c, new Request(url2), resp("ANTIGA"), 100);
+  var s1 = await guardar(c, new Request(url2, {headers: {"X-Basalt-Dono": "d-ana"}}), resp("NOVA"), 200);
+  var s2 = await guardar(c, new Request(url2, {headers: {"X-Basalt-Dono": "d-ana"}}), resp("ANTIGA"), 100);
   var g2 = await c.match(url2);
   var controlo = g2 ? {inicio: g2.headers.get("X-Basalt-Inicio"), texto: (await g2.json()).texto} : null;
   return {caso: caso, controlo: controlo, s1: s1, s2: s2};
@@ -196,6 +196,6 @@ def test_service_worker_duas_respostas_a_mesma_nota_quase_juntas_fica_a_mais_nov
     page = contexto().new_page()
     page.goto(base + "/")
     pronta(page)
-    r = page.evaluate(SW_FILA_GUARDAR, [fonte_sw(), versao_cache() + "-api"])
+    r = page.evaluate(SW_FILA_GUARDAR, [fonte_sw(), versao_cache() + "-api-d-ana"])
     assert r["controlo"] == {"inicio": "200", "texto": "NOVA"} and r["s1"] is True and r["s2"] is False, r
     assert r["caso"] == {"inicio": "200", "texto": "NOVA"}, f"ficou a ANTIGA por cima: {r['caso']}"

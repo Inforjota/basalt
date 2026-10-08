@@ -6,7 +6,8 @@ funções internas em `window.__t`) e a API com modos que se mudam durante o tes
 `put_solta`, `pacote_solta`, `nota_solta` = o GET à nota, `pacote_uma` = só o próximo pedido de pacote): o servidor segura a
 resposta até o teste a soltar, para reproduzir corridas.
 Contas (ronda 8): `/api/eu` diz o `dono` da conta que está «no browser» (`ESTADO["dono"]`; mudá-lo = outra conta entrou); um pedido
-com `X-Basalt-Dono` diferente leva 403 «outra conta» (`X-Basalt-Outra-Conta: 1`), como o servidor a sério. Ficam registados os donos
+com `X-Basalt-Dono` diferente leva 403 «outra conta» (`X-Basalt-Outra-Conta: 1`), como o servidor a sério; ronda 9: sem ele leva 428
+(menos /api/eu), e com o certo a resposta traz o eco `X-Basalt-Dono` (o service worker só guarda com ele). Ficam registados os donos
 de cada pedido (`donos`), os textos enviados a /api/sincronizar com o dono (`sinc`) e os POST a /api/sair (`sair`).
 
 `BASALT_STATIC=DIR` testa outra versão da página (ex.: uma cópia antiga, para provar que cada teste apanha o defeito).
@@ -33,7 +34,7 @@ MARCA = "basaltcfg-copia-trancada"
 GANCHO = ('window.__t = {guardarEdicaoOffline: guardarEdicaoOffline, sincronizarFila: sincronizarFila, '
           'sincronizarPacote: sincronizarPacote, idbGet: idbGet, idbGetAll: idbGetAll, idbPut: idbPut, idbDelete: idbDelete, '
           'tentarOffline: tentarOffline, desligarCopiaLocal: desligarCopiaLocal, religarCopiaLocal: religarCopiaLocal, apiGet: apiGet, '
-          'apiSend: apiSend, trancasNaMarca: trancasNaMarca, desbloquearCopiaLocal: desbloquearCopiaLocal, '
+          'apiSend: apiSend, enviarAnexo: typeof enviarAnexo === "function" ? enviarAnexo : null, trancasNaMarca: trancasNaMarca, desbloquearCopiaLocal: desbloquearCopiaLocal, '
           'geracao: function(){ return GERACAO_COPIA; }, desligada: function(){ return COPIA_DESLIGADA; }, '
           'bloqueada: function(){ return COPIA_BLOQUEADA; }, setIdbGet: function(f){ idbGet = f; }, '
           # ronda 8 (contas no mesmo browser): com `typeof`, para o gancho servir também uma página anterior (BASALT_STATIC)
@@ -51,7 +52,7 @@ ESTADO = {}
 def reset(**k):
     ESTADO.update(modo="ok", pacote=[], put=[], sinc_pedidos=0, nota_texto="S novo", nota_hash="H2", put_solta=None,
                   sinc_409=None, sinc_503=False, pacote_solta=None, pacote_pedidos=0, nota_solta=None, put_falha_rede=False,
-                  nota_status=200, idioma="pt", pacote_uma=None, dono="d-ana", modo_auth="cabecalho", donos=[], sinc=[], sair=0)
+                  nota_status=200, idioma="pt", pacote_uma=None, dono="d-ana", modo_auth="cabecalho", donos=[], sinc=[], sair=0, anexos=[])
     ESTADO["sinc_solta"] = threading.Event()
     ESTADO.update(k)
 
@@ -70,6 +71,8 @@ class Servidor(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-cache")
         for k, v in (extra or {}).items():
             self.send_header(k, v)
+        if getattr(self, "_eco", ""):                         # ronda 9: o eco do dono, como o servidor a sério
+            self.send_header("X-Basalt-Dono", self._eco)
         self.send_header("Content-Length", str(len(b)))
         self.end_headers()
         self.wfile.write(b)
@@ -126,6 +129,7 @@ class Servidor(BaseHTTPRequestHandler):
         return {}
 
     def _api(self, metodo):
+        self._eco = ""
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
         modo = ESTADO["modo"]
@@ -145,6 +149,13 @@ class Servidor(BaseHTTPRequestHandler):
                 self.rfile.read(int(self.headers.get("Content-Length") or 0))
             return self._envia(403, {"erro": "Entrou outra conta neste browser: recarrega a página antes de continuar.", "outraConta": True},
                                extra={"X-Basalt-Outra-Conta": "1"})
+        if not hd and ESTADO["dono"] and u.path not in ("/api/eu", "/api/sair"):   # ronda 9: sem dono não se responde
+            if metodo in ("PUT", "POST"):
+                self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            return self._envia(428, {"erro": "Pedido sem o dono da cópia (X-Basalt-Dono): recarrega a página.", "semDono": True},
+                               extra={"X-Basalt-Sem-Dono": "1"})
+        if hd and hd == ESTADO["dono"]:
+            self._eco = hd
         if metodo == "POST" and u.path == "/api/sair":
             self.rfile.read(int(self.headers.get("Content-Length") or 0))
             ESTADO["sair"] += 1
@@ -166,6 +177,9 @@ class Servidor(BaseHTTPRequestHandler):
                 return self._envia(200, {"ok": True, "hash": "H3"})
             return self._envia(409, {"erro": "A nota mudou entretanto.", "estado": "conflito", "actual": ESTADO["nota_texto"],
                                      "hash_actual": ESTADO["nota_hash"]})
+        if metodo == "POST" and u.path == "/api/anexos":       # ronda 9: o envio de anexos (o corpo é o ficheiro)
+            ESTADO["anexos"].append((q.get("nome", [""])[0], self.rfile.read(int(self.headers.get("Content-Length") or 0)), hd))
+            return self._envia(201, {"nome": q.get("nome", [""])[0]})
         if metodo == "POST" and u.path == "/api/sincronizar":
             corpo = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
             ESTADO["sinc_pedidos"] += 1
@@ -235,11 +249,12 @@ def conta_notas(page):
     return page.evaluate("window.__t ? window.__t.idbGetAll('notas').then(function(l){return l.length;}) : -1")
 
 
-def buscar(page, caminho):
-    return page.evaluate("""async (c) => {
-        try { const r = await fetch(c, {credentials: 'same-origin'});
+def buscar(page, caminho, dono="d-ana"):
+    """um fetch da página (passa pelo service worker); ronda 9: com o dono da cópia, como a página ("" = sem)."""
+    return page.evaluate("""async ([c, d]) => {
+        try { const r = await fetch(c, {credentials: 'same-origin', headers: d ? {'X-Basalt-Dono': d} : {}});
               return {status: r.status, cache: r.headers.get('X-Basalt-From-Cache'), texto: await r.text()}; }
-        catch (e) { return {status: 0, erro: String(e)}; } }""", caminho)
+        catch (e) { return {status: 0, erro: String(e)}; } }""", [caminho, dono])
 
 
 def com_sw(page, base):
@@ -253,13 +268,13 @@ def com_sw(page, base):
 
 
 def nome_cache_api(page):
-    return page.evaluate("caches.keys().then(l => l.filter(n => /^basalt-.*-api$/.test(n))[0] || '')")
+    return page.evaluate("caches.keys().then(l => l.filter(n => /^basalt-.*-api-d-ana$/.test(n))[0] || '')")
 
 
 def por_na_cache(page, nome, texto):
     """o cache.put atrasado do service worker (corre depois do «apagar»)."""
     page.evaluate("""([n, t]) => caches.open(n).then(c => c.put(location.origin + '/api/nota?nome=n1',
-        new Response(JSON.stringify({nome: 'n1', texto: t}), {headers: {'Content-Type': 'application/json'}})))""", [nome, texto])
+        new Response(JSON.stringify({nome: 'n1', texto: t}), {headers: {'Content-Type': 'application/json', 'X-Basalt-Dono': 'd-ana'}})))""", [nome, texto])
 
 
 def conflito(page):
@@ -309,7 +324,7 @@ async ([fonte, marca]) => {
     match: async function(req, o){ var c = o && o.cacheName ? lojas.get(o.cacheName) : null; if(c) return c.match(req);
       for (const cc of lojas.values()){ var r = await cc.match(req); if(r) return r; } return undefined; }
   };
-  var fetchFalso = async function(){ return new Response(JSON.stringify({texto: "PRIVADO"}), {status: 200, headers: {"Content-Type": "application/json"}}); };
+  var fetchFalso = async function(){ return new Response(JSON.stringify({texto: "PRIVADO"}), {status: 200, headers: {"Content-Type": "application/json", "X-Basalt-Dono": "d-ana"}}); };
   var self = {addEventListener: function(){}, skipWaiting: function(){}, clients: {claim: function(){}}, location: {origin: location.origin}};
   var sw = new Function("self", "caches", "fetch", fonte + "\nreturn {tratarApi: tratarApi, trancar: trancar, copiaTrancada: copiaTrancada};")(self, caches, fetchFalso);
   await sw.trancar();                                            // tranca antiga (um 401 de há bocado)
@@ -322,7 +337,7 @@ async ([fonte, marca]) => {
   // ronda 9: o SW devolve a resposta logo e guarda/destranca a seguir (o que no fetch vai para o waitUntil) — o ensaio
   // recolhe esse trabalho e espera por ele antes de olhar.
   var trabalhos = [];
-  var r = await sw.tratarApi(new Request(location.origin + "/api/nota?nome=n1"), function(p){ trabalhos.push(p); });   // 200 → destranca a antiga
+  var r = await sw.tratarApi(new Request(location.origin + "/api/nota?nome=n1", {headers: {"X-Basalt-Dono": "d-ana"}}), function(p){ trabalhos.push(p); });   // 200 → destranca a antiga
   await Promise.all(trabalhos);
   return {estado: r.status, injectada: injectada, trancada: await sw.copiaTrancada()};
 }
@@ -354,14 +369,14 @@ async ([fonte, api]) => {
   var sw = new Function("self", "caches", "fetch", fonte + "\nreturn {tratarApi: tratarApi};")(self, caches, fetchFalso);
   var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
   var url = location.origin + "/api/nota?nome=n1";
-  var p1 = sw.tratarApi(new Request(url));           // GET antigo: fica pendurado na rede
+  var p1 = sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}}));           // GET antigo: fica pendurado na rede
   await dormir(30);
-  var p2 = sw.tratarApi(new Request(url));           // GET novo
+  var p2 = sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}}));           // GET novo
   await dormir(30);
-  pendentes[1](new Response(JSON.stringify({erro: "apagada"}), {status: 410, headers: {"Content-Type": "application/json"}}));
+  pendentes[1](new Response(JSON.stringify({erro: "apagada"}), {status: 410, headers: {"Content-Type": "application/json", "X-Basalt-Dono": "d-ana"}}));
   var r2 = await p2;                                 // a nota foi apagada de vez
   await dormir(30);
-  pendentes[0](new Response(JSON.stringify({texto: "PRIVADO"}), {status: 200, headers: {"Content-Type": "application/json"}}));
+  pendentes[0](new Response(JSON.stringify({texto: "PRIVADO"}), {status: 200, headers: {"Content-Type": "application/json", "X-Basalt-Dono": "d-ana"}}));
   var r1 = await p1;                                 // …e só agora chega a resposta do GET antigo
   await dormir(150);
   var c = lojas.get(api); var guardada = c ? await c.match(url) : undefined;

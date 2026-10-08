@@ -4,6 +4,7 @@
   · as #etiquetas já usadas aparecem no autocompletar do editor.
 TESTE_STATIC=<pasta> corre contra outra versão da interface (serve para provar que a antiga falha)."""
 import http.client
+import json
 import os
 import shutil
 import threading
@@ -116,9 +117,13 @@ def test_colar_imagem_insere_embed_e_guarda(servidor, browser):
         page.wait_for_function("() => /!\\[\\[colado-\\d{8}-\\d{6}\\.png\\]\\]/.test(window.__bt.editor().obterTexto())", timeout=10000)
         assert any(d["nome"].startswith("colado-") for d in anexos.listar(esp))
         # e a pré-visualização (lado a lado no ecrã largo) mostra a imagem a partir de /anexos/
-        page.wait_for_selector("#ed-preview img.embed-img[src='/anexos/foto.png']", state="attached", timeout=10000)
+        # (ronda 9: com o dono da cópia em ?d= — uma <img> não manda cabeçalhos e o servidor recusa os anexos sem dono)
         c = http.client.HTTPConnection(base[7:].split(":")[0], int(base.rsplit(":", 1)[1]), timeout=10)
-        c.request("GET", "/anexos/foto.png"); r = c.getresponse(); assert r.status == 200 and r.read() == b"PNGdados"
+        c.request("GET", "/api/eu"); dono = json.loads(c.getresponse().read())["dono"]
+        src = "/anexos/foto.png?d=" + dono
+        page.wait_for_selector("#ed-preview img.embed-img[src='%s']" % src, state="attached", timeout=10000)
+        c.request("GET", src); r = c.getresponse(); assert r.status == 200 and r.read() == b"PNGdados"
+        c.request("GET", "/anexos/foto.png"); r = c.getresponse(); r.read(); assert r.status == 428
     finally:
         ctx.close()
 

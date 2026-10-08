@@ -17,7 +17,8 @@ pytestmark = pytest.mark.skipif(NODE is None, reason="precisa do node")
 # a versão da cache lê-se do próprio sw.js (v3 → v4 → v5…): com o nome à mão, metade dos testes passava à toa
 _SW = Path(os.environ.get("BASALT_SW") or (RAIZ / "basalt" / "static" / "sw.js"))   # BASALT_SW: testar outra cópia (o sw_ambiente.js lê a mesma)
 VER = re.search(r'CACHE_VERSAO\s*=\s*"(basalt-v\d+)"', _SW.read_text(encoding="utf-8")).group(1)
-API = VER + "-api"
+DONO = "d-teste"                  # o dono que o sw_ambiente.js põe nos pedidos por omissão
+API = VER + "-api-" + DONO        # ronda 9: uma cache da API por dono (antes: VER + "-api", comum)
 NOTA = "/api/nota?nome=barcos"
 
 
@@ -131,6 +132,53 @@ class TestCopiaDesligadaEVersoes:
     def test_casca_da_app_serve_se_da_cache_sem_rede(self):
         r = sw([{"url": "/"}, {"url": "/", "rede": "rede"}])
         assert r["passos"][1]["status"] == 200 and r["passos"][1]["deCache"] is True
+
+
+class TestUmaCachePorDono:
+    """ronda 9 (achado G1 da ronda 2): a cópia da API guardada pelo service worker era UMA para o browser — a conta A, sem rede,
+    recebia as notas que a conta B tinha deixado em cache. Agora há uma cache por dono (o X-Basalt-Dono do pedido), guarda-se só
+    com o eco do mesmo dono na resposta e serve-se só ao mesmo dono; sem dono não se guarda nem se serve."""
+
+    def test_sem_rede_a_conta_a_nao_recebe_a_copia_da_conta_b(self):
+        r = sw([{"url": NOTA, "dono": "d-b"}, {"url": NOTA, "dono": "d-a", "rede": "rede"}, {"url": NOTA, "dono": "d-b", "rede": "rede"}])
+        assert "erro" in r["passos"][1], f"sem rede, a conta A recebeu a cópia da conta B: {r['passos'][1]}"
+        assert r["passos"][2]["deCache"] and r["passos"][2]["corpo"] == {"versao": 0}, f"controlo: a de B serve-se a B ({r['passos'][2]})"
+
+    def test_cada_dono_tem_a_sua_copia(self):
+        r = sw([{"url": NOTA, "dono": "d-a"}, {"url": NOTA, "dono": "d-b"},
+                {"url": NOTA, "dono": "d-a", "rede": "rede"}, {"url": NOTA, "dono": "d-b", "rede": "rede"}])
+        assert [r["passos"][i].get("corpo") for i in (2, 3)] == [{"versao": 0}, {"versao": 1}], r["passos"]
+        assert r["caches"].get(VER + "-api-d-a") == [NOTA] and r["caches"].get(VER + "-api-d-b") == [NOTA], r["caches"]
+
+    def test_resposta_sem_eco_do_dono_nao_se_guarda(self):
+        r = sw([{"url": NOTA, "dono": "d-a", "eco": ""}, {"url": NOTA, "dono": "d-a", "rede": "rede"}])
+        assert r["passos"][0]["status"] == 200 and "erro" in r["passos"][1], r["passos"]
+        assert not any(NOTA in v for n, v in r["caches"].items() if "-api" in n), r["caches"]
+
+    def test_resposta_com_o_eco_de_outro_dono_nao_se_guarda(self):
+        r = sw([{"url": NOTA, "dono": "d-a", "eco": "d-b"}, {"url": NOTA, "dono": "d-a", "rede": "rede"},
+                {"url": NOTA, "dono": "d-b", "rede": "rede"}])
+        assert "erro" in r["passos"][1] and "erro" in r["passos"][2], r["passos"]
+        assert not any(NOTA in v for n, v in r["caches"].items() if "-api" in n), r["caches"]
+
+    def test_pedido_sem_dono_nao_guarda_nem_recebe_a_copia(self):
+        r = sw([{"url": NOTA, "dono": "d-a"}, {"url": NOTA, "dono": "", "rede": "rede"}, {"url": "/api/notas", "dono": ""},
+                {"url": "/api/notas", "dono": "d-a", "rede": "rede"}])
+        assert "erro" in r["passos"][1], f"um pedido sem dono recebeu a cópia de alguém: {r['passos'][1]}"
+        assert r["passos"][2]["status"] == 200 and "erro" in r["passos"][3], r["passos"]
+        assert sorted(n for n in r["caches"] if "-api" in n) == [VER + "-api-d-a"], r["caches"]
+
+    @pytest.mark.parametrize("codigo", ["401", "403"])
+    def test_acesso_recusado_apaga_as_copias_de_todos_os_donos(self, codigo):
+        r = sw([{"url": NOTA, "dono": "d-a"}, {"url": NOTA, "dono": "d-b"}, {"url": NOTA, "dono": "d-a", "rede": codigo},
+                {"url": NOTA, "dono": "d-b", "rede": "rede"}])
+        assert "erro" in r["passos"][3], f"depois de um {codigo}, a cópia de outra conta continuou a servir-se: {r['passos'][3]}"
+        assert not [n for n in r["caches"] if "-api" in n], r["caches"]
+
+    def test_activate_fica_so_com_as_caches_por_dono_desta_versao(self):
+        r = sw([], evento="activate", caches={VER + "-api-d-x": ["/api/notas"], VER + "-api": ["/api/notas"],
+                                               "basalt-v1-api-d-a": ["/api/notas"], "basalt-v1-api": ["/api/notas"]})
+        assert sorted(n for n in r["caches"] if "-api" in n) == [VER + "-api-d-x"], r["caches"]
 
 
 class TestTrancaELapides:

@@ -1259,6 +1259,19 @@ class H(BaseHTTPRequestHandler):
     PWA_PUBLICOS = {"/manifest.webmanifest", "/icon-192.png", "/icon-512.png", "/favicon.ico"}   # sem dados: nome + ícone
     # PORTE: caminhos que não pedem sessão: o formulário de entrada e os dois POST que o servem (a sessão ainda nem existe)
     ENTRADA = {"/entrar", "/api/entrar", "/api/sair"}
+    # ronda 9: o único pedido da API que pode ir sem X-Basalt-Dono — é por ele que a página fica a saber o dono
+    SEM_DONO = {"/api/eu"}
+
+    def parse_request(self):
+        self._dono_eco = ""                          # ronda 9: por pedido (a ligação pode servir vários)
+        return super().parse_request()
+
+    def end_headers(self):
+        # ronda 9 (achado G1 da ronda 2): a resposta diz de que dono é — o service worker só a guarda (na cache desse dono)
+        # se o eco for igual ao dono do pedido
+        if getattr(self, "_dono_eco", ""):
+            self.send_header("X-Basalt-Dono", self._dono_eco)
+        super().end_headers()
 
     def log_message(self, fmt, *a):
         if not self.path.startswith("/static/"):
@@ -1298,15 +1311,32 @@ class H(BaseHTTPRequestHandler):
     def _quem(self):
         return self.aut.utilizador_do_pedido(self.headers, self._ip())
 
-    def _dono_errado(self, user):
+    def _por_token(self):
+        """agentes (MCP, scripts) com Authorization: Bearer — não têm cópia no browser, logo não têm dono a conferir."""
+        return (self.headers.get("Authorization") or "").strip().lower().startswith("bearer ")
+
+    def _dono_errado(self, user, d=None, exigir=True):
         """ronda 8 (contas no mesmo browser): a página manda X-Basalt-Dono = o dono da cópia local com que está a trabalhar.
         Se outra conta entrou entretanto neste browser, o cookie já é dela — o pedido seria feito (e a edição sem internet
-        enviada) em nome de quem não a escreveu. Recusa-se SEM trancar a cópia (não é falta de acesso) e diz-se porquê."""
-        d = (self.headers.get("X-Basalt-Dono") or "").strip()
-        if d and d != dono_de(user):
+        enviada) em nome de quem não a escreveu. Recusa-se SEM trancar a cópia (não é falta de acesso) e diz-se porquê.
+        ronda 9 (achado G2 da ronda 2): SEM dono também se recusa (428) — antes passava, e um envio de anexo ou um pedido depois
+        de uma verificação falhada ia em nome de quem estivesse no browser. `d` = o dono vindo de outro sítio (?d= de uma <img>);
+        `exigir=False` só para /api/eu. Com o dono certo, a resposta leva-o de volta (eco, para o service worker)."""
+        if self._por_token():
+            return False
+        d = (self.headers.get("X-Basalt-Dono") if d is None else d) or ""
+        d = d.strip()
+        if not d:
+            if not exigir:
+                return False
+            self._json(428, {"erro": "Pedido sem o dono da cópia (X-Basalt-Dono): recarrega a página.", "semDono": True},
+                       [("X-Basalt-Sem-Dono", "1")])
+            return True
+        if d != dono_de(user):
             self._json(403, {"erro": "Entrou outra conta neste browser: recarrega a página antes de continuar.", "outraConta": True},
                        [("X-Basalt-Outra-Conta", "1")])
             return True
+        self._dono_eco = d
         return False
 
     def _sem_acesso(self, caminho):
@@ -1409,7 +1439,10 @@ class H(BaseHTTPRequestHandler):
         if user is None:
             return self._sem_acesso(u.path)
         g = lambda k, d="": (q.get(k) or [d])[0]
-        if u.path.startswith("/api/") and self._dono_errado(user):
+        if u.path.startswith("/anexos/"):           # ronda 9 (achado G2 da ronda 2): uma <img> não manda cabeçalhos → ?d=
+            if self._dono_errado(user, g("d") or None):
+                return
+        elif u.path.startswith("/api/") and self._dono_errado(user, exigir=u.path not in self.SEM_DONO):
             return
         try:
             with self._dentro(user):

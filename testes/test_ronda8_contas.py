@@ -53,8 +53,8 @@ def test_get_com_dono_de_outra_conta_recusa_sem_trancar(s):
     assert r.cabecalhos.get("X-Basalt-Outra-Conta") == "1" and r.json.get("outraConta") is True
     r = s.get("/api/pacote", email=ANA, cabecalhos={"X-Basalt-Dono": OUTRO})              # o pacote de A não vai para a cópia de B
     assert r.codigo == 403 and r.cabecalhos.get("X-Basalt-Outra-Conta") == "1"
-    # controlos: sem o cabeçalho (páginas antigas) e com o dono certo
-    assert s.get("/api/notas", email=ANA).codigo == 200
+    # controlos: sem o cabeçalho (ronda 9: 428, ver test_ronda9_donos.py) e com o dono certo
+    assert s.get("/api/notas", email=ANA, dono=False).codigo == 428
     assert s.get("/api/notas", email=ANA, cabecalhos={"X-Basalt-Dono": _dono(s, ANA)}).codigo == 200
     assert s.get("/api/notas", email=ANA, cabecalhos={"X-Basalt-Dono": _dono(s, BEA)}).codigo == 403
 
@@ -231,23 +231,42 @@ def test_pagina_separador_antigo_de_ana_nao_escreve_na_copia_de_bea_e_avisa_para
     assert get_b == "ok", f"controlo: o separador da bea continua a funcionar ({get_b})"
 
 
-# Controlo: uma cópia de antes desta versão (sem dono gravado) fica de quem entra, sem perder a fila.
+# Ronda 9 (achado G3 da ronda 2): uma cópia de antes desta versão (sem dono gravado) não se sabe de quem é. Com alguma coisa
+# (fila, conflitos ou notas) trata-se como de outra conta: a fila fica à parte em «pendentes-de:?» e NÃO sobe em nome de quem
+# entrou (antes ficava dela, e a edição de quem quer que a tivesse escrito subia com a sessão nova).
 @pytest.mark.lento
-def test_controlo_copia_sem_dono_gravado_fica_da_conta_que_entra_sem_perder_a_fila(base, contexto):
+def test_copia_sem_dono_gravado_com_fila_nao_sobe_em_nome_de_quem_entra_fica_a_parte(base, contexto):
     reset(pacote=[dict(NOTA, texto="S novo", hash="H2")], sinc_503=True)
     ESTADO["sinc_solta"].set()
     a = _abrir(contexto(), base)
-    a.evaluate(GUARDAR, ["EDICAO DA ANA", a.evaluate("window.__t.geracao()")])
+    a.evaluate(GUARDAR, ["EDICAO DE ALGUEM", a.evaluate("window.__t.geracao()")])
     a.evaluate("window.__t.idbDelete('meta', 'dono')")
     a.reload()
     pronta(a)
     _confirmado(a, "d-ana")
-    a.wait_for_timeout(500)
-    fila, notas, guardado = a.evaluate(FILA), a.evaluate(TEXTOS), a.evaluate(GUARDADO, "d-ana")
+    a.wait_for_timeout(800)
+    fila, guardado = a.evaluate(FILA), a.evaluate(GUARDADO, "?")
     dono = a.evaluate("window.__t.idbGet('meta', 'dono').then(x => x ? x.valor : null)")
-    assert fila == ["EDICAO DA ANA"] and guardado is None, f"a cópia sem dono perdeu a fila: fila {fila}, guardado {guardado}"
-    assert len(notas) == 1, f"as notas da cópia sem dono deviam ficar: {notas}"
-    assert dono in ("d-ana", None), f"a cópia sem dono devia passar a ser da conta que entrou: {dono}"
+    visto = f"fila {fila} · à parte {guardado} · enviada em nome de {_enviados('EDICAO DE ALGUEM')}"
+    assert not _enviados("EDICAO DE ALGUEM"), f"a fila de uma cópia sem dono subiu em nome de quem entrou · {visto}"
+    assert fila == [] and guardado == ["EDICAO DE ALGUEM"], f"a fila da cópia sem dono devia ficar à parte, sem se perder · {visto}"
+    assert dono == "d-ana", f"a cópia passa a ser da conta que entrou: {dono}"
+
+
+# Controlo: uma cópia sem dono gravado mas VAZIA fica simplesmente da conta que entra (nada à parte).
+@pytest.mark.lento
+def test_controlo_copia_sem_dono_gravado_vazia_fica_da_conta_que_entra(base, contexto):
+    reset(pacote=[])
+    a = contexto().new_page()
+    a.goto(base + "/")
+    pronta(a)
+    assert _confirmado(a, "d-ana")
+    a.evaluate("window.__t.idbDelete('meta', 'dono')")
+    a.reload()
+    pronta(a)
+    assert _confirmado(a, "d-ana"), "a cópia vazia sem dono não ficou da conta que entrou"
+    a.wait_for_timeout(300)
+    assert a.evaluate(GUARDADO, "?") is None and a.evaluate(FILA) == []
 
 
 def _cache_e_sem_rede(page):

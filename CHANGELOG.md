@@ -60,3 +60,19 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
     põem `--config` antes de `mcp`; os recursos estáticos vão todos no pacote instalável; a importação trata anexos em
     subpastas, nomes repetidos e tamanho.
   - Testes: `testes/test_ronda8_*.py`, `testes/test_segredos.py`, `testes/test_instalacao.py`.
+- Segurança, ronda 9 (auditoria externa do pacote, ronda 2):
+  - **O dono em todos os pedidos da página:** `/api/…` e `/anexos/…` sem `X-Basalt-Dono` recebem 428 (`semDono`,
+    `X-Basalt-Sem-Dono: 1`) e nada se lê nem se escreve; só `/api/eu` fica de fora. As imagens dos anexos levam o dono em `?d=`.
+    A resposta servida ao dono certo leva-o de volta (`X-Basalt-Dono`). Os agentes (Bearer) não precisam de dono.
+    **Muda para scripts:** quem usava a sessão do browser ou o cabeçalho do proxy tem de mandar o `X-Basalt-Dono` de
+    `GET /api/eu` — ou passar a um token (`python3 -m basalt utilizador mcp-token EMAIL`; vale também para `/api/`), o caminho recomendado.
+  - **Service worker** (cache `basalt-v12`): uma cópia da API por dono; guarda só a resposta que traz o eco do mesmo dono e
+    serve-a só a esse dono; um pedido sem dono não guarda nem recebe nada; um 401/403 apaga as cópias de todos os donos.
+  - **Página:** sem saber o dono não escreve nada — nem na fila sem internet: o texto fica no editor e a página diz porquê; o
+    envio de anexos leva o dono; uma resposta do service worker com outro dono não é aceite; «ficar com a do servidor» tira
+    da fila só a revisão que o conflito guardou como «a tua» (o texto igual não chega); uma cópia sem dono gravado (de antes
+    da ronda 8) só fica de quem entra se estiver vazia — com edições por enviar, elas ficam à parte, em `pendentes-de:?`, e
+    nunca sobem em nome de quem entrou.
+  - **Actualizar de uma versão anterior:** abrir a página com rede em cada aparelho até a fila sem internet ficar vazia antes de
+    actualizar; o que ficar por enviar numa cópia sem dono não sobe sozinho.
+  - Testes: `testes/test_ronda9_donos.py`, `testes/test_ronda9_pagina_donos.py`, `testes/test_sw.py` (`TestUmaCachePorDono`).

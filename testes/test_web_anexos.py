@@ -36,9 +36,19 @@ def servidor(tmp_path):
         srv.shutdown(); srv.server_close()
 
 
-def pedir(porta, metodo, caminho, corpo=None, cab=None):
+def dono(porta):
+    """o dono da cópia (/api/eu): ronda 9, a página manda-o em todos os pedidos à API e aos anexos."""
     c = http.client.HTTPConnection("127.0.0.1", porta, timeout=10)
-    c.request(metodo, caminho, body=corpo, headers=cab or {})
+    c.request("GET", "/api/eu"); r = c.getresponse(); d = json.loads(r.read())["dono"]; c.close()
+    return d
+
+
+def pedir(porta, metodo, caminho, corpo=None, cab=None, com_dono=True):
+    cab = dict(cab or {})
+    if com_dono and caminho.startswith(("/api/", "/anexos/")) and not caminho.startswith("/api/eu"):
+        cab.setdefault("X-Basalt-Dono", dono(porta))
+    c = http.client.HTTPConnection("127.0.0.1", porta, timeout=10)
+    c.request(metodo, caminho, body=corpo, headers=cab)
     r = c.getresponse(); dados = r.read(); c.close()
     return r.status, {k.lower(): v for k, v in r.getheaders()}, dados
 

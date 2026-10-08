@@ -217,12 +217,12 @@ async ([fonte, api, reais]) => {
   var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
   function U(nome){ return location.origin + "/api/nota?nome=" + nome; }
   var url = U("n1");
-  function resp200(t){ return new Response(JSON.stringify({texto: t}), {status: 200, headers: {"Content-Type": "application/json"}}); }
-  function resp404(){ return new Response(JSON.stringify({erro: "não existe"}), {status: 404, headers: {"Content-Type": "application/json"}}); }
-  function resp410(){ return new Response(JSON.stringify({erro: "apagada"}), {status: 410, headers: {"Content-Type": "application/json"}}); }
+  function resp200(t){ return new Response(JSON.stringify({texto: t}), {status: 200, headers: {"Content-Type": "application/json", "X-Basalt-Dono": "d-ana"}}); }
+  function resp404(){ return new Response(JSON.stringify({erro: "não existe"}), {status: 404, headers: {"Content-Type": "application/json", "X-Basalt-Dono": "d-ana"}}); }
+  function resp410(){ return new Response(JSON.stringify({erro: "apagada"}), {status: 410, headers: {"Content-Type": "application/json", "X-Basalt-Dono": "d-ana"}}); }
   // devolve {p: promessa} e não a promessa: um `return p` numa função async fazia o `await pedir()` esperar pela resposta
   // da rede que o teste ainda não soltou (bloqueio mútuo).
-  async function pedirU(u){ var n = pendentes.length; var p = sw.tratarApi(new Request(u));
+  async function pedirU(u){ var n = pendentes.length; var p = sw.tratarApi(new Request(u, {headers: {"X-Basalt-Dono": "d-ana"}}));
     for(var i = 0; i < 200 && pendentes.length === n; i++) await dormir(5); return {p: p}; }
   function pedir(){ return pedirU(url); }
   async function lerEntrada(g){ return g ? {inicio: g.headers.get("X-Basalt-Inicio"), texto: (await g.json()).texto} : null; }
@@ -234,7 +234,7 @@ async ([fonte, api, reais]) => {
   function lapide(){ return lapideU(url); }
   async function porTranca(id, hora){ var c = await caches.open("basaltcfg-copia-trancada"); await c.put("/__tranca/" + id, new Response(String(hora))); }
   async function offline(){ semRede = true;
-    try { var r = await sw.tratarApi(new Request(url)); return r ? (r.status + (r.headers.get("X-Basalt-From-Cache") ? " cache" : "")) : "nada"; }
+    try { var r = await sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}})); return r ? (r.status + (r.headers.get("X-Basalt-From-Cache") ? " cache" : "")) : "nada"; }
     catch(e){ return "recusou"; } finally { semRede = false; } }
 """
 
@@ -324,7 +324,7 @@ def _avaliar_sw(base, contexto, cenario, reais=False):
     page = contexto().new_page()
     page.goto(base + "/")
     pronta(page)
-    return page.evaluate(cenario, [fonte_sw(), versao_cache() + "-api", reais])
+    return page.evaluate(cenario, [fonte_sw(), versao_cache() + "-api-d-ana", reais])
 
 
 # SW2 «ronda 7 (geração)». Antes: o 200 de um GET que partiu antes de a cópia ser apagada+religada voltava a ficar em cache e

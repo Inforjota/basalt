@@ -26,7 +26,11 @@
 - **Contas no mesmo browser.** A cópia local (IndexedDB) e a fila sem internet têm dono. Quando entra outra conta no mesmo
   browser, a cópia da anterior sai antes de chegar a nova, e a fila sem internet da anterior fica guardada à parte, em nome
   dela, até voltar a entrar. O servidor recusa (403, sem mexer em nada) um pedido que traga o dono de outra conta, por isso
-  um separador antigo nunca grava em nome de quem entrou depois. «Terminar sessão» tira a cópia do browser.
+  um separador antigo nunca grava em nome de quem entrou depois. «Terminar sessão» tira a cópia do browser. Todos os pedidos da
+  página levam o dono (`X-Basalt-Dono`; as imagens dos anexos, em `?d=`): sem ele, o servidor responde 428 e não lê nem grava
+  nada (só `/api/eu`, que diz o dono, fica de fora). O service worker guarda uma cópia da API por dono e só a serve a esse dono.
+  Os agentes e scripts entram por token (`Authorization: Bearer`) e não precisam de dono; um script que use a sessão do browser
+  ou o cabeçalho do proxy tem de mandar o `X-Basalt-Dono` que `GET /api/eu` lhe der.
 - **Revogar sem reiniciar.** O servidor relê os utilizadores do `basalt.toml` quando ele muda. Apagar um utilizador ou o hash
   do token MCP vale no pedido seguinte, para as sessões e para o `/mcp`. Mudar a senha termina as sessões abertas dessa conta.
   Um `basalt.toml` que não carrega não substitui o que está em uso. As outras opções (modo, `anfitrioes`, proxies) só mudam

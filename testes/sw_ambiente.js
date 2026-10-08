@@ -2,7 +2,9 @@
 // `caches` e `fetch` simulados, corre uma lista de passos e escreve em JSON o que aconteceu.
 //   node sw_ambiente.js '<json>'   com {"passos": [...], "caches": {"nome": ["url", ...]}, "evento": "activate"}
 // Cada passo: {"url": "/api/nota?nome=a", "rede": "ok|rede|401|403|404|410|login|html|500|502|503|504",
-//              "metodo": "GET", "modo": "cors|navigate"}.
+//              "metodo": "GET", "modo": "cors|navigate", "dono": "d-a", "eco": "d-b"|""}.
+// ronda 9: o pedido leva X-Basalt-Dono = `dono` do passo (ou o de cfg.dono, ou "d-teste"; "" = sem cabeçalho) e a resposta
+// do servidor traz o eco desse dono — ou `eco` se o passo o disser ("" = sem eco).
 // A resposta «ok» traz {"versao": <nº do passo>} — assim vê-se se o que chegou é a cópia guardada ou a da rede.
 "use strict";
 const fs = require("fs");
@@ -41,11 +43,14 @@ for (const [n, urls] of Object.entries(cfg.caches || {})) {
 }
 
 // ───── rede simulada ─────
-let rede = "ok", passo = -1;
+let rede = "ok", passo = -1, eco = null;
 const chamadas = [];
 function globalFetch(pedido) {
   chamadas.push({ url: pedido.url, redirect: pedido.redirect });
-  const json = (status, corpo) => new Response(JSON.stringify(corpo), { status, headers: { "content-type": "application/json; charset=utf-8" } });
+  const doPedido = (pedido.headers && pedido.headers.get && pedido.headers.get("X-Basalt-Dono")) || "";
+  const devolve = eco === null ? doPedido : eco;
+  const cab = Object.assign({ "content-type": "application/json; charset=utf-8" }, devolve ? { "X-Basalt-Dono": devolve } : {});
+  const json = (status, corpo) => new Response(JSON.stringify(corpo), { status, headers: cab });
   switch (rede) {
     case "rede": return Promise.reject(new TypeError("Failed to fetch"));
     case "ok": return Promise.resolve(json(200, { versao: passo }));
@@ -80,10 +85,12 @@ async function correr() {
   const out = [];
   for (let i = 0; i < (cfg.passos || []).length; i++) {
     const p = cfg.passos[i];
-    passo = i; rede = p.rede || "ok";
+    passo = i; rede = p.rede || "ok"; eco = p.eco !== undefined ? p.eco : null;
     const url = new URL(p.url, ORIGEM).href;
     const metodo = p.metodo || "GET";
-    const pedido = p.modo === "navigate" ? { url, method: metodo, mode: "navigate" } : new Request(url, { method: metodo });
+    const dono = p.dono !== undefined ? p.dono : (cfg.dono !== undefined ? cfg.dono : "d-teste");
+    const pedido = p.modo === "navigate" ? { url, method: metodo, mode: "navigate" }
+      : new Request(url, { method: metodo, headers: dono ? { "X-Basalt-Dono": dono } : {} });
     let resp = null;
     const ev = { request: pedido, respondWith: (x) => { resp = x; } };
     ouvintes.fetch(ev);

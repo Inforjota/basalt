@@ -223,6 +223,6 @@ def test_service_worker_um_get_antigo_que_chega_depois_de_um_410_nao_volta_a_gua
     page = contexto().new_page()
     page.goto(base + "/")
     pronta(page)
-    r = page.evaluate(SW_REDE_ATRASADA, [fonte_sw(), versao_cache() + "-api"])
+    r = page.evaluate(SW_REDE_ATRASADA, [fonte_sw(), versao_cache() + "-api-d-ana"])
     assert r["r1"] == 200 and r["r2"] == 410 and not r["guardada"], \
         f"GET antigo: {r['r1']} · GET novo: {r['r2']} · nota apagada guardada na cache: {'SIM' if r['guardada'] else 'não'}"

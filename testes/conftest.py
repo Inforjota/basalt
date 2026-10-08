@@ -194,11 +194,19 @@ class Cliente:
     """pedidos HTTP a um servidor local (porta `self.porta`)."""
     porta = 0
 
-    def pedido(self, metodo, caminho, corpo=None, email=EMAIL, csrf=True, cabecalhos=None, bruto=None, cabecalho_email="X-Basalt-Email"):
+    def pedido(self, metodo, caminho, corpo=None, email=EMAIL, csrf=True, cabecalhos=None, bruto=None, cabecalho_email="X-Basalt-Email",
+               dono=True):
+        """`dono`: True = manda o X-Basalt-Dono da conta do pedido (como a página: ronda 9, o servidor recusa a API sem ele),
+        False = não manda, texto = esse."""
         c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=30)
         h = dict(cabecalhos or {})
         if email is not None:
             h[cabecalho_email] = email
+        if dono is True and "X-Basalt-Dono" not in h and caminho.startswith(("/api/", "/anexos/")) \
+                and not caminho.startswith(("/api/eu", "/api/entrar", "/api/sair", "/api/saude")) and "Authorization" not in h:
+            dono = self.dono_de_quem(h)
+        if isinstance(dono, str) and dono:
+            h.setdefault("X-Basalt-Dono", dono)
         if csrf:
             h["X-Basalt"] = "1"
         dados = bruto if bruto is not None else (json.dumps(corpo).encode() if corpo is not None else None)
@@ -212,6 +220,26 @@ class Cliente:
 
     def get(self, caminho, **k):
         return self.pedido("GET", caminho, csrf=k.pop("csrf", False), **k)
+
+    def dono_de_quem(self, h):
+        """o dono que o /api/eu dá a quem traz estes cabeçalhos (guardado por servidor e por credencial); "" se não entrar."""
+        cred = {k: v for k, v in h.items() if k.lower() not in ("x-basalt", "content-type", "x-basalt-dono")}
+        chave = (self.porta, tuple(sorted(cred.items())))
+        donos = self.__dict__.setdefault("_donos", {})
+        if chave not in donos:
+            c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=30)
+            c.request("GET", "/api/eu", headers=cred)
+            r = c.getresponse(); b = r.read(); c.close()
+            d = ""
+            if r.status == 200:
+                try:
+                    d = json.loads(b).get("dono") or ""
+                except ValueError:
+                    d = ""
+            if not d:
+                return ""                              # não se guarda: a sessão pode ainda nem existir
+            donos[chave] = d
+        return donos[chave]
 
     def nota_url(self, nome):
         return "/api/nota?nome=" + urllib.parse.quote(nome, safe="")

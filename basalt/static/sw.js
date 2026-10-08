@@ -2,10 +2,11 @@
 // quando não há rede, nunca esconde uma sessão expirada atrás de dados velhos.
 "use strict";
 
-var CACHE_VERSAO = "basalt-v11";      // sobe de versão quando a lógica de cache muda
+var CACHE_VERSAO = "basalt-v12";      // sobe de versão quando a lógica de cache muda
 // ronda 9 (achado 2 da ronda 7): a página só volta a ligar a cópia com um service worker que fale este protocolo (trinco partilhado
 // e geração gravada em cada entrada). Um SW antigo (v8, sem gerações) ainda a controlar a página não responde → não religa.
-var PROTOCOLO = 3;
+// Protocolo 4 (ronda 9, achado G1 da ronda 2): uma cache da API por dono — um SW de protocolo 3 ainda tinha a cache comum.
+var PROTOCOLO = 4;
 // «Apagar cópia deste aparelho» cria esta cache-marca (não começa por "basalt-", por isso sobrevive à limpeza
 // do activate) — enquanto existir, nenhuma resposta da API volta a ser guardada neste aparelho.
 var MARCA_DESLIGADA = "basaltcfg-copia-desligada";
@@ -86,12 +87,35 @@ function comTrinco(modo, fn) {
   }
 }
 var CACHE_APP = CACHE_VERSAO + "-app";
-var CACHE_API = CACHE_VERSAO + "-api";
+var CACHE_API = CACHE_VERSAO + "-api";        // + "-" + dono: uma por conta (ver cacheApiDe)
 var CACHE_VENDOR = CACHE_VERSAO + "-vendor";   // /static/vendor/ (mermaid, katex) — cache-first, guardado no 1º uso
 
 var CASCA_APP = ["/", "/index.html"];
 
 var API_EM_CACHE = ["/api/notas", "/api/nota", "/api/indice", "/api/categorias"];
+
+// ronda 9 (achado G1 da ronda 2): a cache da API é uma POR DONO (a conta + espaço da cópia, que a página manda em X-Basalt-Dono).
+// Dois separadores de contas diferentes no mesmo browser nunca se servem um ao outro: o pedido de A só lê a cache de A.
+// Guarda-se só se o pedido traz o dono E o servidor devolve o mesmo (ele confere-o com a sessão); sem dono, nem guarda nem serve.
+function donoDoPedido(pedido) {
+  var d = (pedido && pedido.headers && pedido.headers.get && pedido.headers.get("X-Basalt-Dono")) || "";
+  return /^[A-Za-z0-9_-]{1,64}$/.test(d) ? d : "";
+}
+function cacheApiDe(dono) {
+  return CACHE_API + "-" + dono;
+}
+function ehCacheApi(n) {
+  return /^basalt-.*-api(-[A-Za-z0-9_-]+)?$/.test(n);
+}
+// trancar, mudar de conta: fora a cópia da API de TODAS as contas (a de cada versão antiga sai no activate)
+async function apagarCachesApi() {
+  try {
+    var nomes = await caches.keys();
+    for (var i = 0; i < nomes.length; i++) {
+      if (ehCacheApi(nomes[i])) await caches.delete(nomes[i]);
+    }
+  } catch (e) {}
+}
 
 // ronda 9 (achado 2): a página pergunta o protocolo antes de religar a cópia (MessageChannel)
 self.addEventListener("message", function (event) {
@@ -122,7 +146,8 @@ self.addEventListener("activate", function (event) {
         return Promise.all(
           nomes
             .filter(function (n) {
-              return n.indexOf("basalt-") === 0 && n !== CACHE_APP && n !== CACHE_API && n !== CACHE_VENDOR;
+              return n.indexOf("basalt-") === 0 && n !== CACHE_APP && n !== CACHE_VENDOR &&
+                !(n.indexOf(CACHE_API + "-") === 0 && ehCacheApi(n));   // ronda 9: as desta versão (uma por dono) ficam
             })
             .map(function (n) {
               return caches.delete(n);
@@ -258,13 +283,15 @@ async function semCopia() {
 }
 // ronda 9: serve-se com o trinco partilhado (ninguém tranca/apaga a meio) e só uma entrada gravada na geração ACTUAL da cópia
 // (X-Basalt-Geracao) — uma resposta de antes de «apagar a cópia» que tenha entrado por outro caminho não se mostra.
-// Trinco preso → não serve (na dúvida, nada de dados privados).
+// Trinco preso → não serve (na dúvida, nada de dados privados). ronda 9 (achado G1 da ronda 2): só da cache do dono do pedido.
 async function daCache(pedido) {
+  var dono = donoDoPedido(pedido);
+  if (!dono) return null;
   var r = await comTrinco("shared", async function () {
     if (await semCopia()) return null;
     var g = await geracaoDaCopia();
-    var e = await caches.match(pedido, { cacheName: CACHE_API });
-    if (!e || e.headers.get("X-Basalt-Geracao") !== g) return null;
+    var e = await caches.match(pedido, { cacheName: cacheApiDe(dono) });
+    if (!e || e.headers.get("X-Basalt-Geracao") !== g || e.headers.get("X-Basalt-Dono") !== dono) return null;
     return marcarComoCache(e);
   });
   return r.ok ? r.valor : null;
@@ -278,7 +305,7 @@ async function trancar() {
       var id = q.toString(36) + "-" + Math.random().toString(36).slice(2, 8);
       await c.put("/__tranca/" + id, new Response(corpoTranca(q)));   // ronda 9: hora + ficha
     } catch (e) {}
-    await caches.delete(CACHE_API).catch(function () {});
+    await apagarCachesApi();                                     // ronda 9: as de todas as contas
   };
   var r = await comTrinco("exclusive", fazer);
   if (!r.ok) await fazer();                                      // ronda 9: trinco preso → tranca-se na mesma (só acrescenta)
@@ -345,14 +372,17 @@ function entradaApi(resposta, corpo, inicio, geracao) {
 // trinco (nunca se segura o trinco à espera da rede). Ordem: 1.º guardar, depois destrancar (se o SW morrer no meio fica
 // trancada — o lado seguro). Guarda só se: a cópia está ligada, a geração é a do pedido, a nota não levou lápide depois de o
 // pedido partir e o que lá está não é de um pedido mais novo. Trinco preso → não guarda nem destranca.
+// ronda 9 (achado G1 da ronda 2): guarda na cache do dono do pedido (foto.dono) e só se a resposta traz o mesmo dono; sem ele não
+// guarda — mas destranca na mesma (um 200 JSON prova que a sessão voltou, seja de que conta for).
 async function aceitar(pedido, corpo, resp, inicio, foto) {
+  var dono = foto.dono && resp.headers.get("X-Basalt-Dono") === foto.dono ? foto.dono : "";
   var r = await comTrinco("exclusive", async function () {
     if (await converterLegadas()) return false;
     var lista = await trancas();
     if (!soTrancasDeAntes(lista, foto.trancas)) return false;     // tranca posta depois de o pedido partir (ou ilegível)
     var guardou = false;
-    if (!(await copiaDesligada()) && (await geracaoDaCopia()) === foto.geracao && !(await apagadaDepois(pedido, inicio))) {
-      var c = await caches.open(CACHE_API), ja = await c.match(pedido);
+    if (dono && !(await copiaDesligada()) && (await geracaoDaCopia()) === foto.geracao && !(await apagadaDepois(pedido, inicio))) {
+      var c = await caches.open(cacheApiDe(dono)), ja = await c.match(pedido);
       var q = ja ? Number(ja.headers.get("X-Basalt-Inicio")) || 0 : 0;
       viuInstante(q);
       if (!(ja && q > inicio)) { await c.put(pedido, entradaApi(resp, corpo, inicio, foto.geracao)); guardou = true; }
@@ -365,10 +395,13 @@ async function aceitar(pedido, corpo, resp, inicio, foto) {
 // ronda 6 (achado M9 da ronda 4): um 404/410 só apaga da cache o que lá está se isso partiu ANTES dele — a mesma ordenação dos 200.
 // Um 404/410 atrasado (a nota foi apagada, recriada, e um GET mais novo já guardou a recriada) não apaga nada nem põe lápide.
 // ronda 9: debaixo do trinco (antes: na fila por URL); trinco preso → faz-se na mesma (só tira dados e põe a lápide).
+// ronda 9 (achado G1 da ronda 2): tira da cache do dono do pedido; sem dono, só a lápide (que vale para todas).
 async function tirarNota(pedido, inicio) {
+  var dono = donoDoPedido(pedido);
   var fazer = async function () {
     try {
-      var c = await caches.open(CACHE_API), ja = await c.match(pedido);
+      if (!dono) { await marcarApagada(pedido, inicio); return true; }
+      var c = await caches.open(cacheApiDe(dono)), ja = await c.match(pedido);
       var q = ja ? Number(ja.headers.get("X-Basalt-Inicio")) || 0 : 0;
       viuInstante(q);
       if (ja && q > inicio) return false;
@@ -405,7 +438,7 @@ async function mudouDeConta() {
     try {
       await (await caches.open(MARCA_GERACAO)).put("/__geracao", new Response("conta-" + agora() + "-" + Math.random().toString(36).slice(2, 10)));
     } catch (e) {}
-    await caches.delete(CACHE_API).catch(function () {});
+    await apagarCachesApi();                                       // ronda 9: as de todas as contas
   };
   var r = await comTrinco("exclusive", fazer);
   if (!r.ok) await fazer();
@@ -423,7 +456,7 @@ async function tratarSaidaEntrada(pedido) {
 // para o browser não parar o service worker a meio.
 async function tratarApi(pedido, manter) {
   // ronda 6 G5 / ronda 9: a fotografia (sem trinco — só se lê) das trancas que JÁ existiam e da geração da cópia ao partir
-  var foto = { geracao: await geracaoDaCopia(), trancas: chavesDe(await trancas()) };
+  var foto = { geracao: await geracaoDaCopia(), trancas: chavesDe(await trancas()), dono: donoDoPedido(pedido) };   // ronda 9: e o dono
   var resp, inicio = agora();
   try {
     // redirect "manual": o 302 para o login chega como "opaqueredirect" em vez de ser seguido para outro domínio e
