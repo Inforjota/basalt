@@ -63,19 +63,43 @@ _PALAVRAS_CORRENTES = {
 }
 
 
+# ronda 9 (contexto e descrições): a declaração começa na ÚLTIMA palavra-chave antes do «:» — em «senha válida até 2026-10-06 password: 2026-10-07»
+# a primeira declaração não tem «:» e o prazo dela contaminava a segunda. O texto de antes corta-se no último separador,
+# palavra-chave ou número/data/hora (cada um fecha a declaração anterior).
+_PALAVRA_CHAVE_RX = re.compile(r"(?i)\b(?:password|passwd|senha|palavra[- ]passe)\b")
+_DATA_HORA_SOLTA_RX = re.compile(r"\d+(?:[/.:h-]\d+)*")          # qualquer número fecha: «até 2027», «06/10», «10:30»
+# ronda 9 (contexto e descrições): só para as passwords só de letras — a palavra-chave como complemento («estado DA senha», «tipo DE password», «type
+# OF password») descreve a password, não a dá; e uma palavra longa com sufixo de adjectivo/advérbio («sincronizada»,
+# «alfanumérica», «automaticamente») é descrição. Uma maiúscula no meio continua a contar como password.
+_PROPRIEDADE_RX = re.compile(r"(?i)\b(?:d[aoe]s?|of|the)\s*$")
+_DESCRITIVA_RX = re.compile(r"(?i)(?:[aií]d[ao]s?|ic[ao]s?|[áa]vel|[íi]vel|veis|mente|[çc][ãa]o|[çc][õo]es)$")
+
+
+def _contexto(txt, m):
+    """(texto de antes da declaração, declaração até ao valor) — a declaração é a da última palavra-chave do match."""
+    inicio = m.start()
+    for k in _PALAVRA_CHAVE_RX.finditer(txt, m.start(), m.start(1)):
+        inicio = k.start()
+    antes = txt[max(0, inicio - 60):inicio]
+    cortes = [c.end() for rx in (_SEPARADOR_RX, _PALAVRA_CHAVE_RX, _DATA_HORA_SOLTA_RX) for c in rx.finditer(antes)]
+    if cortes:
+        antes = antes[max(cortes):]
+    return antes, txt[inicio:m.start(1)]
+
+
 def _password_em_claro(txt: str) -> bool:
     for m in PASSWORD_RX.finditer(txt):
         if _DATA_HORA_RX.match(m.group(1)):
-            antes = txt[max(0, m.start() - 60):m.start()]
-            cortes = [c.end() for c in _SEPARADOR_RX.finditer(antes)]
-            if cortes:
-                antes = antes[cortes[-1]:]
-            if _VALIDADE_RX.search(antes + txt[m.start():m.start(1)]):
+            antes, decl = _contexto(txt, m)
+            if _VALIDADE_RX.search(antes + decl):
                 continue
         return True
     for m in SO_LETRAS_RX.finditer(txt):
         v = m.group(1)
         if v.lower() in _PALAVRAS_CORRENTES:
+            continue
+        antes, _ = _contexto(txt, m)                  # ronda 9 (contexto e descrições): «Estado da senha: …», «Tipo de password: …» descrevem-na
+        if _PROPRIEDADE_RX.search(antes) or (_DESCRITIVA_RX.search(v) and not _MAIUSCULA_NO_MEIO_RX.search(v)):
             continue
         if len(v) >= 12 or _MAIUSCULA_NO_MEIO_RX.search(v):
             return True

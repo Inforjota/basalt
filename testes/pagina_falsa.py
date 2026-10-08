@@ -319,7 +319,11 @@ async ([fonte, marca]) => {
     if(nome !== marca || injectada) return;
     injectada = true; await sw.trancar();                        // …outro pedido recebe 401 e tranca de novo
   };
-  var r = await sw.tratarApi(new Request(location.origin + "/api/nota?nome=n1"));   // 200 → destranca a antiga
+  // ronda 9: o SW devolve a resposta logo e guarda/destranca a seguir (o que no fetch vai para o waitUntil) — o ensaio
+  // recolhe esse trabalho e espera por ele antes de olhar.
+  var trabalhos = [];
+  var r = await sw.tratarApi(new Request(location.origin + "/api/nota?nome=n1"), function(p){ trabalhos.push(p); });   // 200 → destranca a antiga
+  await Promise.all(trabalhos);
   return {estado: r.status, injectada: injectada, trancada: await sw.copiaTrancada()};
 }
 """

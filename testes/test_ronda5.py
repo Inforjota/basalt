@@ -138,7 +138,8 @@ async ([fonte, api]) => {
   function Cache(nome){ this.nome = nome; this.m = new Map(); }
   Cache.prototype.put = async function(req, resp){ this.m.set(urlDe(req), resp); };
   Cache.prototype.add = async function(){};
-  Cache.prototype.match = function(req){ var r = this.m.get(urlDe(req)); var d = atrasos.length ? atrasos.shift() : 0;
+  // ronda 9: o atraso só na cache de API (a leitura «o que lá está?»), não nas marcas que o SW também lê
+  Cache.prototype.match = function(req){ var r = this.m.get(urlDe(req)); var d = (this.nome === api && atrasos.length) ? atrasos.shift() : 0;
     return new Promise(function(res){ setTimeout(function(){ res(r ? r.clone() : undefined); }, d); }); };
   Cache.prototype.keys = async function(){ return Array.from(this.m.keys()).map(function(u){ return new Request(u); }); };
   Cache.prototype.delete = async function(req){ return this.m.delete(urlDe(req)); };
@@ -153,7 +154,16 @@ async ([fonte, api]) => {
   };
   var fetchFalso = function(){ return new Promise(function(){}); };
   var self = {addEventListener: function(){}, skipWaiting: function(){}, clients: {claim: function(){}}, location: {origin: location.origin}};
-  var sw = new Function("self", "caches", "fetch", fonte + "\nreturn {guardarSeMaisNova: guardarSeMaisNova};")(self, caches, fetchFalso);
+  // ronda 9: guardarSeMaisNova deu lugar a aceitar() (guardar debaixo do trinco) — a propriedade testada é a mesma: duas
+  // respostas à mesma nota, fica a do pedido que partiu DEPOIS. Um SW de antes usa a função antiga.
+  var sw = new Function("self", "caches", "fetch", fonte + "\nreturn {guardarSeMaisNova: typeof guardarSeMaisNova === 'function' ? guardarSeMaisNova : null," +
+                                                           " aceitar: typeof aceitar === 'function' ? aceitar : null," +
+                                                           " geracaoDaCopia: typeof geracaoDaCopia === 'function' ? geracaoDaCopia : null};")(self, caches, fetchFalso);
+  var guardar = async function(c, req, r, inicio){
+    if(sw.guardarSeMaisNova) return sw.guardarSeMaisNova(c, req, r, inicio);
+    var corpo = await r.clone().arrayBuffer();
+    return sw.aceitar(req, corpo, r, inicio, {geracao: await sw.geracaoDaCopia(), trancas: {}});
+  };
   var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
   var resp = function(t){ return new Response(JSON.stringify({texto: t}), {status: 200, headers: {"Content-Type": "application/json"}}); };
   var url = location.origin + "/api/nota?nome=n1";
@@ -162,17 +172,20 @@ async ([fonte, api]) => {
   // NOVA (partiu a 200), lê a cache (vazia, sem atraso) e grava. A antiga acaba de ler «vazia» e gravava por cima.
   var c = await caches.open(api);
   atrasos = [120, 0];
-  var p1 = sw.guardarSeMaisNova(c, new Request(url), resp("ANTIGA"), 100);
+  var p1 = guardar(c, new Request(url), resp("ANTIGA"), 100);
   await dormir(10);
-  var p2 = sw.guardarSeMaisNova(c, new Request(url), resp("NOVA"), 200);
+  var p2 = guardar(c, new Request(url), resp("NOVA"), 200);
   var r1 = await p1, r2 = await p2;
   await dormir(20);
   var caso = await lida(c);
-  // controlo: nova e depois antiga, em sequência — a antiga tem de ser recusada
-  var c2 = await caches.open(api + "-controlo");
-  var s1 = await sw.guardarSeMaisNova(c2, new Request(url), resp("NOVA"), 200);
-  var s2 = await sw.guardarSeMaisNova(c2, new Request(url), resp("ANTIGA"), 100);
-  return {caso: caso, controlo: await lida(c2), s1: s1, s2: s2};
+  // controlo: nova e depois antiga, em sequência — a antiga tem de ser recusada (ronda 9: outra nota na MESMA cache,
+  // porque aceitar() guarda sempre na cache de API do SW)
+  var url2 = location.origin + "/api/nota?nome=n2";
+  var s1 = await guardar(c, new Request(url2), resp("NOVA"), 200);
+  var s2 = await guardar(c, new Request(url2), resp("ANTIGA"), 100);
+  var g2 = await c.match(url2);
+  var controlo = g2 ? {inicio: g2.headers.get("X-Basalt-Inicio"), texto: (await g2.json()).texto} : null;
+  return {caso: caso, controlo: controlo, s1: s1, s2: s2};
 }
 """
 

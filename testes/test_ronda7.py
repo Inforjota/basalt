@@ -273,7 +273,10 @@ SW3 = _sw_cenario(r"""
 
 # SW9b «ronda 7 (limpeza na fila)»: a limpeza depois de guardar corre na fila por URL e só apaga o que é deste pedido (ou mais antigo)
 SW9B = _sw_cenario(r"""
-  ganchoHas.em = 2;                                 // a 2.ª consulta às lápides (a verificação DEPOIS de guardar o 200 de p1) fica suspensa
+  // a 2.ª consulta às lápides (a verificação DEPOIS de guardar o 200 de p1) fica suspensa. ronda 9: o SW já não tem essa
+  // verificação depois de guardar (era ela que apagava a recriação) — a única consulta de p1 é a de aceitar(), ANTES de
+  // guardar e debaixo do trinco; suspende-se essa (a 1.ª) e o resultado exigido é o mesmo.
+  ganchoHas.em = fonte.indexOf("async function aceitar(") !== -1 ? 1 : 2;
   relogio.t = 2000;
   var p1 = (await pedir()).p; pendentes[0](resp200("ANTIGO")); await p1;
   for(var i = 0; i < 200 && !ganchoHas.parado; i++) await dormir(5);

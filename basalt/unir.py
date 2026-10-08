@@ -144,7 +144,12 @@ def _recuar(cas, trocas, falhas):
         if t in falhas:
             # ronda 6 (achado G3/G4 da ronda 4): a troca original falhou no confirmar() (ou A foi gravada logo depois da troca) e o
             # recuo não lhe toca — mas então a nota NÃO está no texto de antes, e isso tem de ir no erro (antes: «recuei tudo»)
-            actual = cas._ler(t.alvo)
+            try:                                          # ronda 9 (releitura com erro de disco): um EIO aqui não corta o relato das outras notas
+                actual = cas._ler(t.alvo)
+            except OSError as e:
+                avisos.append(f"não consegui reler a nota «{t.alvo.stem}» para saber em que texto ficou ({e.strerror or e}); "
+                              "confirma-a à mão" + (f"; a escrita anterior ficou guardada em {t.salvo}" if t.salvo else ""))
+                continue
             if t.intruso is not None and actual is not None and cas.sha(actual) == cas.sha(t.intruso):
                 if t.salvo:                                   # voltou ao que o outro gravou; uma 3.ª escrita ficou guardada
                     avisos.append(f"a nota «{t.alvo.stem}» ficou com o texto que outro gravou no mesmo instante; uma escrita "

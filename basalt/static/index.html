@@ -394,7 +394,7 @@ body.modo-notas .obsidian-shell{
 }
 .markdown-body .tag:hover{background:color-mix(in srgb, var(--accent) 26%, transparent)}
 
-/* ---------- #41: callouts (compatível Obsidian) ---------- */
+/* ---------- callouts (compatível Obsidian) ---------- */
 .markdown-body .callout{border-radius:var(--radius-sm); border:1px solid var(--border); border-left-width:4px; margin:.7em 0; padding:8px 12px; background:var(--bg-elev2)}
 .markdown-body .callout-titulo,.markdown-body summary.callout-titulo{font-weight:700; display:flex; align-items:center; gap:6px}
 .markdown-body details.callout summary.callout-titulo{cursor:pointer; list-style:none}
@@ -411,7 +411,7 @@ body.modo-notas .obsidian-shell{
 .markdown-body .callout-success{border-left-color:var(--success)}
 .markdown-body .callout-quote{border-left-color:var(--tag-outros)}
 
-/* ---------- #41: fórmulas (KaTeX) e diagramas (mermaid) ---------- */
+/* ---------- fórmulas (KaTeX) e diagramas (mermaid) ---------- */
 .markdown-body .katex-display-wrap{display:block; overflow-x:auto; margin:.7em 0}
 .markdown-body code.katex-pendente{background:var(--bg-elev2)}
 .markdown-body .mermaid-diagrama{margin:.7em 0; text-align:center}
@@ -419,7 +419,7 @@ body.modo-notas .obsidian-shell{
 .markdown-body .mermaid-diagrama.mermaid-erro pre.code-block{text-align:left}
 .markdown-body .mermaid-erro-msg{color:var(--danger); margin-top:4px}
 
-/* ---------- #41: notas embutidas ![[nome]] ---------- */
+/* ---------- notas embutidas ![[nome]] ---------- */
 .markdown-body .embed-nota{border:1px solid var(--border); border-radius:var(--radius-sm); margin:.7em 0; padding:8px 12px; background:var(--bg-elev2)}
 .markdown-body .embed-nota-titulo{font-weight:700; margin-bottom:4px}
 .markdown-body .embed-nota-corpo{font-size:.94em}
@@ -430,7 +430,7 @@ body.modo-notas .obsidian-shell{
 .markdown-body .embed-media{max-width:100%; display:block; margin:.6em 0}
 .markdown-body a.embed-anexo-link{display:block; text-decoration:none}
 
-/* ---------- #41: badge "por enviar" e conflito de sincronização ---------- */
+/* ---------- badge "por enviar" e conflito de sincronização ---------- */
 .badge-porenviar{background:color-mix(in srgb, var(--warning) 22%, transparent); color:var(--warning)}
 .conflito-aviso{margin-bottom:14px}
 .conflito-acoes{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px}
@@ -876,6 +876,11 @@ const EN = {
   "a nota mudou outra vez no servidor — vê a versão nova e escolhe de novo.": "The note changed on the server again — look at the new version and choose again.",
   "ficaste com a versão do servidor — há outra alteração deste aparelho por enviar, que fica.": "You kept the server's version — another unsent change from this device is kept and will still be sent.",
   "ficaste com a versão do servidor.": "You kept the server's version.",
+  "a app está a actualizar-se — recarrega a página (fecha os outros separadores do Basalt) e volta a ligar a cópia.": "The app is updating — reload the page (close the other Basalt tabs) and turn the copy on again.",
+  "a cópia deste aparelho está ocupada — tenta ligar outra vez daqui a pouco.": "This device's copy is busy — try turning it on again in a moment.",
+  "a cópia deste aparelho foi apagada entretanto — não lhe toquei; vê a nota outra vez.": "This device's copy was deleted in the meantime — nothing was changed; open the note again.",
+  "este conflito mudou entretanto (noutro separador) — vê a versão actual e escolhe de novo.": "This conflict changed in the meantime (in another tab) — look at the current version and choose again.",
+  "a app foi actualizada — grava o que tens e recarrega a página.": "The app was updated — save your work and reload the page.",
   "ficaste com a tua versão.": "You kept your version.",
   "ficou a junção automática.": "The automatic merge was applied.",
   "ficou a proposta da IA.": "The AI's proposal was kept.",
@@ -1332,6 +1337,32 @@ function gravarLocal(k, v){ try{ if(v == null) localStorage.removeItem(k); else 
 var ULTIMO_INSTANTE = 0;
 function agora(){ var t = Date.now(); if(t <= ULTIMO_INSTANTE) t = ULTIMO_INSTANTE + 1; ULTIMO_INSTANTE = t; return t; }
 function viuInstante(t){ t = Number(t) || 0; if(t > ULTIMO_INSTANTE) ULTIMO_INSTANTE = t; }
+/* ronda 9 (achados 3/4 da ronda 7): o corpo de cada tranca é «hora.ficha» (9 algarismos ao acaso) — a mesma chave reposta com a
+   mesma hora é OUTRA tranca, e compara-se pelo corpo inteiro. As que vêm de antes («/__quando», só a hora) nunca saem por
+   uma resposta: convertem-se primeiro numa entrada própria, debaixo do trinco. */
+function horaDe(corpo){ return Math.floor(Number(String(corpo).split(".")[0])) || 0; }
+function ficha(){ return ("000000000" + Math.floor(Math.random() * 1e9)).slice(-9); }
+function corpoTranca(q){ return String(q) + "." + ficha(); }
+/* ronda 9 (achados 4/8 da ronda 7): o MESMO trinco do service worker («basalt-copia», Web Locks) — ler as trancas, decidir e
+   apagar fazem-se sem ninguém escrever no meio. Nunca à espera de rede; partilhado para servir, exclusivo para escrever.
+   Ocupado mais de 3 s → {ok:false} e quem chama decide (trancar e apagar fazem na mesma; destrancar e religar não).
+   Sem Web Locks: uma fila de promessas (só protege dentro deste separador). «basalt-fila» pode pedir este; nunca o contrário. */
+var TRINCO = "basalt-copia", TRINCO_MS = 3000, TRINCO_CADEIA = Promise.resolve();
+function comTrincoCadeia(fn){
+  var p = TRINCO_CADEIA.then(function(){ return fn(); }).then(function(v){ return {ok:true, valor:v}; });
+  TRINCO_CADEIA = p.catch(function(){});
+  return p;
+}
+function comTrincoCopia(modo, fn){
+  var locks = navigator.locks;
+  if(!locks || !locks.request || typeof AbortController !== "function") return comTrincoCadeia(fn);
+  var ac = new AbortController(), entrou = false;
+  var relogio = setTimeout(function(){ ac.abort(); }, TRINCO_MS);
+  try{
+    return locks.request(TRINCO, {mode: modo, signal: ac.signal}, function(){ entrou = true; clearTimeout(relogio); return Promise.resolve().then(fn); })
+      .then(function(v){ return {ok:true, valor:v}; }, function(e){ clearTimeout(relogio); if(entrou) throw e; return ac.signal.aborted ? {ok:false} : comTrincoCadeia(fn); });
+  }catch(e){ clearTimeout(relogio); return comTrincoCadeia(fn); }
+}
 
 async function apagarCachesApi(){
   if(!("caches" in window)) return;
@@ -1344,13 +1375,18 @@ async function bloquearCopiaLocal(){
   var q = agora(), id = q.toString(36) + "-" + Math.random().toString(36).slice(2, 8);   // ronda 6 G5: hora monótona
   COPIA_BLOQUEADA = true; BLOQUEIO_ID = id;
   gravarLocal("basalt-copia-bloqueada", id);                 // os outros separadores sabem pelo evento «storage»
-  try{                                                      // 1.º a marca (com a hora), depois apagar ()
-    // entrada própria desta tranca (o service worker e os outros separadores põem as deles) — destrancar
-    // apaga entradas, nunca a cache inteira, para uma tranca mais nova posta no meio ficar
-    if("caches" in window) await (await caches.open(MARCA_TRANCADA)).put("/__tranca/" + id, new Response(String(q)));
-  }catch(e){}
+
   try{ await idbPut("meta", {chave:"bloqueada", valor:true, id:id}); }catch(e){}
-  await apagarCachesApi();
+  var fazer = async function(){
+    try{                                                    // 1.º a marca (com a hora), depois apagar
+      // ronda 3 G2: entrada própria desta tranca (o service worker e os outros separadores põem as deles) — destrancar
+      // apaga entradas, nunca a cache inteira, para uma tranca mais nova posta no meio ficar
+      if("caches" in window) await (await caches.open(MARCA_TRANCADA)).put("/__tranca/" + id, new Response(corpoTranca(q)));   // ronda 9: hora.ficha
+    }catch(e){}
+    await apagarCachesApi();
+  };
+  var r = await comTrincoCopia("exclusive", fazer);          // ronda 9: sem ninguém a guardar no meio
+  if(!r.ok) await fazer();                                  // trancar nunca fica por fazer: ocupado, faz-se na mesma
 }
 /* as trancas que o service worker (ou outro separador) deixou na cache-marca: [{chave, quando}] */
 async function trancasNaMarca(){
@@ -1359,19 +1395,35 @@ async function trancasNaMarca(){
     if(!(await caches.has(MARCA_TRANCADA))) return [];
     var c = await caches.open(MARCA_TRANCADA), chaves = await c.keys(), out = [];
     for(var i = 0; i < chaves.length; i++){
-      var q = 0;
-      try{ var r = await c.match(chaves[i]); q = r ? (Number(await r.text()) || 0) : 0; }catch(e){}
+      var corpo = "";
+      try{ var r = await c.match(chaves[i]); corpo = r ? await r.text() : ""; }catch(e){}
+      var q = horaDe(corpo);
       viuInstante(q);
       var caminho = ""; try{ caminho = new URL(chaves[i].url).pathname; }catch(e){}
-      out.push({chave: chaves[i], quando: q, id: caminho.indexOf("/__tranca/") === 0 ? caminho.slice(10) : "antigo"});
+      out.push({chave: chaves[i], quando: q, corpo: corpo, id: caminho.indexOf("/__tranca/") === 0 ? caminho.slice(10) : "antigo"});
     }
     return out;
-  }catch(e){ return [{chave:null, quando:0, id:"antigo"}]; }     // na dúvida, trancada
+  }catch(e){ return [{chave:null, quando:0, corpo:"", id:"antigo"}]; }     // na dúvida, trancada
 }
 // ronda 6 G5: a chave (URL) de uma tranca e a fotografia de um conjunto delas — «já existia quando o pedido partiu» sem relógio
 function chaveDe(t){ return t && t.chave ? (t.chave.url || String(t.chave)) : ""; }
-// ronda 7 (chave reutilizada): chave → hora; a mesma chave com outra hora é uma tranca nova
-function chavesDe(lista){ var s = {}; for(var i = 0; i < lista.length; i++){ var u = chaveDe(lista[i]); if(u) s[u] = String(lista[i].quando); } return s; }
+// ronda 7 (chave reutilizada): chave → corpo; ronda 9: o corpo traz uma ficha — a mesma chave e a mesma hora repostas são outra tranca
+function chavesDe(lista){ var s = {}; for(var i = 0; i < lista.length; i++){ var u = chaveDe(lista[i]); if(u) s[u] = lista[i].corpo; } return s; }
+/* ronda 9: «/__quando» (de antes) → entrada própria «/__tranca/legado-…», debaixo do trinco — como o service worker faz */
+async function converterTrancasLegadas(){
+  if(!("caches" in window)) return;
+  try{
+    await comTrincoCopia("exclusive", async function(){
+      var lista = await trancasNaMarca();
+      for(var i = 0; i < lista.length; i++){
+        if(!lista[i].chave || lista[i].id !== "antigo") continue;
+        var c = await caches.open(MARCA_TRANCADA);
+        await c.put("/__tranca/legado-" + ficha(), new Response(corpoTranca(lista[i].quando || agora())));   // 1.º a nova, depois sai a velha
+        await c.delete(lista[i].chave);
+      }
+    });
+  }catch(e){}
+}
 async function trancaDoServiceWorker(){
   var lista = await trancasNaMarca();
   return lista.length ? lista[0].id : "";
@@ -1401,15 +1453,27 @@ async function desbloquearCopiaLocal(id, inicio, chavesAntes){
   if(local && local !== id) return;
   COPIA_BLOQUEADA = false; BLOQUEIO_ID = "";
   gravarLocal("basalt-copia-bloqueada", null);
+  // ronda 9 (achados 3/4 da ronda 7): ler, comparar e apagar debaixo do trinco — ninguém troca uma tranca no meio. Sai a tranca
+  // desta id e as que estão na fotografia COM O MESMO CORPO; sem fotografia, só a própria (nunca pela hora). As de antes
+  // («antigo», chave fixa) nunca saem por uma resposta: convertem-se aqui numa entrada própria, que só uma resposta a um
+  // pedido que parta DEPOIS pode tirar (como no service worker). Ocupado: não se apaga nada (fica trancada).
+  var antes = chavesAntes || {};
   try{
-    var lista = await trancasNaMarca();
-    if(lista.length && "caches" in window){
+    await comTrincoCopia("exclusive", async function(){
+      var lista = await trancasNaMarca();
+      if(!lista.length || !("caches" in window)) return;
       var c = await caches.open(MARCA_TRANCADA);
       for(var i = 0; i < lista.length; i++){
-        var deAntes = chavesAntes ? chavesAntes[chaveDe(lista[i])] === String(lista[i].quando) : lista[i].quando < inicio;   // ronda 6 G5: pela fotografia das chaves (se a há), não pela hora
-        if(lista[i].chave && ((lista[i].id === id && id !== "antigo") || deAntes)) await c.delete(lista[i].chave);   // ronda 7: «antigo» = chave fixa, só pela fotografia
+        var t = lista[i], u = chaveDe(t);
+        if(!t.chave) continue;
+        if(t.id === "antigo"){
+          await c.put("/__tranca/legado-" + ficha(), new Response(corpoTranca(t.quando || agora())));   // 1.º a nova, depois sai a velha
+          await c.delete(t.chave);
+          continue;
+        }
+        if(t.id === id || (Object.prototype.hasOwnProperty.call(antes, u) && antes[u] === t.corpo)) await c.delete(t.chave);
       }
-    }
+    });
   }catch(e){}
 }
 /* o que outro separador decidiu vale aqui também, logo (evento «storage») e ao ir buscar a cópia (marcas
@@ -1641,9 +1705,11 @@ async function sincronizarPacote(){
   if(!navigator.onLine || A_SINCRONIZAR_PACOTE || COPIA_DESLIGADA) return false;
   A_SINCRONIZAR_PACOTE = true;
   if(!(await donoConfirmado())){ A_SINCRONIZAR_PACOTE = false; return false; }   // ronda 8: só se sabe de quem é a cópia
+
   var geracao = await geracaoActual();                     // ronda 6 G6: a geração persistente (e a deste separador posta em dia)
   try{ var piAntes = await idbGet("meta", "pacoteInicio"); if(piAntes) viuInstante(piAntes.valor); }catch(e){}   // ronda 7: acima do último pacote guardado
-  var inicio = agora();                                  // a hora a que o pedido partiu — destranca só o que é anterior
+  var inicio = await reservarInstante();                 // ronda 4 G3 / ronda 9 (achado 7): a hora a que o pedido partiu — única entre separadores
+  var bloqMem = BLOQUEIO_ID;
   var bloqAntes = await marcaPersistente("bloqueada");      // o trancar que já existia quando o pedido partiu
   var trancasAntes = (COPIA_BLOQUEADA || bloqAntes) ? chavesDe(await trancasNaMarca()) : null;   // ronda 6 G5: fotografia das trancas ao partir
   var controlo = (typeof AbortController !== "undefined") ? new AbortController() : null;
@@ -1661,7 +1727,9 @@ async function sincronizarPacote(){
     if(COPIA_DESLIGADA || geracao !== GERACAO_COPIA) return false;
     var g = await guardarPacoteLocal(dados.notas || [], dados.gerado, geracao, bloqAntes, inicio);
     if(!g) return false;
-    if(COPIA_BLOQUEADA) await desbloquearCopiaLocal(bloqAntes || BLOQUEIO_ID, inicio, trancasAntes);   // uma tranca posta DEPOIS de o pacote partir fica
+    // ronda 4 G3: uma tranca posta DEPOIS de o pacote partir fica — ronda 9: destranca-se só o trancar de quando partiu (nunca o actual)
+    var bloqDoPedido = bloqAntes || bloqMem;
+    if(COPIA_BLOQUEADA && bloqDoPedido) await desbloquearCopiaLocal(bloqDoPedido, inicio, trancasAntes);
     OFFLINE_ESTADO.quando = Date.now();
     atualizarIndicador();
     return true;
@@ -1673,14 +1741,27 @@ async function sincronizarPacote(){
   }
 }
 
+/* ronda 9 (achado 7 da ronda 7): a hora de partida de um pacote vem de um contador na IndexedDB (meta.relogio), lido e subido na
+   mesma transacção — dois separadores nunca recebem o mesmo valor, mesmo com o relógio igual ou para trás */
+function reservarInstante(){
+  return transacao(["meta"], function(tx, saida){
+    var meta = tx.objectStore("meta"), g = meta.get("relogio");
+    g.onsuccess = function(){
+      var q = Math.max(agora(), ((g.result && Number(g.result.valor)) || 0) + 1);
+      viuInstante(q);
+      meta.put({chave:"relogio", valor:q});
+      saida.valor = q;
+    };
+  }).then(function(q){ return q || agora(); }, function(){ return agora(); });
+}
 /* notas + meta numa só transacção, e só se ninguém apagou a cópia entretanto */
 function guardarPacoteLocal(notas, gerado, geracao, bloqAntes, inicio){
   return abrirDB().then(function(db){
     return new Promise(function(resolve, reject){
       if(COPIA_DESLIGADA || geracao !== GERACAO_COPIA){ resolve(false); return; }
-      var tx = db.transaction(["notas", "meta"], "readwrite"), recusado = false, sg = {};
-      var loja = tx.objectStore("notas"), meta = tx.objectStore("meta");
-      // ronda 2 G5: as marcas lêem-se DENTRO da transacção — «apagar cópia» noutro separador (transacção sobre as mesmas
+      var tx = db.transaction(["notas", "meta", "fila"], "readwrite"), recusado = false, sg = {};   // ronda 9 (achado 6): + fila
+      var loja = tx.objectStore("notas"), meta = tx.objectStore("meta"), filaLoja = tx.objectStore("fila");
+      // as marcas lêem-se DENTRO da transacção — «apagar cópia» noutro separador (transacção sobre as mesmas
       // lojas) ou fica antes (e aqui vê-se a marca) ou depois (e apaga isto); nunca no meio
       var gd = meta.get("copiaDesligada");
       gd.onsuccess = function(){
@@ -1697,17 +1778,40 @@ function guardarPacoteLocal(notas, gerado, geracao, bloqAntes, inicio){
             var gp = meta.get("pacoteInicio");
             gp.onsuccess = function(){
             // ronda 7 (ordem dos pacotes): um pacote que partiu ANTES do último guardado (noutro separador) é mais velho — não entra
-            if(inicio != null && ((gp.result && Number(gp.result.valor)) || 0) > inicio){ recusado = true; return; }
+            // ronda 9 (achado 7): nem um com a mesma hora (o contador não as repete; igual = não é mais novo)
+            if(inicio != null && ((gp.result && Number(gp.result.valor)) || 0) >= inicio){ recusado = true; return; }
             var lapides = {}, cur = meta.openCursor(IDBKeyRange.bound("apagada:", "apagada:\uffff"));
             cur.onsuccess = function(){
               var k = cur.result;
               if(k){ lapides[String(k.key).slice(8)] = Number(k.value && k.value.valor) || 0; k.continue(); return; }
-              loja.clear();
-              notas.forEach(function(v){ if(!(inicio != null && lapides[v.nome] >= inicio)){ v.guardadoEm = inicio != null ? inicio : agora(); loja.put(v); } });   // ronda 7: guardadoEm
-              Object.keys(lapides).forEach(function(n){ if(inicio == null || lapides[n] < inicio) meta.delete("apagada:" + n); });
-              meta.put({chave:"pacoteGerado", valor: gerado});
-              meta.put({chave:"ultimaSync", valor: Date.now()});
-              if(inicio != null) meta.put({chave:"pacoteInicio", valor: inicio});
+              // ronda 9 (achado 6 da ronda 7): nota a nota, em vez de apagar tudo e repor — o que este aparelho gravou DEPOIS de o
+              // pacote partir (guardadoEm > inicio) e o que está por enviar (fila) ficam; só sai o que é de antes dele
+              var gf = filaLoja.getAllKeys();
+              gf.onsuccess = function(){
+                var naFila = {}; (gf.result || []).forEach(function(n){ naFila[n] = true; });
+                var gl = loja.getAll();
+                gl.onsuccess = function(){
+                  var locais = {}; (gl.result || []).forEach(function(v){ locais[v.nome] = v; });
+                  var noPacote = {};
+                  notas.forEach(function(v){
+                    noPacote[v.nome] = true;
+                    if(inicio != null){
+                      if(lapides[v.nome] >= inicio || naFila[v.nome]) return;
+                      if(locais[v.nome] && Number(locais[v.nome].guardadoEm) > inicio) return;
+                    }
+                    v.guardadoEm = inicio != null ? inicio : agora(); loja.put(v);   // ronda 7: guardadoEm
+                  });
+                  Object.keys(locais).forEach(function(n){
+                    if(noPacote[n]) return;
+                    if(inicio != null && (naFila[n] || Number(locais[n].guardadoEm) > inicio)) return;
+                    loja.delete(n);
+                  });
+                  Object.keys(lapides).forEach(function(n){ if(inicio == null || lapides[n] < inicio) meta.delete("apagada:" + n); });
+                  meta.put({chave:"pacoteGerado", valor: gerado});
+                  meta.put({chave:"ultimaSync", valor: Date.now()});
+                  if(inicio != null) meta.put({chave:"pacoteInicio", valor: inicio});
+                };
+              };
             };
             };
           });
@@ -2040,6 +2144,28 @@ function apagarConflitoSeIgual(nome, quando, geracao){
     });
   });
 }
+/* ronda 9 (achado 5 da ronda 7): «ficar com a do servidor» numa SÓ transacção — o conflito tem de ser ainda o do ecrã (mesmo
+   `quando`) e a cópia a mesma geração de quando ele foi mostrado; só então sai, e da fila só o texto que estava no ecrã
+   como «a tua». Devolve "ok", "outra" (há outra alteração por enviar, que fica), "mudou" ou "desligada" (nada se tocou). */
+function ficarComServidor(nome, quando, teu, geracao){
+  return transacao(["conflitos", "fila", "meta"], function(tx, saida){
+    var conflitos = tx.objectStore("conflitos"), fila = tx.objectStore("fila");
+    saida.valor = "mudou";
+    seGeracaoIgual(tx, saida, geracao, function(){
+      var gc = conflitos.get(nome);
+      gc.onsuccess = function(){
+        if(!gc.result || gc.result.quando !== quando) return;
+        conflitos.delete(nome);
+        saida.valor = "ok";
+        var gf = fila.get(nome);
+        gf.onsuccess = function(){
+          if(!gf.result) return;
+          if(gf.result.texto === teu) fila.delete(nome); else saida.valor = "outra";
+        };
+      };
+    });
+  });
+}
 /* «ficar com a do servidor» descarta da fila só o texto que o utilizador viu como «a tua» */
 function apagarFilaSeTexto(nome, texto){
   return transacao(["fila"], function(tx, saida){
@@ -2291,21 +2417,64 @@ async function desligarCopiaLocal(){
   });
   if(nova > GERACAO_COPIA){ GERACAO_COPIA = nova; gravarLocal("basalt-copia-geracao", String(nova)); }
   if("caches" in window){
-    // ronda 7 (geração): 0.º a geração nova da cópia — um pedido do SW que partiu antes não guarda nada, mesmo que a cópia
-    // seja religada antes de a resposta chegar
-    try{ await (await caches.open(MARCA_GERACAO)).put("/__geracao", new Response(String(GERACAO_COPIA) + "-" + Math.random().toString(36).slice(2, 10))); }catch(e){}
-    await caches.open(MARCA_DESLIGADA);          // 1.º a marca (o service worker deixa de guardar e de servir), depois apagar
-    var nomes = await caches.keys();
-    await Promise.all(nomes.filter(function(n){ return n.indexOf("basalt-") === 0; }).map(function(n){ return caches.delete(n); }));
+    var limpar = async function(){
+      // ronda 7 (geração): 0.º a geração nova da cópia — um pedido do SW que partiu antes não guarda nada, mesmo que a cópia
+      // seja religada antes de a resposta chegar
+      try{ await (await caches.open(MARCA_GERACAO)).put("/__geracao", new Response(String(GERACAO_COPIA) + "-" + Math.random().toString(36).slice(2, 10))); }catch(e){}
+      await caches.open(MARCA_DESLIGADA);          // 1.º a marca (o service worker deixa de guardar e de servir), depois apagar
+      var nomes = await caches.keys();
+      await Promise.all(nomes.filter(function(n){ return n.indexOf("basalt-") === 0; }).map(function(n){ return caches.delete(n); }));
+    };
+    var r = await comTrincoCopia("exclusive", limpar);   // ronda 9: o service worker não guarda nada a meio
+    if(!r.ok) await limpar();                            // apagar nunca fica por fazer
   }
   OFFLINE_ESTADO.quando = null;
 }
 
+/* ronda 9 (achado 2 da ronda 7): a versão do protocolo da cópia que esta página espera do service worker. O SW activo (o que
+   serve TODOS os separadores) responde a {tipo:"protocolo"}; um SW antigo não responde. */
+var PROTOCOLO_COPIA = 3;
+function perguntarProtocolo(sw, ms){
+  return new Promise(function(resolve){
+    var feito = false, canal;
+    var relogio = setTimeout(function(){ if(!feito){ feito = true; resolve(0); } }, ms);
+    try{
+      canal = new MessageChannel();
+      canal.port1.onmessage = function(e){
+        if(feito) return;
+        feito = true; clearTimeout(relogio);
+        resolve(Number(e.data && e.data.protocolo) || -1);       // respondeu, mas sem número: diferente (definitivo)
+      };
+      sw.postMessage({tipo:"protocolo"}, [canal.port2]);
+    }catch(e){ if(!feito){ feito = true; clearTimeout(relogio); resolve(0); } }
+  });
+}
+// {ok:true} sem service worker activo (os pedidos não passam por nenhum) ou com um que fala este protocolo
+async function swDaCopiaPronto(){
+  if(!("serviceWorker" in navigator)) return {ok:true};
+  var reg = null;
+  try{ reg = await navigator.serviceWorker.getRegistration(); }catch(e){}
+  var sw = (reg && reg.active) || navigator.serviceWorker.controller;
+  if(!sw) return {ok:true};
+  var p = await perguntarProtocolo(sw, 5000);
+  return {ok: p >= PROTOCOLO_COPIA, reg: reg};
+}
+
 async function religarCopiaLocal(){
+  // ronda 9 (achado 2): um service worker de antes (sem gerações nem trinco) ainda a servir → não se religa: actualiza-se e recarrega-se
+  var pronto = await swDaCopiaPronto();
+  if(!pronto.ok){
+    try{ if(pronto.reg) pronto.reg.update(); }catch(e){}
+    showToast(t("a app está a actualizar-se — recarrega a página (fecha os outros separadores do Basalt) e volta a ligar a cópia."));
+    return false;
+  }
+  var r = await comTrincoCopia("exclusive", async function(){   // ronda 9: nada a meio de um «guardar» do service worker
+    try{ if("caches" in window) await caches.delete(MARCA_DESLIGADA); }catch(e){}
+  });
+  if(!r.ok){ showToast(t("a cópia deste aparelho está ocupada — tenta ligar outra vez daqui a pouco.")); return false; }
   COPIA_DESLIGADA = false;
   gravarLocal("basalt-copia-desligada", null);
   try{ await idbDelete("meta", "copiaDesligada"); }catch(e){}
-  try{ if("caches" in window) await caches.delete(MARCA_DESLIGADA); }catch(e){}
   showToast(t("este aparelho volta a guardar cópia para funcionar sem rede."));
   await sincronizarPacote();
   if(location.hash === "" || location.hash === "#/") route();
@@ -2320,7 +2489,8 @@ async function iniciarOffline(){
     await geracaoActual();                                     // ronda 6 G6: a geração persistente passa a ser a deste separador
     var mb = await idbGet("meta", "bloqueada");
     if(mb && mb.valor){ COPIA_BLOQUEADA = true; BLOQUEIO_ID = mb.id || BLOQUEIO_ID || "antigo"; gravarLocal("basalt-copia-bloqueada", BLOQUEIO_ID); }
-    if(!COPIA_BLOQUEADA) await copiaTrancadaAqui();            // a tranca que só o service worker pôs passa a ser da página
+    await converterTrancasLegadas();                           // ronda 9: «/__quando» → entrada própria (nunca sai por uma resposta)
+    if(!COPIA_BLOQUEADA) await copiaTrancadaAqui();            // ronda 3 G3: a tranca que só o service worker pôs passa a ser da página
     var m = await idbGet("meta", "ultimaSync");
     if(m && m.valor){ OFFLINE_ESTADO.quando = m.valor; atualizarIndicador(); }
   }catch(e){}
@@ -3587,13 +3757,14 @@ async function montarNotasShell(main, alvoInicial){
       renderErrorBox(centro, tf("não consegui abrir esta nota: {erro}", {erro: e.message}), function(){ abrir(alvo); });
       return;
     }
-    // #41: uma edição feita sem rede fica marcada "por enviar" até a fila sincronizar; um conflito por resolver
+    // uma edição feita sem rede fica marcada "por enviar" até a fila sincronizar; um conflito por resolver
     // ganha sempre à vista normal da nota (as duas versões lado a lado), online ou offline.
     var conflito = null, filaItem = null;
+    var geracaoVista = await geracaoActual();          // ronda 9 (achado 5): ANTES de ler o conflito (na dúvida, os botões recusam)
     try{ conflito = await idbGet("conflitos", alvo.nome); }catch(e){}
     try{ filaItem = await idbGet("fila", alvo.nome); }catch(e){}
     if(conflito){
-      renderConflito(nota, conflito, centro, contexto);
+      renderConflito(nota, conflito, centro, contexto, geracaoVista);
       return;
     }
     if(filaItem){
@@ -3677,7 +3848,7 @@ function criarAdaptadorTextarea(textarea){
 /* o conflito usa SEMPRE um par coerente (texto do servidor + hash desse texto). Com rede, é a versão que
    acabou de chegar do servidor (a que o utilizador vê); sem rede, a guardada no conflito. «Juntar à mão» não apaga o conflito
    antes de a gravação acabar; a proposta da IA (se houver) só se grava se o utilizador carregar nela. */
-function renderConflito(nota, conflito, centro, contexto){
+function renderConflito(nota, conflito, centro, contexto, geracaoVista){
   var fresco = !OFFLINE_ESTADO.semRede && typeof nota.texto === "string" && !!nota.hash;
   var actualTexto = fresco ? nota.texto : (conflito.actual || "");
   var actualHash = fresco ? nota.hash : (conflito.hash_actual || "");
@@ -3744,11 +3915,13 @@ function renderConflito(nota, conflito, centro, contexto){
   }
   centro.querySelector("#conf-servidor").addEventListener("click", async function(){
     try{
-      await apagarConflitoSeIgual(nota.nome, conflito.quando);
-      var outra = await apagarFilaSeTexto(nota.nome, conflito.teu).catch(function(){ return false; });
+      var g = geracaoVista != null ? geracaoVista : await geracaoActual();
+      var feito = await ficarComServidor(nota.nome, conflito.quando, conflito.teu, g);   // ronda 9 (achado 5): tudo numa transacção
       await atualizarContadorFila();
-      showToast(outra ? t("ficaste com a versão do servidor — há outra alteração deste aparelho por enviar, que fica.")
-                      : t("ficaste com a versão do servidor."));
+      if(feito === "desligada") showToast(t("a cópia deste aparelho foi apagada entretanto — não lhe toquei; vê a nota outra vez."));
+      else if(feito === "mudou") showToast(t("este conflito mudou entretanto (noutro separador) — vê a versão actual e escolhe de novo."));
+      else showToast(feito === "outra" ? t("ficaste com a versão do servidor — há outra alteração deste aparelho por enviar, que fica.")
+                                       : t("ficaste com a versão do servidor."));
       reabrir();
     }catch(e){ showToast(tf("falhou: {erro}", {erro: e.message})); }
   });
@@ -3858,7 +4031,7 @@ function renderNotaCompleta(nota, centro, contexto){
         '<div id="ed-preview" class="markdown-body editor-preview"></div>' +
       "</div>";
 
-    var baseTextoEdicao = nota.baseFila != null ? nota.baseFila : nota.texto;    // #41: base para a fila offline (no conflito, a do servidor)
+    var baseTextoEdicao = nota.baseFila != null ? nota.baseFila : nota.texto;    // base para a fila offline (no conflito, a do servidor)
     // aberto sobre uma edição sem rede ainda por enviar, o texto é o da fila mas o hash é o do servidor AGORA —
     // um PUT com esse hash passava por cima do que os agentes mudaram, sem junção. Por isso grava-se na fila (com a base
     // original) e sobe logo pela junção de 3 vias.
@@ -4224,7 +4397,7 @@ function renderNotaCompleta(nota, centro, contexto){
             try{ navigator.clipboard.writeText(textoActual).then(function(){ showToast(t("copiado.")); }); }catch(err){ showToast(t("não consegui copiar automaticamente — selecciona e copia à mão.")); }
           });
         }else if(e.semRede){
-          // #41: sem rede — guarda no aparelho em vez de perder a edição; sobe sozinho quando houver rede
+          // sem rede — guarda no aparelho em vez de perder a edição; sobe sozinho quando houver rede
           try{
             await guardarEdicaoOffline(nota.nome, baseTextoEdicao, textoActual, geracao);
             if(nota.resolveConflito){ nota.resolveConflito = false; await apagarConflitoSeIgual(nota.nome, nota.conflitoQuando, geracao).catch(function(){}); }   // 
@@ -5654,6 +5827,26 @@ function registarServiceWorker(){
   if(!("serviceWorker" in navigator)) return;
   navigator.serviceWorker.register("/sw.js").catch(function(){
     // offline "razoável" é uma mais-valia, não um requisito — falhar aqui não deve partir a app
+  });
+  // ronda 9 (achado 2 da ronda 7): um service worker novo assumiu esta página. Se responde com OUTRO protocolo (certo, não por falta
+  // de resposta), esta página e ele não falam a mesma língua sobre a cópia → recarrega uma vez; com alterações por gravar
+  // no editor, só avisa. Sem resposta não se faz nada.
+  var tinha = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener("controllerchange", async function(){
+    if(!tinha){ tinha = true; return; }                     // a 1.ª vez que um service worker controla: nada a acertar
+    var sw = navigator.serviceWorker.controller;
+    if(!sw) return;
+    var p = await perguntarProtocolo(sw, 5000);
+    if(p === 0 || p === PROTOCOLO_COPIA) return;
+    var dirty = document.querySelector("#ed-dirty-marca");
+    var porGravar = !!(dirty && dirty.textContent.trim());
+    var ja = ""; try{ ja = sessionStorage.getItem("basalt-recarga-sw") || ""; }catch(e){}
+    if(porGravar || ja === String(p)){
+      showToast(t("a app foi actualizada — grava o que tens e recarrega a página."));
+      return;
+    }
+    try{ sessionStorage.setItem("basalt-recarga-sw", String(p)); }catch(e){}
+    location.reload();
   });
 }
 

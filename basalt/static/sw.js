@@ -2,7 +2,10 @@
 // quando não há rede, nunca esconde uma sessão expirada atrás de dados velhos.
 "use strict";
 
-var CACHE_VERSAO = "basalt-v10";      // sobe de versão quando a lógica de cache muda
+var CACHE_VERSAO = "basalt-v11";      // sobe de versão quando a lógica de cache muda
+// ronda 9 (achado 2 da ronda 7): a página só volta a ligar a cópia com um service worker que fale este protocolo (trinco partilhado
+// e geração gravada em cada entrada). Um SW antigo (v8, sem gerações) ainda a controlar a página não responde → não religa.
+var PROTOCOLO = 3;
 // «Apagar cópia deste aparelho» cria esta cache-marca (não começa por "basalt-", por isso sobrevive à limpeza
 // do activate) — enquanto existir, nenhuma resposta da API volta a ser guardada neste aparelho.
 var MARCA_DESLIGADA = "basaltcfg-copia-desligada";
@@ -39,8 +42,49 @@ function viuInstante(t) {
 }
 // ronda 6 G5: a chave de uma tranca (um Request na cache a sério; uma string nos ensaios) e a fotografia de um conjunto delas
 function chaveDe(t) { return t && t.chave ? (t.chave.url || String(t.chave)) : ""; }
-// ronda 7 (chave reutilizada): a fotografia guarda chave → hora; a mesma chave com outra hora é outra tranca (nova)
-function chavesDe(lista) { var s = {}; for (var i = 0; i < lista.length; i++) { var u = chaveDe(lista[i]); if (u) s[u] = String(lista[i].quando); } return s; }
+// ronda 9 (achado 3 da ronda 7): a fotografia guarda chave → CORPO inteiro. O corpo de uma tranca é «hora.ficha» (9 algarismos ao
+// acaso): a mesma chave reposta com a mesma hora já não passa pela de antes. As páginas antigas lêem Number(corpo) ≈ hora.
+function chavesDe(lista) { var s = {}; for (var i = 0; i < lista.length; i++) { var u = chaveDe(lista[i]); if (u) s[u] = lista[i].corpo; } return s; }
+function horaDe(corpo) { return Math.floor(Number(String(corpo).split(".")[0])) || 0; }
+function ficha() { return ("000000000" + Math.floor(Math.random() * 1e9)).slice(-9); }
+function corpoTranca(q) { return String(q) + "." + ficha(); }
+// ronda 9 (achados 3/4): a chave fixa «/__quando» (páginas de antes da ronda 3) é a única que se repete — nunca se destranca por uma
+// resposta; passa (debaixo do trinco) a uma entrada própria «/__tranca/legado-…», que o 200 seguinte já pode destrancar
+function ehLegada(u) { return u.indexOf("/__tranca/") === -1; }
+
+// ronda 9 (achados 3/4/8 da ronda 7): UM trinco para tudo o que lê-e-decide ou escreve nas marcas da cópia e na cache da API — o
+// Web Lock «basalt-copia», partilhado pela página, pelos outros separadores e por este service worker. Antes cada parte
+// comparava uma fotografia e só depois apagava/guardava: outra parte podia trancar, destrancar ou apagar a cópia no meio.
+//  - nunca se segura o trinco durante um fetch nem com uma transacção da IndexedDB aberta;
+//  - «basalt-fila» (página) pode pedir este trinco; este nunca pede o «basalt-fila» (sem ciclos);
+//  - disjuntor: se o trinco não chega em TRINCO_MS (quem o tem ficou pendurado), devolve {ok:false} e quem chamou decide —
+//    pôr marcas (trancar, lápide) faz-se mesmo assim; guardar/servir/destrancar desiste.
+//  - sem Web Locks (browsers antigos, os ensaios em node): uma cadeia de promessas (só exclui dentro deste contexto).
+var TRINCO = "basalt-copia", TRINCO_MS = 3000, TRINCO_CADEIA = Promise.resolve();
+function comTrincoCadeia(fn) {
+  var p = TRINCO_CADEIA.then(function () { return fn(); }).then(function (v) { return { ok: true, valor: v }; });
+  TRINCO_CADEIA = p.catch(function () {});
+  return p;
+}
+function comTrinco(modo, fn) {
+  var locks = typeof navigator !== "undefined" && navigator && navigator.locks;
+  if (!locks || !locks.request || typeof AbortController !== "function" || typeof setTimeout !== "function") return comTrincoCadeia(fn);
+  var ac = new AbortController(), entrou = false;
+  var relogio = setTimeout(function () { ac.abort(); }, TRINCO_MS);
+  try {
+    return locks.request(TRINCO, { mode: modo, signal: ac.signal }, function () {
+      entrou = true; clearTimeout(relogio);
+      return Promise.resolve().then(fn);
+    }).then(function (v) { return { ok: true, valor: v }; }, function (e) {
+      clearTimeout(relogio);
+      if (entrou) throw e;
+      return ac.signal.aborted ? { ok: false } : comTrincoCadeia(fn);   // o pedido do trinco falhou por outra razão → cadeia
+    });
+  } catch (e) {
+    clearTimeout(relogio);
+    return comTrincoCadeia(fn);
+  }
+}
 var CACHE_APP = CACHE_VERSAO + "-app";
 var CACHE_API = CACHE_VERSAO + "-api";
 var CACHE_VENDOR = CACHE_VERSAO + "-vendor";   // /static/vendor/ (mermaid, katex) — cache-first, guardado no 1º uso
@@ -48,6 +92,12 @@ var CACHE_VENDOR = CACHE_VERSAO + "-vendor";   // /static/vendor/ (mermaid, kate
 var CASCA_APP = ["/", "/index.html"];
 
 var API_EM_CACHE = ["/api/notas", "/api/nota", "/api/indice", "/api/categorias"];
+
+// ronda 9 (achado 2): a página pergunta o protocolo antes de religar a cópia (MessageChannel)
+self.addEventListener("message", function (event) {
+  var d = event && event.data;
+  if (d && d.tipo === "protocolo" && event.ports && event.ports[0]) event.ports[0].postMessage({ protocolo: PROTOCOLO, versao: CACHE_VERSAO });
+});
 
 self.addEventListener("install", function (event) {
   event.waitUntil(
@@ -78,6 +128,9 @@ self.addEventListener("activate", function (event) {
               return caches.delete(n);
             })
         );
+      })
+      .then(function () {
+        return comTrinco("exclusive", converterLegadas).catch(function () {});   // ronda 9: «/__quando» → entrada própria
       })
       .then(function () {
         return self.clients.claim();
@@ -160,18 +213,41 @@ async function trancas() {
     var chaves = await c.keys();
     var out = [];
     for (var i = 0; i < chaves.length; i++) {
-      var q = 0;
+      var corpo = "";
       try {
         var r = await c.match(chaves[i]);
-        q = r ? Number(await r.text()) || 0 : 0;
+        corpo = r ? await r.text() : "";
       } catch (e) {}
+      var q = horaDe(corpo);
       viuInstante(q);
-      out.push({ chave: chaves[i], quando: q });
+      out.push({ chave: chaves[i], quando: q, corpo: corpo });
     }
     return out;
   } catch (e) {
-    return [{ chave: null, quando: 0 }];
+    return [{ chave: null, quando: 0, corpo: "" }];
   }
+}
+// ronda 9: as trancas em vigor são TODAS da fotografia tirada quando o pedido partiu (chave e corpo iguais)? Uma ilegível
+// (sem chave) ou legada conta como nova.
+function soTrancasDeAntes(lista, antes) {
+  for (var i = 0; i < lista.length; i++) {
+    var u = chaveDe(lista[i]);
+    if (!u || ehLegada(u) || antes[u] !== lista[i].corpo) return false;
+  }
+  return true;
+}
+// ronda 9: só debaixo do trinco. Devolve true se havia alguma legada (quem chama não destranca nada nessa volta).
+async function converterLegadas() {
+  var lista = await trancas(), mudou = false;
+  for (var i = 0; i < lista.length; i++) {
+    var u = chaveDe(lista[i]);
+    if (!u || !ehLegada(u)) continue;
+    var c = await caches.open(MARCA_TRANCADA);
+    await c.put("/__tranca/legado-" + ficha(), new Response(corpoTranca(lista[i].quando || agora())));   // 1.º a nova, depois sai a velha
+    await c.delete(lista[i].chave);
+    mudou = true;
+  }
+  return mudou;
 }
 async function copiaTrancada() {
   return (await trancas()).length > 0;
@@ -180,24 +256,37 @@ async function copiaTrancada() {
 async function semCopia() {
   return (await copiaDesligada()) || (await copiaTrancada());
 }
+// ronda 9: serve-se com o trinco partilhado (ninguém tranca/apaga a meio) e só uma entrada gravada na geração ACTUAL da cópia
+// (X-Basalt-Geracao) — uma resposta de antes de «apagar a cópia» que tenha entrado por outro caminho não se mostra.
+// Trinco preso → não serve (na dúvida, nada de dados privados).
 async function daCache(pedido) {
-  if (await semCopia()) return null;
-  var r = await caches.match(pedido, { cacheName: CACHE_API });
-  return r ? marcarComoCache(r) : null;
+  var r = await comTrinco("shared", async function () {
+    if (await semCopia()) return null;
+    var g = await geracaoDaCopia();
+    var e = await caches.match(pedido, { cacheName: CACHE_API });
+    if (!e || e.headers.get("X-Basalt-Geracao") !== g) return null;
+    return marcarComoCache(e);
+  });
+  return r.ok ? r.valor : null;
 }
 async function trancar() {
-  try {                                                          // 1.º a marca (entrada própria, com a hora), depois apagar
-    await trancas();                                             // ronda 6 G5: vê as trancas já postas — a nova fica acima de todas
-    var c = await caches.open(MARCA_TRANCADA);
-    var q = agora();
-    var id = q.toString(36) + "-" + Math.random().toString(36).slice(2, 8);
-    await c.put("/__tranca/" + id, new Response(String(q)));
-  } catch (e) {}
-  await caches.delete(CACHE_API).catch(function () {});
+  var fazer = async function () {
+    try {                                                        // 1.º a marca (entrada própria, com a hora), depois apagar
+      await trancas();                                           // ronda 6 G5: vê as trancas já postas — a nova fica acima de todas
+      var c = await caches.open(MARCA_TRANCADA);
+      var q = agora();
+      var id = q.toString(36) + "-" + Math.random().toString(36).slice(2, 8);
+      await c.put("/__tranca/" + id, new Response(corpoTranca(q)));   // ronda 9: hora + ficha
+    } catch (e) {}
+    await caches.delete(CACHE_API).catch(function () {});
+  };
+  var r = await comTrinco("exclusive", fazer);
+  if (!r.ok) await fazer();                                      // ronda 9: trinco preso → tranca-se na mesma (só acrescenta)
 }
 // destranca SÓ as entradas que já existiam quando o pedido partiu. Apaga-se entrada a entrada, pela chave —
 // nunca a cache inteira: uma tranca posta no meio fica. ronda 6 G5: «já existia» é estar na fotografia das chaves tirada ao
 // partir (quem chama só chega aqui quando TODAS estão), não «hora < inicio» — o relógio pode ter andado para trás.
+// ronda 9 (achado 4): só se chama debaixo do trinco, logo a seguir a comparar — ninguém troca a tranca entre comparar e apagar.
 async function destrancar(lista) {
   try {
     var c = await caches.open(MARCA_TRANCADA);
@@ -242,57 +331,57 @@ function comInicio(resposta, inicio) {
   cabecalhos.set("X-Basalt-Inicio", String(inicio));
   return new Response(resposta.body, { status: resposta.status, statusText: resposta.statusText, headers: cabecalhos });
 }
-// ronda 5 (auditoria externa, ronda 4): o «ver se há mais nova» e o «guardar» eram duas operações separadas — duas respostas à
-// mesma nota a chegar quase juntas viam as duas a cache vazia e a mais ANTIGA podia ficar por cima. Agora, por URL, cada
-// guardar espera pelo anterior (match+put em fila) e a comparação vale mesmo.
-var GUARDAR_FILA = {};
-function emFila(chave, fn) {
-  var anterior = GUARDAR_FILA[chave] || Promise.resolve();
-  var p = anterior.catch(function () {}).then(fn);
-  GUARDAR_FILA[chave] = p;
-  var largar = function () { if (GUARDAR_FILA[chave] === p) delete GUARDAR_FILA[chave]; };
-  p.then(largar, largar);
-  return p;
+// ronda 9: a entrada guardada leva a hora a que o pedido partiu (ronda 4: uma resposta mais ANTIGA que chegue depois não passa
+// por cima da mais nova) e a geração da cópia com que partiu (daCache só serve a da geração actual)
+function entradaApi(resposta, corpo, inicio, geracao) {
+  var cabecalhos = new Headers(resposta.headers);
+  cabecalhos.set("X-Basalt-Inicio", String(inicio));
+  cabecalhos.set("X-Basalt-Geracao", geracao);
+  return new Response(corpo, { status: resposta.status, statusText: resposta.statusText, headers: cabecalhos });
 }
-function guardarSeMaisNova(c, pedido, copia, inicio, geracaoAntes) {
-  return emFila((pedido && pedido.url) || String(pedido), async function () {
-    // ronda 7 (geração): apagada (ou apagada e religada) desde que o pedido partiu → a resposta é de antes, não entra
-    if (geracaoAntes !== undefined && ((await copiaDesligada()) || (await geracaoDaCopia()) !== geracaoAntes)) return false;
-    var ja = await c.match(pedido);
-    var q = ja ? Number(ja.headers.get("X-Basalt-Inicio")) || 0 : 0;
-    viuInstante(q);
-    if (q > inicio) return false;
-    await c.put(pedido, comInicio(copia, inicio));
-    return true;
+// ronda 9 (achados 3/4/8 da ronda 7): a resposta 200 de um pedido — comparar as trancas, guardar e destrancar, tudo debaixo do
+// trinco exclusivo. Substitui a fila por URL (emFila) e a limpeza a seguir (limparSeFicouVelha + caches.delete): essas
+// decidiam com o que tinham lido antes e podiam apagar uma cache mais nova inteira (#8). O corpo lê-se ANTES de pedir o
+// trinco (nunca se segura o trinco à espera da rede). Ordem: 1.º guardar, depois destrancar (se o SW morrer no meio fica
+// trancada — o lado seguro). Guarda só se: a cópia está ligada, a geração é a do pedido, a nota não levou lápide depois de o
+// pedido partir e o que lá está não é de um pedido mais novo. Trinco preso → não guarda nem destranca.
+async function aceitar(pedido, corpo, resp, inicio, foto) {
+  var r = await comTrinco("exclusive", async function () {
+    if (await converterLegadas()) return false;
+    var lista = await trancas();
+    if (!soTrancasDeAntes(lista, foto.trancas)) return false;     // tranca posta depois de o pedido partir (ou ilegível)
+    var guardou = false;
+    if (!(await copiaDesligada()) && (await geracaoDaCopia()) === foto.geracao && !(await apagadaDepois(pedido, inicio))) {
+      var c = await caches.open(CACHE_API), ja = await c.match(pedido);
+      var q = ja ? Number(ja.headers.get("X-Basalt-Inicio")) || 0 : 0;
+      viuInstante(q);
+      if (!(ja && q > inicio)) { await c.put(pedido, entradaApi(resp, corpo, inicio, foto.geracao)); guardou = true; }
+    }
+    if (lista.length) await destrancar(lista);
+    return guardou;
   });
-}
-// ronda 7 (limpeza na fila): depois de guardar, se entretanto a nota levou lápide (ou a cópia mudou de geração), sai — mas
-// na fila por URL e só se o que lá está é deste pedido ou mais antigo. Antes apagava fora da fila e sem olhar à hora: uma
-// recriação guardada por um pedido mais novo desaparecia.
-function limparSeFicouVelha(c, pedido, inicio, geracaoAntes) {
-  return emFila((pedido && pedido.url) || String(pedido), async function () {
-    var velha = (await apagadaDepois(pedido, inicio)) || (geracaoAntes !== undefined && (await geracaoDaCopia()) !== geracaoAntes);
-    if (!velha) return false;
-    var ja = await c.match(pedido);
-    if (!ja) return false;
-    if ((Number(ja.headers.get("X-Basalt-Inicio")) || 0) > inicio) return false;
-    await c.delete(pedido);
-    return true;
-  });
+  return r.ok ? r.valor : false;
 }
 // ronda 6 (achado M9 da ronda 4): um 404/410 só apaga da cache o que lá está se isso partiu ANTES dele — a mesma ordenação dos 200.
 // Um 404/410 atrasado (a nota foi apagada, recriada, e um GET mais novo já guardou a recriada) não apaga nada nem põe lápide.
-// Na mesma fila por URL que o guardar, para a comparação valer mesmo.
-function apagarSeMaisAntiga(c, pedido, inicio) {
-  return emFila((pedido && pedido.url) || String(pedido), async function () {
-    var ja = await c.match(pedido);
-    var q = ja ? Number(ja.headers.get("X-Basalt-Inicio")) || 0 : 0;
-    viuInstante(q);
-    if (ja && q > inicio) return false;
-    await marcarApagada(pedido, inicio);                           // ronda 4 G9: 1.º a lápide (com a hora), depois apagar
-    await c.delete(pedido);
-    return true;
-  });
+// ronda 9: debaixo do trinco (antes: na fila por URL); trinco preso → faz-se na mesma (só tira dados e põe a lápide).
+async function tirarNota(pedido, inicio) {
+  var fazer = async function () {
+    try {
+      var c = await caches.open(CACHE_API), ja = await c.match(pedido);
+      var q = ja ? Number(ja.headers.get("X-Basalt-Inicio")) || 0 : 0;
+      viuInstante(q);
+      if (ja && q > inicio) return false;
+      await marcarApagada(pedido, inicio);                         // ronda 4 G9: 1.º a lápide (com a hora), depois apagar
+      await c.delete(pedido);
+      return true;
+    } catch (e) {
+      await marcarApagada(pedido, inicio);
+      return false;
+    }
+  };
+  var r = await comTrinco("exclusive", fazer);
+  if (!r.ok) await fazer();
 }
 
 // o redireccionamento para o login vira um 401 de verdade (antes era Response.error(), que a página lia como
@@ -310,11 +399,16 @@ function respostaLogin() {
 // ronda 8 (contas no mesmo browser): entrar e sair mudam a conta do browser. 1.º muda a geração (um pedido que partiu antes
 // não guarda nada), depois a cópia da API sai — antes de o pedido seguir e outra vez quando ele volta (um GET que tenha
 // partido no meio, ainda com a conta anterior, também não fica). O pedido segue para a rede tal e qual.
+// ronda 9: debaixo do trinco (nada a meio de um «aceitar»); trinco preso → faz-se na mesma (só tira dados).
 async function mudouDeConta() {
-  try {
-    await (await caches.open(MARCA_GERACAO)).put("/__geracao", new Response("conta-" + agora() + "-" + Math.random().toString(36).slice(2, 10)));
-  } catch (e) {}
-  await caches.delete(CACHE_API).catch(function () {});
+  var fazer = async function () {
+    try {
+      await (await caches.open(MARCA_GERACAO)).put("/__geracao", new Response("conta-" + agora() + "-" + Math.random().toString(36).slice(2, 10)));
+    } catch (e) {}
+    await caches.delete(CACHE_API).catch(function () {});
+  };
+  var r = await comTrinco("exclusive", fazer);
+  if (!r.ok) await fazer();
 }
 async function tratarSaidaEntrada(pedido) {
   await mudouDeConta();
@@ -325,8 +419,12 @@ async function tratarSaidaEntrada(pedido) {
   }
 }
 
-async function tratarApi(pedido) {
-  var resp, antes = chavesDe(await trancas()), inicio = agora(), geracaoAntes = await geracaoDaCopia();   // ronda 6 G5: as trancas que JÁ existiam quando este pedido partiu
+// ronda 9: `manter` recebe o trabalho que continua depois de a resposta seguir (guardar/destrancar) — no fetch é o waitUntil,
+// para o browser não parar o service worker a meio.
+async function tratarApi(pedido, manter) {
+  // ronda 6 G5 / ronda 9: a fotografia (sem trinco — só se lê) das trancas que JÁ existiam e da geração da cópia ao partir
+  var foto = { geracao: await geracaoDaCopia(), trancas: chavesDe(await trancas()) };
+  var resp, inicio = agora();
   try {
     // redirect "manual": o 302 para o login chega como "opaqueredirect" em vez de ser seguido para outro domínio e
     // falhar como se fosse falta de rede (era assim que a sessão expirada passava por "sem rede").
@@ -343,11 +441,7 @@ async function tratarApi(pedido) {
     return resp.type === "opaqueredirect" ? respostaLogin() : resp;
   }
   if (resp.status === 404 || resp.status === 410) {
-    try {                                                          // ronda 6 M9: só apaga o que partiu antes deste pedido (e põe a lápide)
-      await apagarSeMaisAntiga(await caches.open(CACHE_API), pedido, inicio);
-    } catch (e) {
-      await marcarApagada(pedido, inicio);
-    }
+    await tirarNota(pedido, inicio);                               // ronda 6 M9: só apaga o que partiu antes deste pedido (e põe a lápide)
     return comInicio(resp, inicio);                                // ronda 6 G5: a página ordena com a MESMA hora deste pedido
   }
   if (resp.status === 502 || resp.status === 503 || resp.status === 504) {
@@ -360,22 +454,13 @@ async function tratarApi(pedido) {
     // um 200 que não seja JSON (a página de login do proxy em HTML, com 200) não prova que a sessão está boa —
     // não destranca nada nem se guarda. Só uma resposta JSON da API conta. (Antes destrancava-se antes de olhar ao tipo.)
     if (tipo.indexOf("application/json") === -1) return resp;
-    var lista = await trancas();
     // pedido feito ANTES de trancar (resposta atrasada): não destranca nem se guarda. Feito depois: a sessão voltou.
-    // ronda 6 G5: decide-se pelas CHAVES que já existiam ao partir (fotografia), não pela hora; uma tranca ilegível conta como nova.
-    for (var i = 0; i < lista.length; i++) if (antes[chaveDe(lista[i])] !== String(lista[i].quando)) return resp;   // ronda 7: chave E hora
-    if (lista.length) await destrancar(lista);
-    // pedido que partiu ANTES de a nota dar 404/410 (resposta atrasada) — não volta a guardá-la
-    if (await apagadaDepois(pedido, inicio)) return resp;
-    if (!(await copiaDesligada())) {
-      var copia = resp.clone();
-      caches.open(CACHE_API)
-        .then(function (c) { return guardarSeMaisNova(c, pedido, copia, inicio, geracaoAntes).then(function () { return c; }); })
-        .then(function (c) { return limparSeFicouVelha(c, pedido, inicio, geracaoAntes); })   // ronda 7: na fila, só o deste pedido
-        .then(function () { return semCopia(); })
-        .then(function (marca) { if (marca) return caches.delete(CACHE_API); })   // apagada/trancada a meio → fora
-        .catch(function () {});
-    }
+    // ronda 6 G5: decide-se pelas trancas que já existiam ao partir (fotografia), não pela hora. ronda 4 G9: um pedido que partiu
+    // antes de a nota dar 404/410 não a volta a guardar. ronda 9: tudo isso (e guardar) numa só secção com trinco — aceitar.
+    var copia = resp.clone();
+    (manter || function () {})(copia.arrayBuffer()
+      .then(function (corpo) { return aceitar(pedido, corpo, copia, inicio, foto); })
+      .catch(function () { return false; }));
     return comInicio(resp, inicio);                                // ronda 6 G5: a página ordena com a MESMA hora deste pedido
   }
   return resp;
@@ -402,7 +487,13 @@ self.addEventListener("fetch", function (event) {
   }
   if (ehPedidoApiEmCache(url)) {
     if (pedido.mode === "navigate") return;   // abrir /api/… na barra de endereço: o browser trata (e segue o login)
-    event.respondWith(tratarApi(pedido));
+    // ronda 9: guardar/destrancar continua depois de a resposta seguir — o waitUntil (pedido JÁ, durante o evento) segura o
+    // service worker vivo até isso acabar; antes era uma promessa solta que o browser podia cortar a meio
+    var trabalhos = [];
+    var resposta = tratarApi(pedido, function (p) { trabalhos.push(p); });
+    event.respondWith(resposta);
+    var fim = function () { return Promise.all(trabalhos).catch(function () {}); };
+    if (event.waitUntil) event.waitUntil(resposta.then(fim, fim));
     return;
   }
   if (ehPedidoCasca(url)) {
