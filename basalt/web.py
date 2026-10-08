@@ -15,7 +15,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import arrumar as arr
-from . import anexos, auth, caminhos, config, etiquetas, sig
+from . import anexos, auth, caminhos, config, etiquetas, retidas, sig
 from . import entrada as entrada_mod
 from . import cas as _cas
 from . import ia as ia_mod
@@ -1191,15 +1191,18 @@ def reconciliar(nome, base_texto, texto):
                              resumo="Juntei linha a linha, sem IA: as tuas mudanças e as dos agentes estão em sítios diferentes. "
                                     "Confirma que o sentido continua certo (ex.: um título que mudaste e o que está por baixo).")
         extra = {}
+        # ronda 9 (achado G6 da ronda 2): o prompt leva as TRÊS versões — só se validava a do utilizador; uma password na BASE (já
+        # apagada por ele) ou na ACTUAL, ou uma nota retida, iam para a IA. Assim fica só o conflito, para o utilizador escolher.
+        a_ia_pode = not retidas.retida(nome, "\n".join((base_texto, texto, actual)))
         # PORTE: sem IA de chat não há proposta (fica só o conflito para o utilizador escolher); o limite horário é [ia] propostas_por_hora
-        if ia_mod.actual().chat_activo and _limite_horario(_rec_usos, ia_mod.actual().cfg.propostas_por_hora):
+        if a_ia_pode and ia_mod.actual().chat_activo and _limite_horario(_rec_usos, ia_mod.actual().cfg.propostas_por_hora):
             try:
                 prop, resumo = _proposta_ia(base_texto, texto, actual)
                 motivo = _validar_juncao(base_texto, texto, actual, prop)
                 if not motivo:
                     extra = {"proposta": prop, "proposta_hash": h_actual, "resumo": resumo, "proposta_tipo": "ia"}
-                else:
-                    print("sincronizar: proposta da IA recusada —", motivo[:160], flush=True)
+                else:                                          # ronda 9 (achado G7 da ronda 2): o motivo cita linhas da nota — não vai para o registo
+                    print("sincronizar: proposta da IA recusada (não passou a verificação linha a linha)", flush=True)
             except (ia_mod.IAIndisponivel, ValueError, OSError):
                 pass
         return _conflito(p, "Mudaste as mesmas linhas que os agentes — escolhe tu" +

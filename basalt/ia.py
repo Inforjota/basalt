@@ -66,18 +66,28 @@ def _mascarar(texto: str, cabecalhos: dict) -> str:
     return SEGREDO_RX.sub("•••", texto)
 
 
-def _mensagem_http(bruto: bytes) -> str:
-    """a parte útil de um corpo de erro: `error.message` / `error` / `message` se for JSON; senão a 1.ª linha de texto sem
-    marcação. Nunca o corpo inteiro — um proxy mal configurado pode ecoar os cabeçalhos do pedido."""
-    texto = bruto.decode("utf-8", "replace")
+_TIPO_RX = re.compile(r"[a-z_]{1,40}")
+_DICA_HTTP = {400: "o fornecedor recusou o pedido", 401: "a chave foi recusada (vê [ia] chave_env / chave_ficheiro)",
+              403: "a chave não dá acesso a isto (vê [ia] chave_env / chave_ficheiro e o modelo)",
+              404: "o endereço ou o modelo não existem (vê [ia] url e modelo_chat)", 413: "o pedido é grande demais para o fornecedor",
+              429: "o fornecedor está a limitar os pedidos — tenta mais tarde"}
+
+
+def _mensagem_http(codigo: int, bruto: bytes) -> str:
+    """o que se diz de um erro HTTP do fornecedor: o TIPO (`error.type`, só se for um identificador curto, ex.
+    `invalid_request_error`) e uma dica pelo código. A mensagem do fornecedor nunca sai (ronda 9, achado G7 da ronda 2): um 400 pode
+    repetir o texto da nota que lhe mandámos, um 401 pode repetir a chave (e era cortada a 120 caracteres ANTES de a máscara a
+    reconhecer pela forma), e um proxy mal configurado pode ecoar os cabeçalhos do pedido."""
+    tipo = ""
     try:
-        j = json.loads(texto)
+        j = json.loads(bruto.decode("utf-8", "replace"))
         e = j.get("error", j) if isinstance(j, dict) else None
-        m = e.get("message", e.get("error")) if isinstance(e, dict) else e
-        texto = m if isinstance(m, str) else ""
+        t = e.get("type") if isinstance(e, dict) else None
+        tipo = t if isinstance(t, str) and _TIPO_RX.fullmatch(t) else ""
     except ValueError:
-        texto = re.sub(r"<[^>]*>", " ", texto)
-    return " ".join(texto.split())[:120]
+        pass
+    dica = _DICA_HTTP.get(codigo) or ("o fornecedor está com problemas — tenta mais tarde" if codigo >= 500 else "")
+    return " — ".join(x for x in (f"({tipo})" if tipo else "", dica) if x)
 
 
 def _post_json(url: str, corpo: dict, cabecalhos: dict, tempo: int) -> dict:
@@ -91,7 +101,7 @@ def _post_json(url: str, corpo: dict, cabecalhos: dict, tempo: int) -> dict:
         if e.code in _REDIRECTS:
             raise IAIndisponivel(_mascarar(f"{origem}: HTTP {e.code} — redireccionou para outro endereço e não o sigo (a chave iria "
                                            f"com o pedido). Põe em [ia] url o endereço final.", cabecalhos))
-        raise IAIndisponivel(_mascarar(f"{origem}: HTTP {e.code} {_mensagem_http(e.read(2000))}".rstrip(), cabecalhos))
+        raise IAIndisponivel(_mascarar(f"{origem}: HTTP {e.code} {_mensagem_http(e.code, e.read(2000))}".rstrip(), cabecalhos))
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise IAIndisponivel(_mascarar(f"sem resposta de {url}: {getattr(e, 'reason', e)}", cabecalhos))
     except ValueError:
@@ -218,7 +228,14 @@ class IA:
         except ValueError:
             raise IAIndisponivel("o `claude` respondeu algo que não é JSON")
         if d.get("is_error") or r.returncode != 0:
-            raise IAIndisponivel("o `claude` devolveu erro: " + str(d.get("result") or r.stderr)[:200])
+            # ronda 9 (achado G7 da ronda 2): a mensagem dele pode repetir o texto da nota — só se diz o que se reconhece
+            m = str(d.get("result") or r.stderr or "").lower()
+            if "credit balance" in m:
+                raise IAIndisponivel("o `claude` devolveu erro: sem saldo na conta da API")
+            if "/login" in m or "not logged in" in m or "invalid api key" in m:
+                raise IAIndisponivel("o `claude` devolveu erro: não tem sessão iniciada ou a chave é inválida (corre `claude` e /login)")
+            raise IAIndisponivel("o `claude` devolveu erro (a mensagem não se mostra: pode repetir o texto da nota) — corre "
+                                 "`claude -p olá` no terminal para ver porquê")
         return sem_cerca(d.get("result") or "")
 
     # ── embeddings ──

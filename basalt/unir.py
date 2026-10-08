@@ -46,7 +46,8 @@ def tem_facto(x, m):
 
 
 def fundir_llm(a, b, manter, fundir):
-    if tem_segredo_texto(a) or tem_segredo_texto(b):        # ronda 8 (notas retidas): uma nota com segredo em claro nunca vai à IA
+    # ronda 8 (notas retidas): uma nota com segredo em claro nunca vai à IA; ronda 9 (achado G6 da ronda 2): nem os nomes (vão no prompt)
+    if tem_segredo_texto(a) or tem_segredo_texto(b) or tem_segredo_texto(manter) or tem_segredo_texto(fundir):
         raise ValueError("uma das notas tem o que parece uma password ou chave em claro — não a mando à IA")
     prompt = f"""Tens duas notas da memória de trabalho do utilizador que tratam do mesmo assunto. Funde-as numa SÓ nota.
 

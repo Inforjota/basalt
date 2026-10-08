@@ -15,9 +15,11 @@
   `guardar_ideia`), sincronização em duas vias, `basalt.sig guarda`, importação Obsidian e anexos de texto. Recusa padrões de
   chaves (Anthropic, OpenAI, GitHub, AWS, Telegram…) e passwords escritas à mão (`senha: …`, `password = …`). Uma data ou uma
   hora só deixa de contar como password quando a frase fala da validade da própria senha.
-- **Notas retidas não saem para a IA.** Uma nota está retida quando tem um segredo em claro ou está em `excluidas.txt`. Fica de
-  fora do índice e dos embeddings, da pergunta com fontes, das categorias, da arrumação (manual e automática), da fusão e da
-  Entrada automática.
+- **Notas retidas não saem para a IA.** Uma nota está retida quando tem um segredo em claro — no texto ou no nome do ficheiro
+  — ou está em `excluidas.txt`. Fica de fora do índice e dos embeddings, da pergunta com fontes (que olha para a nota tal como
+  está agora, não para o índice: uma nota que ganhou um segredo depois de indexada já não dá pedaços), das categorias, da
+  arrumação (manual e automática), da fusão, da Entrada automática e da proposta da IA num conflito sem internet (que leva as
+  três versões: se alguma tem um segredo, fica só o conflito, para escolheres).
 - **Contra agentes de IA desastrados.** Sem ferramenta de apagar. Substituir uma nota exige o `base_hash` da versão lida. O MCP
   recusa substituir uma nota por texto vazio ou só com espaços.
 - **Cada utilizador no seu espaço.** Dois utilizadores no mesmo espaço são recusados ao carregar o `basalt.toml`, a não ser
@@ -48,7 +50,8 @@
   escolher o próprio IP.
 - **Contra fugas de chave.** As chaves de API só entram por variável de ambiente ou ficheiro `0600`. Não aparecem nos erros,
   nem quando o fornecedor as repete numa resposta 401. Um redirect para outro endereço não leva o cabeçalho `Authorization`.
-  Os erros não repetem o texto das notas, e os erros do MCP não mostram caminhos do disco.
+  Os erros não repetem o texto das notas (de um erro do fornecedor de IA só se diz o código, o tipo e uma dica — a mensagem
+  dele pode citar o que lhe mandámos), e os erros do MCP não mostram caminhos do disco.
 
 ## O que NÃO protege (e o que fazer)
 

@@ -27,8 +27,9 @@ def lista():
 
 
 def retida(nome, texto, excl=None):
-    """True se a nota `nome` com este `texto` não pode sair (está na lista ou tem segredo em claro)."""
-    return nome in (lista() if excl is None else excl) or tem_segredo_texto(texto)
+    """True se a nota `nome` com este `texto` não pode sair (está na lista ou tem segredo em claro — no texto OU no nome: ronda 9,
+    achado G6 da ronda 2 — uma chave no nome do ficheiro ia para o índice, os embeddings e as categorias com o nome)."""
+    return nome in (lista() if excl is None else excl) or tem_segredo_texto(nome) or tem_segredo_texto(texto)
 
 
 def notas(pasta, ignora=IGNORA):
@@ -55,6 +56,9 @@ def nomes_retidos(pasta):
     out = set(excl)
     for p in caminhos.notas(pasta):
         if p.stem in out or p.name in IGNORA:
+            continue
+        if tem_segredo_texto(p.stem):           # ronda 9 (achado G6 da ronda 2): o nome também
+            out.add(p.stem)
             continue
         try:
             if tem_segredo_texto(p.read_text(encoding="utf-8", errors="replace")):

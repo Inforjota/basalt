@@ -92,5 +92,12 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
     um anexo que apareceu entretanto fica intacto.
   - **Carimbos da Entrada:** nunca se repetem, nem depois de apagar todas as notas nem com o relógio a andar para trás (o último
     fica gravado ao lado da Entrada, com escrita atómica); a ordem é numérica.
+  - **Retidas, mais três caminhos:** uma chave no NOME do ficheiro também retém a nota (índice, categorias, fusão); a pergunta
+    com fontes olha para a nota tal como está agora (os pedaços antigos de uma nota que ganhou um segredo, ou que já não
+    existe, não servem até à próxima indexação); a proposta da IA num conflito sem internet leva as três versões — com um
+    segredo em qualquer delas (ou a nota retida) não se pede, fica só o conflito.
+  - **Erros da IA sem o que lhe mandámos:** de um erro HTTP do fornecedor diz-se o código, o tipo (`invalid_request_error`…) e
+    uma dica nossa — a mensagem dele nunca, porque pode repetir o texto da nota ou um bocado da chave; o mesmo para o `claude`
+    (só se dizem os erros que se reconhecem: sem saldo, sem sessão). O registo de uma proposta recusada já não cita linhas.
   - Testes: `testes/test_ronda9_donos.py`, `testes/test_ronda9_pagina_donos.py`, `testes/test_sw.py` (`TestUmaCachePorDono`),
-    `testes/test_ronda9_ficheiros.py`, `testes/test_ronda9_revogar.py`.
+    `testes/test_ronda9_ficheiros.py`, `testes/test_ronda9_revogar.py`, `testes/test_ronda9_ia.py`.

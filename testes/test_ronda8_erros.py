@@ -85,7 +85,7 @@ class TestChaveNosErros:
         finally:
             s.parar()
         m = str(ex.value)
-        assert "401" in m and "chave inválida" in m, m
+        assert "401" in m and "chave foi recusada" in m, m          # ronda 9 (achado G7 da ronda 2): a dica é nossa, não a mensagem dele
         assert CHAVE not in m and CHAVE[-12:] not in m, m
 
     def test_corpo_de_erro_nao_e_ecoado_cru(self, chave):
@@ -98,7 +98,7 @@ class TestChaveNosErros:
         finally:
             s.parar()
         m = str(ex.value)
-        assert "502" in m and "Bad gateway" in m and "<" not in m and CHAVE not in m and len(m) < 220, m
+        assert "502" in m and "problemas" in m and "<" not in m and CHAVE not in m and len(m) < 220, m
 
     def test_redirect_nao_e_seguido_e_a_chave_nao_sai_para_o_outro_servidor(self, chave):
         alvo = _Servidor(lambda h: _responde(h, 200, json.dumps({"choices": [{"message": {"content": "ok"}}]}, ensure_ascii=False).encode("utf-8")))
@@ -120,7 +120,7 @@ class TestChaveNosErros:
                 _ia(s.porta).chat("olá")
         finally:
             s.parar()
-        assert "404" in str(ex.value) and "modelo m não existe" in str(ex.value), str(ex.value)
+        assert "404" in str(ex.value) and "o modelo não existem" in str(ex.value), str(ex.value)   # ronda 9: a dica pelo código
 
 
 class TestTextoDasNotasNoRegisto:

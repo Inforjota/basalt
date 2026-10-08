@@ -13,7 +13,7 @@ palavras (BM25, basalt.lexical): menos esperto, mas funciona sem IA nenhuma. Nad
 Índice: <dados>/semantica.sqlite. Espaço: BASALT_ESPACO (+ basalt.toml); BASALT_REAL, BASALT_SIG_DB, BASALT_INBOX,
 BASALT_EXCLUIR mandam campo a campo (ver basalt.config.Espaco).
 """
-import hashlib, json, os, re, shlex, sqlite3, subprocess, sys, unicodedata
+import hashlib, json, os, re, shlex, sqlite3, stat, subprocess, sys, unicodedata
 from array import array
 from operator import mul
 from pathlib import Path
@@ -203,12 +203,50 @@ def _excluidas():
     return {l.strip() for l in f.read_text(encoding="utf-8").splitlines() if l.strip()}
 
 
+_RETIDA_AGORA: dict = {}        # caminho da nota → ((mtime_ns, tamanho), retida?) — relê-se só quando a nota muda
+
+
+def _retida_agora(nome, excl):
+    """ronda 9 (achado G6 da ronda 2): a nota TAL COMO ESTÁ AGORA. Um índice feito antes de ela ganhar um segredo ainda tem os
+    pedaços antigos — limpos um a um — e a lista `excluir` pode não estar em dia; olhar só para cada pedaço deixava-os ir para a
+    pergunta. Retida = na lista, segredo no nome, segredo no texto actual, ou a nota já não existe (ou não é um ficheiro normal)."""
+    if nome in excl or tem_segredo_texto(nome):
+        return True
+    p = Path(PASTA) / f"{nome}.md"
+    try:
+        st = os.lstat(p)
+    except (OSError, ValueError):
+        return True
+    if not stat.S_ISREG(st.st_mode):
+        return True
+    marca = (st.st_mtime_ns, st.st_size)
+    guardado = _RETIDA_AGORA.get(str(p))
+    if guardado and guardado[0] == marca:
+        return guardado[1]
+    try:
+        r = tem_segredo_texto(p.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        r = True
+    _RETIDA_AGORA[str(p)] = (marca, r)
+    return r
+
+
 def carregar(c):
-    """[(fonte, ref, titulo, trecho, vec_bytes)] — sem as notas excluídas, nem pedaços com segredo em claro (um índice feito
-    antes de a nota ficar retida ainda os pode ter: saem na próxima indexação, mas entretanto também não chegam ao modelo)."""
-    excl = _excluidas()
-    return [(f, r, t, tr, v or b"") for f, r, t, tr, v in c.execute("SELECT fonte,ref,titulo,trecho,vec FROM pedaco")
-            if not (excl and f == "nota" and r.split("#")[0] in excl) and not tem_segredo_texto(tr or "")]
+    """[(fonte, ref, titulo, trecho, vec_bytes)] — sem as notas retidas TAL COMO ESTÃO AGORA (lista, nome, texto actual), nem
+    pedaços com segredo em claro (um índice feito antes de a nota ficar retida ainda os pode ter: saem na próxima indexação, mas
+    entretanto também não chegam ao modelo)."""
+    excl, retida = _excluidas(), {}
+    out = []
+    for f, r, t, tr, v in c.execute("SELECT fonte,ref,titulo,trecho,vec FROM pedaco"):
+        if f == "nota":
+            nome = r.split("#")[0]
+            if nome not in retida:
+                retida[nome] = _retida_agora(nome, excl)
+            if retida[nome]:
+                continue
+        if not tem_segredo_texto(tr or ""):
+            out.append((f, r, t, tr, v or b""))
+    return out
 
 
 BANAIS = {"como", "para", "pelo", "pela", "esta", "este", "isso", "fazer", "feito", "sobre", "mais", "menos", "quando",
