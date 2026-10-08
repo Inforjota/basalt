@@ -298,20 +298,41 @@ def cmd_sincronizar(a):
 
 def cmd_arrumar(a):
     cfg = _cfg(a)
-    from . import arrumar, auto_arrumar, sig
+    from . import arrumar, auto_arrumar, categorias, sig
+    from . import entrada as entrada_mod
     from . import ia as ia_mod
 
     def um(esp):
-        if a.auto:                                    # ronda 8 (arrumar --auto): o timer nocturno chama `arrumar --auto` — antes só imprimia o relatório
+        if a.auto:
+            # ronda 9 (achado M6 da ronda 2): o timer nocturno faz o mesmo que o servidor numa volta do vigia — a Entrada (web.processar_entrada) —
+            # e mais a arrumação das notas parecidas, o índice e as categorias, pelas MESMAS funções. Com --simular não escreve nada.
             if not ia_mod.actual().chat_activo:
                 print(f"[{esp.nome}] a arrumação automática precisa de uma IA ([ia] fornecedor); só o relatório.", file=sys.stderr)
             else:
+                if cfg.entrada.automatica:
+                    _arrumar_entrada(esp, bool(a.simular), entrada_mod)
                 auto_arrumar.SIMULAR = bool(a.simular)
                 auto_arrumar._correr()
             if not a.simular:
                 sig.indexar()
+                categorias.main()
         arrumar.relatorio()
     _dentro_de_cada(cfg, a, um)
+
+
+def _arrumar_entrada(esp, simular, entrada_mod):
+    """a Entrada de uma volta do `arrumar --auto`: as ideias que o vigia do servidor trataria (`web.processar_entrada`). Em simulação só se
+    conta o que ficava por tratar — nada vai à IA nem se escreve. Um erro aqui não impede o resto da arrumação."""
+    if simular:
+        n = sum(1 for r in entrada_mod.pendentes() if not r.get("auto") and not r.get("auto_bloqueado"))
+        print(f"[simulação] [{esp.nome}] {n} ideia(s) na Entrada por tratar — não toquei em nada.")
+        return
+    try:
+        from . import web                             # só aqui: a página inteira não é precisa para os outros comandos
+        n = web.processar_entrada()
+        print(f"[{esp.nome}] Entrada: {n} ideia(s) tratada(s).")
+    except Exception as e:
+        print(f"[{esp.nome}] Entrada: não consegui tratá-la ({e.__class__.__name__}: {str(e)[:120]}).", file=sys.stderr)
 
 
 def _um_espaco(cfg, a):

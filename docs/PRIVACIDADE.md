@@ -17,11 +17,11 @@ No servidor (`<dados>` é a pasta do `basalt.toml`; cada utilizador tem `<dados>
 | Entrada (ideias soltas) e o registo das apagadas | `<espaco>/dados/entrada.jsonl`, `entrada-apagadas.jsonl` | arrumação | as apagadas ficam no registo para desfazer, até as tirares |
 | versões gravadas sem internet que chocaram com outra | `<espaco>/dados/offline-versoes/` | nada se perde num conflito | até as apagares |
 | fusões («Unir») e relatórios da arrumação automática | `<espaco>/dados/unir/`, `auto-arrumar/` | desfazer e explicar | até as apagares |
-| cópias de segurança do CAS | `<espaco>/dados/cas-salvos/` | nada se perde numa escrita em simultâneo | 60 dias / 500 ficheiros (configurável) |
+| cópias de segurança do CAS | `<espaco>/dados/cas-salvos/` | nada se perde numa escrita em simultâneo | 60 dias (`BASALT_CAS_SALVOS_DIAS`) e no máximo 500 ficheiros (`BASALT_CAS_SALVOS_MAX`); a idade conta desde que a cópia foi guardada e as que passaram o prazo apagam-se quando se guarda uma nova |
 | nomes das notas usadas (sem conteúdo) | `<espaco>/dados/toques.jsonl` | vistas «ao vivo» | roda aos 2 MB (fica a volta anterior) |
 | e-mail, nome, hash da senha, hash do token MCP | `basalt.toml` | autenticação | enquanto o utilizador existir |
-| sessões: hash do cookie, e-mail, hora de criação e de expiração | `<dados>/sessoes.json` | manter o login | até expirarem (`[auth] sessao_horas`), saíres, o utilizador deixar de existir ou mudar de senha |
-| tentativas de login falhadas por IP | memória do processo | travar força bruta | `[auth] janela_minutos`; perde-se ao reiniciar |
+| sessões: hash do cookie, e-mail, hora de criação e de expiração, e uma impressão (não reversível) do hash da senha com que abriram | `<dados>/sessoes.json` | manter o login | até expirarem (`[auth] sessao_horas`), saíres, o utilizador deixar de existir ou mudar de senha; as que já não valem saem do ficheiro ao arrancar o servidor e, durante o uso, no máximo de hora a hora (mesmo que ninguém volte com o cookie delas) |
+| tentativas de login falhadas por IP | memória do processo | travar força bruta | esquecem-se as mais velhas que `[auth] janela_minutos` (a cada tentativa, de todos os IPs); perdem-se ao reiniciar |
 | registos do servidor (stdout/journal) | onde o systemd/Docker os puser | diagnóstico | rotação do sistema; método, caminho (sem os parâmetros) e hora de cada pedido; **não** contêm texto de notas nem chaves |
 
 No browser de cada utilizador (para funcionar sem internet):

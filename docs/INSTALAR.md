@@ -21,7 +21,7 @@ O `iniciar` guarda o `basalt.toml` na pasta dos dados; os outros comandos encont
 idioma = "en"      # "pt" (omissão) · "en" · "auto" (escolhe pelo Accept-Language do browser)
 ```
 
-Depois de mudar o `idioma`, recarrega a página (a interface guarda-se no service worker, por isso o idioma novo só se vê depois de a recarregares). As mensagens de erro do servidor continuam em português.
+O `idioma` (como todas as opções que não são utilizadores) só muda ao reiniciar o servidor; depois de o reiniciares, recarrega a página (a interface guarda-se no service worker, por isso o idioma novo só se vê depois de a recarregares). As mensagens de erro do servidor continuam em português.
 
 Onde fica cada coisa (por utilizador, em `<dados>/<espaco>/`):
 
@@ -62,7 +62,9 @@ sudo cp sistema/basalt-arrumar.* /etc/systemd/system/ && sudo systemctl enable -
 
 O código fica em `/opt/basalt` (sem pip) e as unidades põem `PYTHONPATH=/opt/basalt`; o serviço corre em `/var/lib/basalt`
 com o `basalt.toml` de lá. Se puseres o código noutro sítio, ajusta o `PYTHONPATH` nas duas unidades. O timer corre
-`basalt arrumar --auto` às 04:10, com o mesmo utilizador e o mesmo endurecimento do serviço.
+`basalt arrumar --auto` às 04:10, com o mesmo utilizador e o mesmo endurecimento do serviço. Por cada espaço faz o que o servidor faz à Entrada
+(se `[entrada] automatica` estiver ligada), arruma as notas parecidas, reindexa e refaz as categorias; precisa de uma IA configurada (`[ia]`),
+sem ela só reindexa e refaz as categorias. Para ver o que faria sem escrever nada: `basalt arrumar --auto --simular`.
 
 ## 4. Na rede: proxy com HTTPS
 

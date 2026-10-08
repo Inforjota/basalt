@@ -9,7 +9,7 @@ Segurança (camadas):
  4. notas com segredo em claro (lista `excluidas.txt`, refeita de 5 em 5 min) nunca são servidas nem entram na pesquisa/pergunta.
 Uso: python -m basalt serve   (basalt.toml; ver basalt.toml.exemplo)
 """
-import contextlib, fcntl, hashlib, ipaddress, json, os, re, subprocess, sys, tempfile, threading, time, urllib.parse, uuid
+import contextlib, fcntl, hashlib, ipaddress, json, os, re, socket, subprocess, sys, tempfile, threading, time, urllib.parse, uuid
 from collections import Counter
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -428,10 +428,10 @@ def _regs():
     return entrada_mod.ler()
 
 
-def _entrada_mudar(t, fn):
+def _entrada_mudar(t, fn, sob_trinco=None):
     """aplica fn(registo) → registo|None (None = apagar) à ideia pendente com o carimbo t — pelo trinco comum da Entrada
-    (basalt.entrada), o mesmo que o MCP e o CLI usam para acrescentar."""
-    return entrada_mod.mudar(t, fn)
+    (basalt.entrada), o mesmo que o MCP e o CLI usam para acrescentar. `sob_trinco`: o caminho de um trinco já tomado (ver entrada.mudar)."""
+    return entrada_mod.mudar(t, fn, sob_trinco)
 
 
 def entrada_arquivar(t):
@@ -443,23 +443,35 @@ def entrada_arquivar(t):
 
 
 def entrada_juntar(t, nome, auto=None):
-    """acrescenta a ideia no fim da nota (com a data e a origem) e tira-a da Entrada."""
-    reg = next((r for r in _regs() if r.get("t") == t and not r.get("arquivado")), None)
-    if not reg:
-        return 404, {"erro": "Essa ideia já não está na Entrada."}
-    loc = localizar(nome)
-    if not loc or not loc[1]:
-        return 400, {"erro": "Escolhe uma nota desta memória."}
-    if tem_segredo_texto(reg["texto"]):
-        return 400, {"erro": "A ideia tem o que parece uma password ou chave — guarda-a num gestor de palavras-passe, não numa nota."}
-    b = loc[0].read_bytes(); atual = b.decode("utf-8", "replace")
-    data = time.strftime("%d/%m/%Y", time.strptime(reg["t"][:10], "%Y-%m-%d")) if re.match(r"\d{4}-\d{2}-\d{2}", reg.get("t", "")) else time.strftime("%d/%m/%Y")
-    linha = f"- {data}: {reg['texto'].strip()} _(da Entrada, via {reg.get('de', '?')})_"
-    c, r = gravar(nome, atual.rstrip("\n") + "\n\n" + linha + "\n", sha(b))
-    if c != 200:
-        return c, r
-    _entrada_mudar(t, lambda x: dict(x, arquivado=True, juntado_em=nome, linha=linha, arquivado_em=time.strftime("%Y-%m-%dT%H:%M:%S"),
-                                     **({"auto": auto} if auto else {})))
+    """acrescenta a ideia no fim da nota (com a data e a origem) e tira-a da Entrada. Ronda 9 (achado M2 da ronda 2): a operação INTEIRA —
+    confirmar que a ideia ainda está pendente, escrever a nota, arquivar — corre sob o trinco da Entrada; antes só o arquivar o tinha, e duas
+    juntas da mesma ideia a notas diferentes davam dois 200 e duas notas alteradas. Ordem dos trincos: a Entrada primeiro, depois a nota
+    (o da `gravar`); nada toma por ordem inversa. Se o arquivar falhar depois de a nota estar escrita, a nota volta ao que era."""
+    with entrada_mod.trinco() as p:
+        reg = next((r for r in entrada_mod.ler(p) if r.get("t") == t and not r.get("arquivado")), None)
+        if not reg:
+            return 409, {"erro": "Essa ideia já não está na Entrada (outro pedido tratou dela)."}
+        loc = localizar(nome)
+        if not loc or not loc[1]:
+            return 400, {"erro": "Escolhe uma nota desta memória."}
+        if tem_segredo_texto(reg["texto"]):
+            return 400, {"erro": "A ideia tem o que parece uma password ou chave — guarda-a num gestor de palavras-passe, não numa nota."}
+        b = loc[0].read_bytes(); atual = b.decode("utf-8", "replace")
+        data = time.strftime("%d/%m/%Y", time.strptime(reg["t"][:10], "%Y-%m-%d")) if re.match(r"\d{4}-\d{2}-\d{2}", reg.get("t", "")) else time.strftime("%d/%m/%Y")
+        linha = f"- {data}: {reg['texto'].strip()} _(da Entrada, via {reg.get('de', '?')})_"
+        novo = atual.rstrip("\n") + "\n\n" + linha + "\n"
+        c, r = gravar(nome, novo, sha(b))
+        if c != 200:
+            return c, r
+        try:
+            arquivada = _entrada_mudar(t, lambda x: dict(x, arquivado=True, juntado_em=nome, linha=linha, arquivado_em=time.strftime("%Y-%m-%dT%H:%M:%S"),
+                                                          **({"auto": auto} if auto else {})), sob_trinco=p)
+        except OSError:                            # disco cheio / sem permissão a meio da reescrita: o mesmo que não ter arquivado
+            arquivada = None
+        if arquivada is None:                      # a ideia não ficou arquivada: a nota não pode ficar com a linha (repõe-se pelo mesmo CAS)
+            cr, _ = gravar(nome, atual, r.get("hash") or sha(novo.encode("utf-8")))
+            return 500, {"erro": "Não consegui tirar a ideia da Entrada; " + (f"a nota «{nome}» ficou como estava." if cr == 200 else
+                         f"a nota «{nome}» mudou entretanto e a linha juntada não pôde ser tirada — vê-a e apaga-a à mão.")}
     return 200, {"ok": True, "mensagem": f"Juntei à nota «{nome}»."}
 
 
@@ -1708,6 +1720,11 @@ def indexar_se_vazio(cfg):
             print("indexação inicial:", _erro(e)[:200], flush=True)
 
 
+class ServidorV6(ThreadingHTTPServer):
+    """ronda 9 (achado M7 da ronda 2): o ThreadingHTTPServer escuta em IPv4; com `escutar = "::1"` (ou «::») é preciso a família IPv6."""
+    address_family = socket.AF_INET6
+
+
 def criar_servidor(cfg, host=None, porta=None):
     """o servidor HTTP pronto a servir (não arranca fios nem vigias). porta=0 → o sistema escolhe uma livre (testes)."""
     config.activar(cfg)                       # ambiente para os filhos + IA de [ia] (ronda 8, --config para tudo: o mesmo que a linha de comandos faz)
@@ -1720,7 +1737,8 @@ def criar_servidor(cfg, host=None, porta=None):
         mcp.registar(ROTAS_EXTRA, cfg, classe.aut)   # POST /mcp (só Bearer) + GET /mcp → 405; o MCP importa basalt.web sozinho
     except ImportError:
         pass
-    srv = ThreadingHTTPServer((host if host is not None else cfg.escutar, cfg.porta if porta is None else porta), classe)
+    onde = host if host is not None else cfg.escutar
+    srv = (ServidorV6 if ":" in onde else ThreadingHTTPServer)((onde, cfg.porta if porta is None else porta), classe)   # «:» → um endereço IPv6
     srv.daemon_threads = True
     return srv
 

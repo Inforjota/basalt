@@ -151,7 +151,7 @@ class Config:
             except ValueError:
                 raise ConfigInvalida(f"[auth] proxies_de_confianca: {p!r} não é um IP nem uma rede (ex.: \"203.0.113.5\", \"198.51.100.0/24\")")
         for h in self.anfitrioes:
-            if not nome_de_maquina_ok(h):
+            if not nome_de_maquina_ok(nome_normal(h)):
                 raise ConfigInvalida(f"[basalt] anfitrioes: {h!r} não é um nome de máquina — só o nome, sem https://, porta nem caminho "
                                      f"(ex.: \"basalt.exemplo.pt\")")
         if self.auth.modo != "aberto" and not self.utilizadores:
@@ -366,7 +366,7 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
     cfg.lingua = amb.get("BASALT_LINGUA") or b.get("lingua", "pt")
     cfg.idioma = amb.get("BASALT_IDIOMA") or b.get("idioma", "pt")
     cfg.git = (amb.get("BASALT_GIT") or ("1" if b.get("git", True) else "0")) == "1"
-    cfg.anfitrioes = tuple(str(x).strip().lower() for x in (b.get("anfitrioes") or []))   # validar() exige nomes de máquina
+    cfg.anfitrioes = tuple(nome_normal(str(x).strip()) for x in (b.get("anfitrioes") or []))   # validar() exige nomes de máquina; ronda 9: «nome.pt.» = «nome.pt»
     cfg.espaco_partilhado = bool(b.get("espaco_partilhado", False))
 
     a = t.get("auth", {})
@@ -476,12 +476,20 @@ def nome_de_maquina_ok(h: str) -> bool:
         return False
 
 
+def nome_normal(h: str) -> str:
+    """ronda 9 (achado M7 da ronda 2): a forma por que se comparam nomes de anfitrião — minúsculas e SEM UM ponto final (o DNS escreve
+    «basalt.exemplo.pt.» e é a mesma máquina que «basalt.exemplo.pt»; um browser pode mandar qualquer das duas no Host). Só um ponto:
+    «nome..» continua a ser outra coisa e não passa."""
+    h = (h or "").lower()
+    return h[:-1] if h.endswith(".") else h
+
+
 def anfitriao_de(host: str | None) -> str:
-    """o nome (minúsculas, sem porta nem [ ]) de um cabeçalho Host/Origin ou de um URL; "" se não há ou não se percebe."""
+    """o nome (minúsculas, sem porta, sem [ ] e sem um ponto final) de um cabeçalho Host/Origin ou de um URL; "" se não há ou não se percebe."""
     if not host:
         return ""
     try:
-        return (urllib.parse.urlsplit(host if "//" in host else "//" + host).hostname or "").lower()
+        return nome_normal(urllib.parse.urlsplit(host if "//" in host else "//" + host).hostname or "")
     except ValueError:
         return ""
 
@@ -490,7 +498,7 @@ def anfitrioes(cfg: Config) -> frozenset:
     """ronda 8 (Host/Origin): os nomes por que o servidor aceita ser chamado — loopback, o endereço em que escuta e [basalt] anfitrioes. É contra isto
     que se confere o Host (e o Origin das escritas) em modo aberto ou quando há anfitrioes: um sítio malicioso que aponte um nome
     DNS seu para 127.0.0.1 (DNS rebinding) chega com Host = esse nome, e é recusado."""
-    return LOOPBACK | {cfg.escutar.lower()} | set(cfg.anfitrioes)
+    return LOOPBACK | {nome_normal(cfg.escutar)} | {nome_normal(h) for h in cfg.anfitrioes}   # os dois lados da comparação com a mesma forma (ronda 9)
 
 
 def exemplo() -> str:

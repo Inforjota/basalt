@@ -1,4 +1,4 @@
-# arruma a Entrada e corrige ligações todas as noites (precisa de IA configurada; sem IA só corrige ligações)
+# arruma a Entrada e as notas parecidas todas as noites (precisa de IA configurada; sem IA só reindexa e refaz as categorias)
 [Unit]
 Description=Basalt — arrumar as notas de noite
 

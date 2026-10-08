@@ -1,5 +1,5 @@
 # /etc/systemd/system/basalt-arrumar.service — arrumação nocturna (chamada por basalt-arrumar.timer)
-# Por cada espaço: trata a Entrada, a arrumação automática e a reindexação; no fim imprime o relatório.
+# Por cada espaço: trata a Entrada (como o servidor), a arrumação automática, a reindexação e as categorias; no fim imprime o relatório.
 # Mesmo utilizador, mesmo código (/opt/basalt) e mesmo endurecimento que basalt.service.
 [Unit]
 Description=Basalt — arrumar (Entrada → notas, ligações, índice)

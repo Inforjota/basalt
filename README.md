@@ -53,7 +53,7 @@ python3 -m basalt utilizador mcp-token ana@exemplo.pt              # token para 
 python3 -m basalt indexar                                          # (re)constrói o índice semântico
 python3 -m basalt importar ~/O-meu-cofre --simular                # trazer um cofre Obsidian (primeiro só ver o que faria)
 python3 -m basalt exportar ~/cofre-exportado                       # levar a memória para uma pasta (abre-se no Obsidian)
-python3 -m basalt arrumar                                          # Entrada → notas, ligações, categorias (de noite, por timer)
+python3 -m basalt arrumar --auto                                   # Entrada → notas, ligações, categorias (o que o timer corre de noite; --simular só mostra)
 ```
 
 ## Os teus agentes de IA

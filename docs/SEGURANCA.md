@@ -38,12 +38,19 @@
   abriu e só vale com ela: mudar a senha termina as sessões dessa conta, também se a mudares com o servidor parado.
   Um `basalt.toml` que mudou e não carrega (um erro ao editar, sem utilizadores, o ficheiro apagado) **fecha a porta**: ninguém
   entra, nem por token, até ele voltar a carregar — o motivo aparece no registo do servidor. Um pedido que chegue a meio da
-  releitura espera por ela. As outras opções (modo, `anfitrioes`, proxies) só mudam ao reiniciar.
+  releitura espera por ela. Só os utilizadores (e-mails, senhas, tokens MCP) se relêem; todas as outras opções (modo, `anfitrioes`, proxies,
+  `idioma`…) só mudam ao reiniciar o servidor.
 - **Contra CSRF e DNS rebinding.** As escritas da interface exigem o cabeçalho `X-Basalt`. Cookies `HttpOnly; SameSite=Strict`.
   Em modo `aberto`, e em qualquer modo quando `[basalt] anfitrioes` está definido, o servidor confere o `Host` de cada pedido
   e o `Origin` das escritas contra os nomes dele (loopback, o endereço em que escuta e `anfitrioes`). Um nome estranho recebe
-  421. O `/mcp` só aceita `Authorization: Bearer` e confere o `Origin` contra a mesma lista. O servidor escuta em `127.0.0.1`
-  por omissão e `validar()` recusa o modo `aberto` fora de localhost.
+  421. O `/mcp` só aceita `Authorization: Bearer` e confere o `Origin` (quando o pedido o traz) contra a mesma lista, com uma diferença:
+  sem `[basalt] anfitrioes` e fora do modo `aberto` (modo `senha` ou `cabecalho`, em que o servidor não sabe o seu nome público), o MCP
+  aceita também como `Origin` o próprio `Host` que recebeu nesse pedido. Isto não deixa entrar ninguém: o Bearer continua obrigatório,
+  e uma página de um site estranho, aberta no browser de alguém, não tem o token MCP (não vai em cookie nem no cabeçalho do proxy), por
+  isso o pedido dela recebe 401 mesmo com o `Host` e o `Origin` a combinar. Em modo `aberto` o `Host` do pedido não conta: só loopback e o
+  endereço em que escuta. Se o servidor está exposto à rede, define `[basalt] anfitrioes` com o nome público: aí o `Host` e o `Origin`
+  têm de estar na lista, em todos os pedidos e em todos os modos. O servidor escuta em `127.0.0.1` por omissão e `validar()` recusa o
+  modo `aberto` fora de localhost.
 - **Contra força bruta.** scrypt (n=2¹⁴) nas senhas; limite de tentativas por IP; mensagem igual e o mesmo trabalho scrypt
   para e-mail inexistente e senha errada; sessões com prazo, guardadas só por hash. O IP é o da ligação. O `X-Forwarded-For`
   só conta quando a ligação vem de loopback ou de `[auth] proxies_de_confianca`, e lê-se da direita, para o visitante não

@@ -102,5 +102,19 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   - **Passwords só de letras, falha fechada:** uma maiúscula no meio do valor conta sempre; «senha: X» só fica como texto se X
     for uma palavra corrente da lista (`criptografada`, `sincronizada`…) ou numa descrição explícita («Estado/Tipo/Formato da
     senha: …») com uma palavra até 16 letras — `senha: minhapalavracomplicada` volta a ser uma password.
+  - **Juntar uma ideia a uma nota, de uma só vez:** confirmar que a ideia ainda está na Entrada, escrever a nota e arquivá-la corre
+    sob o mesmo trinco; duas juntas da mesma ideia a notas diferentes dão um 200 e um 409, e só uma nota muda. Se a ideia não se
+    deixar arquivar, a nota volta ao que era e o pedido responde erro. Uma ideia que já não está pendente passa a dar 409 (era 404).
+  - **Sessões e tentativas sem restos:** as sessões expiradas, de quem já não existe ou de quem mudou de senha saem do
+    `sessoes.json` ao arrancar e, durante o uso, no máximo de hora a hora — mesmo que ninguém volte com o cookie delas. Um disco que
+    não deixa gravar não derruba o pedido. As tentativas de login falhadas esquecem-se ao fim da janela, de todos os IPs. As cópias
+    de segurança do CAS já saíam aos 60 dias; `docs/PRIVACIDADE.md` diz agora exactamente isso.
+  - **`arrumar --auto` como o servidor:** o timer nocturno trata também a Entrada, pelas mesmas funções do vigia do servidor, e depois
+    arruma, reindexa e refaz as categorias. Com `--simular` não escreve nada nem chama a IA.
+  - **Nomes de anfitrião:** `basalt.exemplo.pt.` (com ponto final) e `Basalt.Exemplo.PT` são a mesma máquina, no `Host`, no `Origin`
+    e em `[basalt] anfitrioes`. Com `escutar = "::1"` (ou `"::"`) o servidor escuta mesmo em IPv6.
+  - **Documentação:** o MCP aceita como `Origin` o próprio `Host` quando não há `anfitrioes` — seguro porque o Bearer é obrigatório —
+    e recomenda-se definir `anfitrioes` num servidor exposto; o `idioma` e as outras opções que não são utilizadores só mudam ao
+    reiniciar.
   - Testes: `testes/test_ronda9_donos.py`, `testes/test_ronda9_pagina_donos.py`, `testes/test_sw.py` (`TestUmaCachePorDono`),
-    `testes/test_ronda9_ficheiros.py`, `testes/test_ronda9_revogar.py`, `testes/test_ronda9_ia.py`.
+    `testes/test_ronda9_ficheiros.py`, `testes/test_ronda9_revogar.py`, `testes/test_ronda9_ia.py`, `testes/test_ronda9_menores.py`.

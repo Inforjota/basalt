@@ -29,6 +29,7 @@ from . import config
 from .config import Config, Utilizador
 
 COOKIE = "basalt_sessao"
+PODA_SESSOES_SEGUNDOS = 3600          # ronda 9 (achado M4 da ronda 2): as sessões mortas saem do ficheiro ao carregar e, durante o uso, no máximo de hora a hora
 SCRYPT = dict(n=2 ** 14, r=8, p=1)   # ~40 ms, 16 MiB; dklen 32
 MAXMEM = 64 * 1024 * 1024             # o OpenSSL recusa acima de 32 MiB por omissão
 
@@ -84,10 +85,13 @@ class Autenticador:
         self._lock = threading.Lock()
         self._sessoes: dict[str, Sessao] = {}
         self._falhas: dict[str, list[float]] = {}   # ip → instantes das falhas
+        self._poda_em = 0.0                         # quando se podaram as sessões pela última vez
         self._carregar()
         self._origem = Path(cfg.origem) if cfg.origem else None   # ronda 8 (configuração relida em execução): o basalt.toml relê-se quando muda (revogar sem reiniciar)
         self._marca = self._marca_do_toml()
         self._fechado = ""          # ronda 9 (achado G4 da ronda 2): o basalt.toml mudou e não carrega → ninguém entra (o motivo)
+        with self._lock:
+            self._podar_sessoes(forcar=True)
 
     # ── persistência ──
     def _carregar(self):
@@ -108,6 +112,32 @@ class Autenticador:
             os.replace(tmp, self.ficheiro)
         except OSError:
             raise                                     # ronda 8 (configuração relida em execução): quem chama decide o que dizer; engolir fazia «saí» sem ter saído
+
+    def _viva(self, s: Sessao, agora: float) -> bool:
+        """uma sessão ainda vale: não expirou, o utilizador existe e a impressão da senha é a de hoje (as de antes da impressão não valem)."""
+        u = self.cfg.utilizador(s.email)
+        return s.expira > agora and u is not None and bool(s.cred) and hmac.compare_digest(s.cred, impressao_credencial(u.senha_hash))
+
+    def _podar_sessoes(self, forcar: bool = False) -> int:
+        """ronda 9 (achado M4 da ronda 2): tira de memória E do ficheiro as sessões expiradas, as de utilizadores que já não existem e as de
+        quem mudou de senha — antes ficavam em sessoes.json (hash do cookie + e-mail) até alguém voltar com o cookie. Corre ao carregar e, durante o
+        uso, no máximo de hora a hora. Chamar com o `_lock` tomado. Se o ficheiro não se deixar gravar, diz-se no stderr e o pedido segue."""
+        agora = time.time()
+        if not forcar and agora - self._poda_em < PODA_SESSOES_SEGUNDOS:
+            return 0
+        self._poda_em = agora
+        mortas = [k for k, s in self._sessoes.items() if not self._viva(s, agora)]
+        for k in mortas:
+            self._sessoes.pop(k, None)
+        if mortas:
+            self._guardar_sem_falhar()
+        return len(mortas)
+
+    def _guardar_sem_falhar(self):
+        try:
+            self._guardar()
+        except OSError as e:
+            print(f"sessões: não consegui gravar ({e})", file=sys.stderr, flush=True)
 
     # ── ronda 8 (configuração relida em execução): os utilizadores (e-mails, senhas, tokens MCP) seguem o basalt.toml em execução ──
     def _marca_do_toml(self):
@@ -156,15 +186,25 @@ class Autenticador:
             return True
 
     # ── limite por IP ──
-    def _bloqueado(self, ip: str) -> bool:
+    def _esquecer_falhas(self, agora: float):
+        """ronda 9 (achado M4 da ronda 2): as tentativas falhadas mais velhas que a janela esquecem-se — de TODOS os IPs, não só do que pergunta
+        (antes um IP que nunca voltava ficava na memória até reiniciar). Um IP sem tentativas dentro da janela deixa de ter entrada."""
         janela = self.cfg.auth.janela_minutos * 60
-        agora = time.time()
-        fs = [t for t in self._falhas.get(ip, []) if agora - t < janela]
-        self._falhas[ip] = fs
-        return len(fs) >= self.cfg.auth.tentativas
+        for ip in list(self._falhas):
+            fs = [t for t in self._falhas[ip] if agora - t < janela]
+            if fs:
+                self._falhas[ip] = fs
+            else:
+                del self._falhas[ip]
+
+    def _bloqueado(self, ip: str) -> bool:
+        self._esquecer_falhas(time.time())
+        return len(self._falhas.get(ip, [])) >= self.cfg.auth.tentativas
 
     def _falhou(self, ip: str):
-        self._falhas.setdefault(ip, []).append(time.time())
+        agora = time.time()
+        self._esquecer_falhas(agora)
+        self._falhas.setdefault(ip, []).append(agora)
 
     # ── entrar / sair (modo senha) ──
     def entrar(self, email: str, senha: str, ip: str) -> tuple[bool, str]:
@@ -173,6 +213,7 @@ class Autenticador:
         with self._lock:
             if self._fechado:
                 return False, "O basalt.toml do servidor tem um erro: ninguém entra até ser corrigido."
+            self._podar_sessoes()
             if self._bloqueado(ip):
                 return False, "Demasiadas tentativas; espera %d minutos." % self.cfg.auth.janela_minutos
             u = self.cfg.utilizador(email)
@@ -240,12 +281,13 @@ class Autenticador:
         if not m:
             return None
         with self._lock:
+            self._podar_sessoes()                    # no máximo de hora a hora: as mortas saem do ficheiro mesmo que ninguém volte com o cookie delas
             s = self._sessoes.get(hash_token(m.value))
             if not s:
                 return None
             if s.expira < time.time():
                 self._sessoes.pop(hash_token(m.value), None)
-                self._guardar()
+                self._guardar_sem_falhar()           # ronda 9: um disco que não deixa gravar não derruba o pedido
                 return None
         u = self.cfg.utilizador(s.email)
         # ronda 9 (achado G4 da ronda 2): a senha mudou desde que a sessão abriu (também com o servidor parado) → já não vale

@@ -53,7 +53,7 @@ python3 -m basalt utilizador mcp-token ana@example.com             # token for a
 python3 -m basalt indexar                                          # (re)build the semantic index
 python3 -m basalt importar ~/My-vault --simular                    # bring an Obsidian vault in (dry run first)
 python3 -m basalt exportar ~/exported-vault                        # take the memory out to a folder (opens in Obsidian)
-python3 -m basalt arrumar                                          # Inbox → notes, links, categories (nightly timer)
+python3 -m basalt arrumar --auto                                   # Inbox → notes, links, categories (what the nightly timer runs; --simular only shows)
 ```
 
 The CLI and the config keys are in Portuguese (the author's language), but **the web UI is available in English**. Turn it on in

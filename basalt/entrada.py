@@ -128,17 +128,25 @@ def acrescentar(texto: str, de: str, **extra) -> dict:
     return reg
 
 
-def mudar(t: str, fn) -> dict | None:
+def mudar(t: str, fn, sob_trinco: Path | None = None) -> dict | None:
     """aplica fn(registo) → registo | None (None = apagar) à ideia PENDENTE com o carimbo t; devolve o registo como estava,
-    ou None se já não estava na Entrada."""
+    ou None se já não estava na Entrada. Ronda 9 (achado M2 da ronda 2): quem já segura o trinco (uma operação que mexe também
+    numa nota e tem de ser atómica com a Entrada) passa o caminho que o `trinco()` lhe deu em `sob_trinco` — o flock não é
+    reentrante, tomá-lo outra vez ficava preso."""
+    if sob_trinco is not None:
+        return _mudar(sob_trinco, t, fn)
     with trinco() as p:
-        regs = ler(p)
-        alvo = next((r for r in regs if r.get("t") == t and not r.get("arquivado")), None)
-        if alvo is None:
-            return None
-        novo = fn(dict(alvo))
-        _escrever(p, [(novo if r is alvo else r) for r in regs if not (r is alvo and novo is None)])
-        return alvo
+        return _mudar(p, t, fn)
+
+
+def _mudar(p: Path, t: str, fn) -> dict | None:
+    regs = ler(p)
+    alvo = next((r for r in regs if r.get("t") == t and not r.get("arquivado")), None)
+    if alvo is None:
+        return None
+    novo = fn(dict(alvo))
+    _escrever(p, [(novo if r is alvo else r) for r in regs if not (r is alvo and novo is None)])
+    return alvo
 
 
 def mudar_todos(fn) -> int:

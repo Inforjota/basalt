@@ -212,8 +212,8 @@ class TestEntrar:
     def test_ao_arrancar_so_se_carregam_as_sessoes_por_expirar(self, tmp_path):
         agora = time.time()
         (tmp_path / "sessoes.json").write_text(json.dumps({
-            "viva": {"email": EMAIL, "expira": agora + 3600, "criada": agora},
-            "morta": {"email": EMAIL, "expira": agora - 1, "criada": agora - 7200}}))
+            "viva": {"email": EMAIL, "expira": agora + 3600, "criada": agora, "cred": auth.impressao_credencial(HASH)},   # ronda 9: sem impressão da senha a sessão nunca valeu e sai ao carregar
+            "morta": {"email": EMAIL, "expira": agora - 1, "criada": agora - 7200, "cred": auth.impressao_credencial(HASH)}}))
         assert set(autenticador(tmp_path)._sessoes) == {"viva"}
 
 
