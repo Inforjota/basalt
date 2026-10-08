@@ -210,7 +210,7 @@ def cmd_iniciar(a):
         if cfg.git:
             _git_init(esp)
     print(f"✓ {caminho}\n✓ dados em {dados}" + (f"\n✓ utilizador {email} ({modo})" if email else f"\n· modo {modo}, sem utilizadores (só localhost)"))
-    print(f"\nA seguir:\n  python3 -m basalt --config {caminho} serve   → http://{a.escutar}:{a.porta}\n"
+    print(f"\nA seguir:\n  python3 -m basalt --config {caminho} serve   → http://{config.endereco(a.escutar, a.porta)}\n"
           f"  python3 -m basalt --config {caminho} mcp     → para os agentes (ver docs/MCP.md)")
 
 
@@ -375,7 +375,7 @@ def cmd_mcp(a):
 
 def cmd_estado(a):
     cfg = _cfg(a)
-    print(f"basalt {__version__} · config {_caminho_config(a)}\n dados {cfg.dados} · escuta {cfg.escutar}:{cfg.porta} · auth {cfg.auth.modo} · git {'sim' if cfg.git else 'não'}")
+    print(f"basalt {__version__} · config {_caminho_config(a)}\n dados {cfg.dados} · escuta {config.endereco(cfg.escutar, cfg.porta)} · auth {cfg.auth.modo} · git {'sim' if cfg.git else 'não'}")
     print(f" ia {cfg.ia.fornecedor} {cfg.ia.modelo_chat or ''} · embeddings {cfg.ia.embeddings_fornecedor or 'nenhum'} {cfg.ia.embeddings_modelo or ''}".rstrip())
     for esp in _espacos(cfg, a):
         n = len(caminhos.notas(esp.real)) if esp.real.exists() else 0

@@ -284,6 +284,9 @@ async function semCopia() {
 // ronda 9: serve-se com o trinco partilhado (ninguém tranca/apaga a meio) e só uma entrada gravada na geração ACTUAL da cópia
 // (X-Basalt-Geracao) — uma resposta de antes de «apagar a cópia» que tenha entrado por outro caminho não se mostra.
 // Trinco preso → não serve (na dúvida, nada de dados privados). ronda 9 (achado G1 da ronda 2): só da cache do dono do pedido.
+// ronda 9 (achados 2 e 3 da ronda 8): a entrada só se serve se a nota não levou lápide DEPOIS de ela partir (um 200 atrasado que
+// entrou depois de um 404, com o trinco preso, não volta a mostrar a nota apagada) e se, DEPOIS de a ler, a cópia continua
+// ligada, destrancada e na mesma geração («apagar a cópia» com o trinco preso pode correr enquanto o cache.match está a meio).
 async function daCache(pedido) {
   var dono = donoDoPedido(pedido);
   if (!dono) return null;
@@ -292,6 +295,8 @@ async function daCache(pedido) {
     var g = await geracaoDaCopia();
     var e = await caches.match(pedido, { cacheName: cacheApiDe(dono) });
     if (!e || e.headers.get("X-Basalt-Geracao") !== g || e.headers.get("X-Basalt-Dono") !== dono) return null;
+    if (await apagadaDepois(pedido, Number(e.headers.get("X-Basalt-Inicio")) || 0)) return null;
+    if ((await semCopia()) || (await geracaoDaCopia()) !== g) return null;
     return marcarComoCache(e);
   });
   return r.ok ? r.valor : null;
@@ -386,6 +391,14 @@ async function aceitar(pedido, corpo, resp, inicio, foto) {
       var q = ja ? Number(ja.headers.get("X-Basalt-Inicio")) || 0 : 0;
       viuInstante(q);
       if (!(ja && q > inicio)) { await c.put(pedido, entradaApi(resp, corpo, inicio, foto.geracao)); guardou = true; }
+      // ronda 9 (achado 2 da ronda 8): o que se verificou antes do put pode ter mudado no meio — com o trinco preso, um 404
+      // posterior (lápide) ou «apagar a cópia» fazem-se sem trinco. Volta-se a ver DEPOIS de guardar e, se mudou, sai a entrada
+      // que ESTE pedido pôs (e só essa).
+      if (guardou && ((await copiaDesligada()) || (await geracaoDaCopia()) !== foto.geracao || (await apagadaDepois(pedido, inicio)))) {
+        var minha = await c.match(pedido);
+        if (minha && minha.headers.get("X-Basalt-Inicio") === String(inicio)) await c.delete(pedido);
+        guardou = false;
+      }
     }
     if (lista.length) await destrancar(lista);
     return guardou;

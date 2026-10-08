@@ -1765,7 +1765,7 @@ def servir(cfg, vigias=True, host=None, porta=None):
     threading.Thread(target=indexar_se_vazio, args=(cfg,), daemon=True).start()
     threading.Thread(target=vigia_entrada, args=(cfg,), daemon=True).start()          # entrada automática (só com IA de chat)
     h, p = srv.server_address[:2]
-    print(f"basalt em http://{h}:{p} (auth={cfg.auth.modo}, ia={cfg.ia.fornecedor}, vigias={'sim' if vigias else 'não'})", flush=True)
+    print(f"basalt em http://{config.endereco(h, p)} (auth={cfg.auth.modo}, ia={cfg.ia.fornecedor}, vigias={'sim' if vigias else 'não'})", flush=True)
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

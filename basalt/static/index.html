@@ -745,6 +745,7 @@ const EN = {
   "Entrar": "Sign in",
   "a sessão expirou": "the session has expired",
   "precisa de rede": "needs a network connection",
+  "precisa de rede — a cópia deste aparelho foi apagada": "needs a network connection — this device's copy was deleted",
   "sem ligação ao servidor": "no connection to the server",
   "IndexedDB indisponível": "IndexedDB is unavailable",
   "falha a abrir a base de dados local": "failed to open the local database",
@@ -1230,9 +1231,24 @@ async function apiGet(path, repetido){
   // ronda 9 (achado G1 da ronda 2): uma cópia do service worker só vale se for do dono desta cópia (um SW antigo, de cache comum,
   // podia servir a de outra conta) — senão é como não haver rede
   else if(!DONO || res.headers.get("X-Basalt-Dono") !== DONO) return apiGetFalhaRede(path);
+  else if(await copiaApagadaDesde(geracaoAntes)) throw erroLeituraCopiaApagada();   // ronda 9 (achado 3 da ronda 8)
   // ronda 9: 428 = o pedido foi sem dono (ainda não se sabia) — confirma-se e repete-se uma vez
   if(res.status === 428 && !repetido){ DONO_OK = false; try{ await verificarDono(); }catch(e){} if(DONO) return apiGet(path, true); }
   return handleRes(res);
+}
+/* ronda 9 (achado 3 da ronda 8): uma resposta da cópia do service worker que chega DEPOIS de «apagar a cópia» (o SW pode tê-la lido
+   antes de a apagar) não se mostra: a cópia está desligada, ou a geração já não é a de quando o pedido partiu. Lê-se também a
+   marca do SW e a geração persistente (outro separador). Na dúvida, não se mostra. */
+async function copiaApagadaDesde(geracao){
+  if(COPIA_DESLIGADA || GERACAO_COPIA !== geracao) return true;
+  try{ if("caches" in window && await caches.has(MARCA_DESLIGADA)) return true; }catch(e){ return true; }
+  var actual = await geracaoActual();
+  return COPIA_DESLIGADA || actual !== geracao;
+}
+function erroLeituraCopiaApagada(){
+  var e = new Error(t("precisa de rede — a cópia deste aparelho foi apagada"));
+  e.semRede = true;
+  return e;
 }
 /* a cópia está trancada se QUALQUER das marcas o diz — memória, localStorage, IndexedDB ou a marca que só o
    service worker pôs (quando o separador fechou antes de a página saber do 401). Uma tranca só do service worker passa a
@@ -1763,14 +1779,20 @@ async function sincronizarPacote(){
    mesma transacção — dois separadores nunca recebem o mesmo valor, mesmo com o relógio igual ou para trás */
 function reservarInstante(){
   return transacao(["meta"], function(tx, saida){
-    var meta = tx.objectStore("meta"), g = meta.get("relogio");
-    g.onsuccess = function(){
-      var q = Math.max(agora(), ((g.result && Number(g.result.valor)) || 0) + 1);
-      viuInstante(q);
-      meta.put({chave:"relogio", valor:q});
-      saida.valor = q;
-    };
+    instanteNaTx(tx, function(q){ saida.valor = q; });
   }).then(function(q){ return q || agora(); }, function(){ return agora(); });
+}
+/* ronda 9 (achado 4 da ronda 8): o contador partilhado (meta.relogio) lido e subido DENTRO de uma transacção que já tem «meta».
+   As gravações deste aparelho (guardadoEm) tiram a hora daqui, como os pacotes: com o relógio para trás, uma gravação feita
+   depois de um pacote partir fica sempre acima da hora dele (antes: agora() local — o pacote atrasado repunha o texto velho). */
+function instanteNaTx(tx, fn){
+  var meta = tx.objectStore("meta"), g = meta.get("relogio");
+  g.onsuccess = function(){
+    var q = Math.max(agora(), ((g.result && Number(g.result.valor)) || 0) + 1);
+    viuInstante(q);
+    meta.put({chave:"relogio", valor:q});
+    fn(q);
+  };
 }
 /* notas + meta numa só transacção, e só se ninguém apagou a cópia entretanto */
 function guardarPacoteLocal(notas, gerado, geracao, bloqAntes, inicio){
@@ -2064,7 +2086,7 @@ function guardarEdicaoOffline(nome, baseTexto, texto, geracao){
         var n = notas.get(nome);
         n.onsuccess = function(){
           var local = n.result;
-          if(local){ local.texto = texto; local.porEnviar = true; local.guardadoEm = agora(); notas.put(local); }
+          if(local) instanteNaTx(tx, function(q){ local.texto = texto; local.porEnviar = true; local.guardadoEm = q; notas.put(local); });   // ronda 9 (achado 4 da ronda 8)
         };
       };
     }); });
@@ -2091,8 +2113,7 @@ function confirmarEnvioFila(nome, rev, textoEnviado, textoServidor, hash, geraca
           if(!local) return;
           local.hash = hash;
           if(!maisNova){ local.texto = textoServidor; local.porEnviar = false; }
-          local.guardadoEm = agora();
-          notas.put(local);
+          instanteNaTx(tx, function(q){ local.guardadoEm = q; notas.put(local); });   // ronda 9 (achado 4 da ronda 8)
         };
       };
     }); });
@@ -2139,8 +2160,10 @@ function confirmarGravacaoComRede(nome, revIncluida, texto, hash, geracao){
       n.onsuccess = function(){
         var local = n.result;
         if(!local || ficou) return;
-        local.texto = texto; local.hash = hash; local.porEnviar = false; local.guardadoEm = agora();
-        notas.put(local);
+        instanteNaTx(tx, function(q){                                 // ronda 9 (achado 4 da ronda 8): a hora do contador partilhado
+          local.texto = texto; local.hash = hash; local.porEnviar = false; local.guardadoEm = q;
+          notas.put(local);
+        });
       };
     };
     }); });
@@ -2473,7 +2496,7 @@ async function swDaCopiaPronto(){
   var sw = (reg && reg.active) || navigator.serviceWorker.controller;
   if(!sw) return {ok:true};
   var p = await perguntarProtocolo(sw, 5000);
-  return {ok: p >= PROTOCOLO_COPIA, reg: reg};
+  return {ok: p === PROTOCOLO_COPIA, reg: reg};   // ronda 9 (achado 5 da ronda 8): só o MESMO protocolo (um SW mais novo também não serve esta página)
 }
 
 async function religarCopiaLocal(){

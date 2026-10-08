@@ -42,7 +42,14 @@ GANCHO = ('window.__t = {guardarEdicaoOffline: guardarEdicaoOffline, sincronizar
           'verificarDono: typeof verificarDono === "function" ? verificarDono : null, '
           'dono: function(){ return typeof DONO === "undefined" ? null : DONO; }, '
           'donoOk: function(){ return typeof DONO_OK === "undefined" ? null : DONO_OK; }, '
-          'outraConta: function(){ return typeof OUTRA_CONTA === "undefined" ? null : OUTRA_CONTA; }};\n  iniciarOffline();')
+          'outraConta: function(){ return typeof OUTRA_CONTA === "undefined" ? null : OUTRA_CONTA; }, '
+          # ronda 9 (achados 2-5 da ronda 8): a cópia apagada a meio, o relógio da meta e o protocolo do SW
+          'confirmarGravacaoComRede: typeof confirmarGravacaoComRede === "function" ? confirmarGravacaoComRede : null, '
+          'confirmarEnvioFila: typeof confirmarEnvioFila === "function" ? confirmarEnvioFila : null, '
+          'swDaCopiaPronto: typeof swDaCopiaPronto === "function" ? swDaCopiaPronto : null, '
+          'reservarInstante: typeof reservarInstante === "function" ? reservarInstante : null, '
+          'guardarPacoteLocal: typeof guardarPacoteLocal === "function" ? guardarPacoteLocal : null, '
+          'protocolo: function(){ return typeof PROTOCOLO_COPIA === "undefined" ? null : PROTOCOLO_COPIA; }};\n  iniciarOffline();')
 
 NOTA = {"nome": "n1", "titulo": "n1", "desc": "nota de teste", "tipo": "project", "mtime": 1758900000, "projeto": "demo",
         "editavel": True, "categorias": []}

@@ -484,6 +484,13 @@ def nome_normal(h: str) -> str:
     return h[:-1] if h.endswith(".") else h
 
 
+def endereco(h: str, p) -> str:
+    """«anfitrião:porta» para um URL que se mostra: um IPv6 («::1», «::») vai entre [ ] — «http://::1:8121» não abre em lado
+    nenhum (ronda 9, achado M7 da ronda 2)."""
+    h = str(h or "")
+    return f"[{h}]:{p}" if ":" in h and not h.startswith("[") else f"{h}:{p}"
+
+
 def anfitriao_de(host: str | None) -> str:
     """o nome (minúsculas, sem porta, sem [ ] e sem um ponto final) de um cabeçalho Host/Origin ou de um URL; "" se não há ou não se percebe."""
     if not host:

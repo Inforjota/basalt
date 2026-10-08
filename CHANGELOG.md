@@ -112,9 +112,18 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   - **`arrumar --auto` como o servidor:** o timer nocturno trata também a Entrada, pelas mesmas funções do vigia do servidor, e depois
     arruma, reindexa e refaz as categorias. Com `--simular` não escreve nada nem chama a IA.
   - **Nomes de anfitrião:** `basalt.exemplo.pt.` (com ponto final) e `Basalt.Exemplo.PT` são a mesma máquina, no `Host`, no `Origin`
-    e em `[basalt] anfitrioes`. Com `escutar = "::1"` (ou `"::"`) o servidor escuta mesmo em IPv6.
+    e em `[basalt] anfitrioes`. Com `escutar = "::1"` (ou `"::"`) o servidor escuta mesmo em IPv6, e o endereço que o `iniciar`,
+    o `estado` e o arranque mostram vem com [ ] (`http://[::1]:8121`).
   - **Documentação:** o MCP aceita como `Origin` o próprio `Host` quando não há `anfitrioes` — seguro porque o Bearer é obrigatório —
     e recomenda-se definir `anfitrioes` num servidor exposto; o `idioma` e as outras opções que não são utilizadores só mudam ao
     reiniciar.
+  - **Cópia sem internet depois de «Apagar a cópia»:** o service worker volta a verificar DEPOIS de guardar uma resposta se a
+    cópia foi desligada, se a geração mudou ou se a nota entretanto deu 404/410 — se sim, tira a entrada que acabou de guardar
+    (uma nota apagada já não «ressuscita» por um 200 que vinha a caminho); não serve uma entrada mais velha que a lápide da
+    nota; e relê a marca de desligada e a geração depois de ler da cache. A página recusa uma resposta da cópia que chegue
+    depois de a cópia ter sido apagada («precisa de rede — a cópia deste aparelho foi apagada»). As gravações deste aparelho
+    tiram a hora do mesmo contador dos pacotes, na mesma transacção — com o relógio local atrasado, um pacote antigo já não
+    repõe texto velho. «Voltar a ligar a cópia» só com um service worker do MESMO protocolo (um mais novo também se recusa).
   - Testes: `testes/test_ronda9_donos.py`, `testes/test_ronda9_pagina_donos.py`, `testes/test_sw.py` (`TestUmaCachePorDono`),
-    `testes/test_ronda9_ficheiros.py`, `testes/test_ronda9_revogar.py`, `testes/test_ronda9_ia.py`, `testes/test_ronda9_menores.py`.
+    `testes/test_ronda9_ficheiros.py`, `testes/test_ronda9_revogar.py`, `testes/test_ronda9_ia.py`, `testes/test_ronda9_menores.py`,
+    `testes/test_ronda9_copia_apagada.py`.

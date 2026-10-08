@@ -287,6 +287,24 @@ def test_o_mcp_compara_a_origem_com_a_mesma_forma_do_nome(tmp_path):
     assert not mcp.origem_ok("https://outro.exemplo.pt.", nossos)
 
 
+def test_o_endereco_que_se_mostra_poe_o_ipv6_entre_parenteses(tmp_path):
+    """com `escutar = "::1"`, «http://::1:8121» não abre: o URL que o `iniciar` e o `estado` mostram leva [ ]."""
+    raiz = Path(__file__).resolve().parent.parent
+    env = {**os.environ, "BASALT_CONFIG": "", "BASALT_SENHA": "", "BASALT_ESCUTAR": "", "BASALT_WEB_HOST": ""}
+    d = tmp_path / "dados"
+    ini = subprocess.run([sys.executable, "-m", "basalt", "iniciar", "--dados", str(d), "--escutar", "::1", "--porta", "8121"],
+                         cwd=raiz, env=env, capture_output=True, text=True)
+    assert ini.returncode == 0, ini.stderr
+    assert "http://[::1]:8121" in ini.stdout and "http://::1:" not in ini.stdout, ini.stdout
+    est = subprocess.run([sys.executable, "-m", "basalt", "--config", str(d / "basalt.toml"), "estado"],
+                         cwd=raiz, env=env, capture_output=True, text=True)
+    assert est.returncode == 0, est.stderr
+    assert "escuta [::1]:8121" in est.stdout, est.stdout
+    # controlo: um IPv4 e um nome ficam como estavam; o que já vem com [ ] não leva outros
+    assert [config.endereco(h, 8121) for h in ("127.0.0.1", "basalt.exemplo.pt", "::", "[::1]")] == \
+        ["127.0.0.1:8121", "basalt.exemplo.pt:8121", "[::]:8121", "[::1]:8121"]
+
+
 def test_escutar_em_ipv6_responde_em_ipv6(tmp_path):
     import socket
     try:
