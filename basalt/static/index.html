@@ -1237,7 +1237,14 @@ async function apiGet(path, repetido){
   else if(await copiaApagadaDesde(geracaoAntes)) throw erroLeituraCopiaApagada();   // ronda 9 (achado 3 da ronda 8)
   // ronda 9: 428 = o pedido foi sem dono (ainda não se sabia) — confirma-se e repete-se uma vez
   if(res.status === 428 && !repetido){ DONO_OK = false; try{ await verificarDono(); }catch(e){} if(DONO) return apiGet(path, true); }
-  return handleRes(res);
+  if(!daCache) return handleRes(res);
+  // ronda 10 (achado G5 da r3): ler o corpo (res.json) é mais um «await» — «apagar a cópia», trancar ou mudar de conta noutro
+  // separador pode acontecer AÍ, depois das verificações de cima. Verifica-se outra vez com o corpo já lido, antes de o entregar.
+  var donoAntes = DONO, dados = await handleRes(res);
+  if(await copiaTrancadaAqui()) throw erroCopiaTrancada();
+  if(!DONO || DONO !== donoAntes || OUTRA_CONTA) return apiGetFalhaRede(path);
+  if(await copiaApagadaDesde(geracaoAntes)) throw erroLeituraCopiaApagada();
+  return dados;
 }
 /* ronda 9 (achado 3 da ronda 8): uma resposta da cópia do service worker que chega DEPOIS de «apagar a cópia» (o SW pode tê-la lido
    antes de a apagar) não se mostra: a cópia está desligada, ou a geração já não é a de quando o pedido partiu. Lê-se também a
@@ -2288,20 +2295,31 @@ async function sincronizarFilaAqui(){
   if(A_SINCRONIZAR_FILA || COPIA_DESLIGADA) return;
   if(!(await donoConfirmado())) return;                    // ronda 8: a fila sobe só em nome da conta de quem é
   var pendentes, geracao = await geracaoActual();          // ronda 6 G6: a geração persistente
-  try{ var mdFila = await idbGet("meta", "dono"); if(mdFila && mdFila.valor !== DONO) return; }catch(e){ return; }
-  try{ pendentes = await idbGetAll("fila"); }catch(e){ return; }
+  // ronda 10 (G1/G2 da r3): o dono e a fila lêem-se na MESMA transacção, e cada envio leva esse dono (apiSend recusa se o
+  // separador mudar de conta a meio) — antes, uma troca entre as duas leituras, ou dentro do apiSend, enviava a fila de A como B
+  var donoFila = DONO;
+  try{
+    pendentes = await transacao(["fila", "meta"], function(tx, saida){
+      saida.valor = null;
+      seGeracaoIgual(tx, saida, geracao, function(){
+        var gf = tx.objectStore("fila").getAll();
+        gf.onsuccess = function(){ saida.valor = gf.result || []; };
+      }, donoFila);
+    });
+  }catch(e){ return; }
+  if(!Array.isArray(pendentes) || DONO !== donoFila) return;
   if(!pendentes.length) return;
   A_SINCRONIZAR_FILA = true;
   OFFLINE_ESTADO.aSincronizar = true;
   atualizarIndicador();
   // «apagar cópia» a meio (neste ou noutro separador) pára o ciclo — o que o utilizador descartou não sobe
-  function apagada(){ return COPIA_DESLIGADA || OUTRA_CONTA || geracao !== GERACAO_COPIA; }   // ronda 8: ou entrou outra conta
+  function apagada(){ return COPIA_DESLIGADA || OUTRA_CONTA || geracao !== GERACAO_COPIA || DONO !== donoFila; }   // ronda 8: ou entrou outra conta
   try{
     for(var i = 0; i < pendentes.length; i++){
       var item = pendentes[i];
       if(apagada()) break;
       try{
-        var res = await apiSend("POST", "/api/sincronizar", {nome: item.nome, base_texto: item.base_texto, texto: item.texto});
+        var res = await apiSend("POST", "/api/sincronizar", {nome: item.nome, base_texto: item.base_texto, texto: item.texto}, {dono: donoFila});
         if(apagada()) break;
         if(res.estado === "gravado"){
           await confirmarEnvioFila(item.nome, item.rev, item.texto, item.texto, res.hash, geracao);
@@ -2329,15 +2347,44 @@ async function sincronizarFilaAqui(){
 }
 
 /* ---- leitura sem rede: /api/notas, /api/nota, /api/procura (só texto), /api/grafo, /api/categorias ---- */
+/* ronda 10 (achado G2 da r3): as notas da cópia lêem-se na MESMA transacção em que se confirma que a cópia está ligada, não
+   trancada, na geração que este separador conhece e em nome do DONO dele. Antes o dono via-se numa transacção e as notas liam-se
+   noutra: entre as duas, outro separador (ou este) podia trocar de conta e guardar o pacote de B — e a página de A mostrava-o.
+   Depois da transacção volta-se a ver se nada mudou neste separador (dono, geração, cópia apagada, outra conta). Falha =
+   «não há cópia» (precisa de rede), nunca dados de outra. */
+function erroCopiaNaoVerificada(){
+  var e = new Error(t("precisa de rede"));
+  e.copiaNaoVerificada = true;
+  e.semRede = true;
+  return e;
+}
+async function notasDaCopia(){
+  var dono = DONO, g = GERACAO_COPIA;
+  if(COPIA_DESLIGADA || OUTRA_CONTA) throw erroCopiaNaoVerificada();
+  var r = await transacao(["notas", "meta"], function(tx, saida){
+    seCopiaLigada(tx, saida, function(){ seGeracaoIgual(tx, saida, g, function(){
+      var b = tx.objectStore("meta").get("bloqueada");
+      b.onsuccess = function(){
+        if(b.result && b.result.valor){ saida.valor = "trancada"; return; }
+        var ga = tx.objectStore("notas").getAll();
+        ga.onsuccess = function(){ saida.valor = {notas: ga.result || []}; };
+      };
+    }, dono); });
+  });
+  if(r === "trancada") throw erroCopiaTrancada();
+  if(!r || typeof r !== "object" || DONO !== dono || GERACAO_COPIA !== g || COPIA_DESLIGADA || OUTRA_CONTA || COPIA_BLOQUEADA)
+    throw erroCopiaNaoVerificada();
+  return r.notas;
+}
 function escaparRegex(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 function offlineListaNotas(){
-  return idbGetAll("notas").then(function(notas){
+  return notasDaCopia().then(function(notas){
     return notas.slice().sort(function(a, b){ return (b.mtime||0) - (a.mtime||0); });
   });
 }
 function offlineNota(nome){
-  return idbGetAll("notas").then(function(todas){
+  return notasDaCopia().then(function(todas){
     var alvo = null;
     for(var i = 0; i < todas.length; i++){ if(todas[i].nome === nome){ alvo = todas[i]; break; } }
     if(!alvo){ var e = new Error(t("Nota não encontrada na cópia deste aparelho.")); e.status = 404; throw e; }
@@ -2363,7 +2410,7 @@ function offlineNota(nome){
   });
 }
 function offlineGrafo(){
-  return idbGetAll("notas").then(function(todas){
+  return notasDaCopia().then(function(todas){
     var ids = {}, baseDe = {};
     todas.forEach(function(o){
       ids[o.nome] = true;
@@ -2389,7 +2436,7 @@ function offlineGrafo(){
   });
 }
 function offlineCategorias(){
-  return idbGetAll("notas").then(function(todas){
+  return notasDaCopia().then(function(todas){
     var conta = {}, porNota = {};
     todas.forEach(function(o){
       var cats = o.categorias || [];
@@ -2408,7 +2455,7 @@ function extrairTrecho(texto, q){
   return (ini > 0 ? "…" : "") + texto.slice(ini, fim).replace(/\s+/g, " ").trim() + (fim < texto.length ? "…" : "");
 }
 function offlineProcura(q, n){
-  return idbGetAll("notas").then(function(todas){
+  return notasDaCopia().then(function(todas){
     var out = [{titulo: t("pesquisa sem rede — só texto"), trecho: "", fonte: ""}];
     var qn = normalizarBusca(q || "");
     if(!qn) return out;
@@ -2431,11 +2478,16 @@ async function tentarOffline(path){
   try{ var mdLer = await idbGet("meta", "dono"); if(mdLer && mdLer.valor !== DONO) return undefined; }catch(e){ return undefined; }
   var u = path.split("?")[0];
   var qs = new URLSearchParams(path.indexOf("?") !== -1 ? path.split("?")[1] : "");
-  if(u === "/api/notas") return offlineListaNotas();
-  if(u === "/api/nota") return offlineNota(qs.get("nome") || "");
-  if(u === "/api/procura") return offlineProcura(qs.get("q") || "", parseInt(qs.get("n") || "10", 10));
-  if(u === "/api/grafo") return offlineGrafo();
-  if(u === "/api/categorias") return offlineCategorias();
+  try{                                                      // ronda 10 (G2): a cópia não se confirmou na leitura → como se não houvesse
+    if(u === "/api/notas") return await offlineListaNotas();
+    if(u === "/api/nota") return await offlineNota(qs.get("nome") || "");
+    if(u === "/api/procura") return await offlineProcura(qs.get("q") || "", parseInt(qs.get("n") || "10", 10));
+    if(u === "/api/grafo") return await offlineGrafo();
+    if(u === "/api/categorias") return await offlineCategorias();
+  }catch(e){
+    if(e && e.copiaNaoVerificada) return undefined;
+    throw e;
+  }
   return undefined;
 }
 
