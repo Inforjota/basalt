@@ -97,9 +97,11 @@ class Autenticador:
     def _carregar(self):
         try:
             d = json.loads(self.ficheiro.read_text(encoding="utf-8"))
-            agora = time.time()
             campos = set(Sessao.__dataclass_fields__)
-            self._sessoes = {k: Sessao(**{c: x for c, x in v.items() if c in campos}) for k, v in d.items() if v.get("expira", 0) > agora}
+            # ronda 10 (achado M1 da r3): carregam-se TODAS (as válidas na forma) — a poda forçada do arranque tira as expiradas da
+            # memória E do ficheiro; antes saíam só da memória aqui, a poda já não as via e o ficheiro guardava-as para sempre
+            self._sessoes = {k: Sessao(**{c: x for c, x in v.items() if c in campos}) for k, v in d.items()
+                             if isinstance(v, dict) and isinstance(v.get("expira"), (int, float))}
         except (OSError, ValueError, TypeError, AttributeError):   # PORTE: JSON válido mas de outra forma ([] ou {"x": 5}) também arranca limpo
             self._sessoes = {}
 
@@ -165,24 +167,30 @@ class Autenticador:
             try:
                 novo = config.carregar(self._origem)
             except (config.ConfigInvalida, OSError, ValueError) as e:
-                self._marca, self._fechado = marca, str(e) or e.__class__.__name__
+                self._fechado = str(e) or e.__class__.__name__   # ronda 10 (G3 da r3): fechar ANTES de a marca nova se ver
+                self._marca = marca
                 print(f"basalt.toml mudou mas não carrega ({e}): ninguém entra até o corrigires", file=sys.stderr, flush=True)
                 return False
-            self._marca, self._fechado = marca, ""
             antes = {u.email.lower(): u.senha_hash for u in self.cfg.utilizadores}
-            self.cfg.utilizadores = novo.utilizadores            # o mesmo objecto Config que o servidor web usa
-            vivos = {u.email.lower(): u.senha_hash for u in novo.utilizadores}
+            novos = list(novo.utilizadores)
+            vivos = {u.email.lower(): u.senha_hash for u in novos}
             # ronda 8 (configuração relida em execução): quem mudou de senha também sai — uma sessão roubada não sobrevive à troca
             outra_senha = {e for e, h in vivos.items() if e in antes and antes[e] != h}
             mortas = [k for k, s in self._sessoes.items() if s.email.lower() not in vivos or s.email.lower() in outra_senha]
             for k in mortas:
                 self._sessoes.pop(k, None)
+            self.cfg.utilizadores = novos                      # o mesmo objecto Config que o servidor web usa
+            self._fechado = ""
+            # ronda 10 (achado G3 da r3): a marca nova só se publica DEPOIS de os utilizadores novos estarem no lugar (e as sessões
+            # mortas fora). Antes mudava primeiro: um pedido que visse a marca nova saltava o trinco e autenticava-se (Bearer, proxy)
+            # contra a lista antiga — a conta acabada de apagar ainda entrava durante a troca.
+            self._marca = marca
             if mortas:
                 try:
                     self._guardar()
                 except OSError as e:
                     print(f"sessões: não consegui gravar ({e})", file=sys.stderr, flush=True)
-            print(f"basalt.toml relido: {len(novo.utilizadores)} utilizador(es)", file=sys.stderr, flush=True)
+            print(f"basalt.toml relido: {len(novos)} utilizador(es)", file=sys.stderr, flush=True)
             return True
 
     # ── limite por IP ──
