@@ -28,7 +28,14 @@ TEXTO = {".txt", ".csv", ".json", ".svg"}      # anexos de texto: guarda inteiro
 
 def nome_ok(nome: str) -> bool:
     # a regex não deixa passar `/` nem `\\`: não há como sair da pasta (os testes têm um mutante para isto)
-    return bool(nome) and bool(NOME_RX.fullmatch(nome)) and Path(nome).suffix.lower() in SUFIXOS
+    # ronda 10 (achado G7 da r3): um nome com o que parece uma chave ou password também não serve — nem para gravar, nem para
+    # listar, nem para servir (um anexo assim posto à mão na pasta fica de fora, como uma nota retida)
+    return (bool(nome) and bool(NOME_RX.fullmatch(nome)) and Path(nome).suffix.lower() in SUFIXOS
+            and not nome_com_segredo(nome))
+
+
+def nome_com_segredo(nome: str) -> bool:
+    return bool(SEGREDO_RX.search(nome or "")) or tem_segredo_texto(nome or "")
 
 
 def pasta(esp) -> Path:
@@ -77,6 +84,8 @@ def ler(esp, nome: str):
 def _validar(nome: str, dados: bytes) -> str:
     """o nome limpo, ou ValueError / SegredoEmClaro — o mesmo critério para gravar e para prever."""
     nome = (nome or "").strip()
+    if nome_com_segredo(nome):              # ronda 10 (achado G7 da r3): antes só se olhava para os bytes
+        raise SegredoEmClaro()
     if not nome_ok(nome):
         raise ValueError("nome de anexo inválido (letras, números, ponto, espaço, - e _; sufixo conhecido)")
     if len(dados) > TAMANHO_MAX:
@@ -167,30 +176,53 @@ def guardar(esp, nome: str, dados: bytes) -> str:
         os.close(dfd)
 
 
+MAX_NOMES = 10000          # ronda 10 (achado M2 da r3): nome_2 … nome_10000 ocupados → desiste em vez de procurar para sempre
+
+
 def prever(esp, nome: str, dados: bytes, reservados: dict | None = None) -> str:
     """o nome que `guardar` daria a estes bytes — sem escrever nada (a importação em simulação). `reservados` (nome → bytes) é o que
     a própria simulação já «pôs»: assim dois anexos diferentes com o mesmo nome dão `nome` e `nome_2`, tal como na gravação.
-    Levanta o mesmo que `guardar` para nome inválido, tamanho e segredo."""
+    Levanta o mesmo que `guardar` para nome inválido, tamanho, segredo e pasta insegura.
+    ronda 10 (achado M2 da r3): antes qualquer OSError contava como «nome ocupado» — uma pasta (ou um ancestral) que é uma ligação
+    simbólica, ou sem permissão, dava erro em TODOS os nomes e a simulação ficava presa em nome_2, nome_3… para sempre. Agora a
+    pasta abre-se uma vez (recusada como na gravação); só um ficheiro com esse nome conta como ocupado; o resto é erro."""
     nome = _validar(nome, dados)
     reservados = {} if reservados is None else reservados
     raiz, pre = _raiz(esp)
+    try:
+        dfd = caminhos.abrir_pasta(raiz, pre)
+    except FileNotFoundError:
+        dfd = None                                       # a pasta ainda não existe: todos os nomes estão livres
+    except caminhos.Recusado as e:
+        raise ValueError("a pasta dos anexos não é segura (passa por uma ligação simbólica) — não guardei nada") from e
     base, suf = Path(nome).stem, Path(nome).suffix
     final, i = nome, 1
-    while True:
-        if final in reservados:
-            ocupado = reservados[final] != dados
-        else:
-            try:
-                ocupado = caminhos.ler_bytes(raiz, [*pre, final], len(dados)) != dados
-            except FileNotFoundError:
-                ocupado = None                           # livre
-            except OSError:                              # uma ligação, uma pasta, ou maior que estes bytes: está ocupado
-                ocupado = True
-        if ocupado is None or ocupado is False:
-            reservados[final] = dados
-            return final
-        i += 1
-        final = f"{base}_{i}{suf}"
+    try:
+        while True:
+            if final in reservados:
+                ocupado = reservados[final] != dados
+            elif dfd is None:
+                ocupado = False
+            else:
+                try:
+                    fd = caminhos.abrir_ficheiro(dfd, final)
+                except FileNotFoundError:
+                    ocupado = False
+                except caminhos.Recusado:                # uma ligação ou algo que não é um ficheiro normal com este nome
+                    ocupado = True
+                else:
+                    with os.fdopen(fd, "rb") as f:
+                        ocupado = not (os.fstat(f.fileno()).st_size == len(dados) and f.read(len(dados) + 1) == dados)
+            if not ocupado:
+                reservados[final] = dados
+                return final
+            i += 1
+            if i > MAX_NOMES:
+                raise ValueError(f"há demasiados anexos com o nome «{nome}» — muda-lhe o nome")
+            final = f"{base}_{i}{suf}"
+    finally:
+        if dfd is not None:
+            os.close(dfd)
 
 
 def listar(esp) -> list[dict]:

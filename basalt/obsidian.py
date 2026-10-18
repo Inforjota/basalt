@@ -108,7 +108,7 @@ def _resolver(alvo: str, pasta_nota: str, disp: dict, por_base: dict):
 
 def _nome_seguro(nome: str):
     """o nome do ficheiro tal como está, se a página o aceita; senão um derivado (slug do nome + sufixo em minúsculas); None se nem assim."""
-    if anexos_mod.nome_ok(nome):
+    if anexos_mod.nome_ok(nome) or anexos_mod.nome_com_segredo(nome):   # ronda 10 (G7 da r3): um nome com chave chega ao guarda tal e qual (e é recusado)
         return nome
     p = PurePosixPath(nome)
     cand = slug(p.stem) + p.suffix.lower()

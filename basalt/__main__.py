@@ -349,8 +349,9 @@ def cmd_importar(a):
     with config.dentro(esp):
         r = obsidian.importar(a.pasta, esp, simular=a.simular)
     print(("[simulação] " if a.simular else "") + f"{len(r['importadas'])} notas importadas, {len(r['anexos'])} anexos, {len(r['saltadas'])} saltadas")
+    from .segredos import SEGREDO_RX
     for f, porque in r["saltadas"]:
-        print(f"  · {f}: {porque}")
+        print(SEGREDO_RX.sub("•••", f"  · {f}: {porque}"))      # ronda 10 (G7 da r3): um nome de ficheiro com uma chave não vai para o ecrã
     if r["importadas"] and not a.simular:
         print("A seguir: `basalt sincronizar` (põe-as na cópia editável) e `basalt indexar`.")
 

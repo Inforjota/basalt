@@ -205,3 +205,71 @@ def test_g6_nota_trocada_com_o_mesmo_tamanho_e_mtime_volta_a_ser_lida(memoria, t
     assert router.stat().st_mtime_ns == st.st_mtime_ns and router.stat().st_size == st.st_size
     assert refs() == set(), "a decisão antiga (limpa) ficou: os pedaços de uma nota que agora tem uma password iam para a pergunta"
     c.close()
+
+
+# ───────────────────────── G7: uma chave no NOME de um anexo não entra nem chega ao registo ─────────────────────────
+TOKEN_NOME = "bs" + "lt_" + "Q" * 40                       # montado aqui: o ficheiro de teste não tem o token por inteiro
+
+
+def test_g7_anexo_com_chave_no_nome_e_recusado_pelo_guarda(tmp_path):
+    from basalt import anexos
+    from basalt.config import Espaco
+    from basalt.segredos import SegredoEmClaro
+    esp = Espaco.de("ana", tmp_path / "dados").criar()
+    with pytest.raises(SegredoEmClaro):
+        anexos.guardar(esp, TOKEN_NOME + ".txt", b"conteudo limpo")
+    with pytest.raises(SegredoEmClaro):
+        anexos.prever(esp, TOKEN_NOME + ".txt", b"conteudo limpo")
+    assert not any(TOKEN_NOME in p.name for p in tmp_path.rglob("*")), "o anexo com a chave no nome foi publicado"
+    assert anexos.guardar(esp, "limpo.txt", b"conteudo limpo") == "limpo.txt"   # controlo
+
+
+def test_g7_anexo_com_chave_no_nome_posto_a_mao_nao_se_lista_nem_se_serve(tmp_path):
+    from basalt import anexos
+    from basalt.config import Espaco
+    esp = Espaco.de("ana", tmp_path / "dados").criar()
+    esp.anexos.mkdir(parents=True, exist_ok=True)
+    (esp.anexos / (TOKEN_NOME + ".txt")).write_bytes(b"limpo")
+    assert [a["nome"] for a in anexos.listar(esp)] == []
+    assert anexos.ler(esp, TOKEN_NOME + ".txt")[0] != 200
+
+
+def test_g7_registo_http_nao_leva_a_chave_do_caminho(capsys):
+    from basalt import web
+
+    class _H:
+        command, path = "GET", "/anexos/" + TOKEN_NOME + ".txt?d=abc"
+    web.H.log_message(_H(), "%s")
+    out = capsys.readouterr().out
+    assert "/anexos/" in out and TOKEN_NOME not in out, "o registo HTTP guardou a chave que vinha no nome do anexo"
+    _H.path = "/anexos/" + TOKEN_NOME[:4] + "%5F" + TOKEN_NOME[5:] + ".txt"        # codificada no URL
+    web.H.log_message(_H(), "%s")
+    assert TOKEN_NOME[5:] not in capsys.readouterr().out
+
+
+# ───────────────────────── M2: --simular não fica preso perante uma pasta de anexos recusada ─────────────────────────
+def test_m2_prever_com_a_pasta_dos_anexos_simbolica_recusa_em_vez_de_ciclar(tmp_path, monkeypatch):
+    from basalt import anexos, caminhos
+    from basalt.config import Espaco
+    esp = Espaco.de("ana", tmp_path / "dados").criar()
+    fora = tmp_path / "fora"
+    fora.mkdir()
+    esp.anexos.symlink_to(fora, target_is_directory=True)      # um ancestral (a própria pasta dos anexos) é uma ligação
+    chamadas = [0]
+    original = caminhos.ler_bytes
+
+    def contar(*a, **k):
+        chamadas[0] += 1
+        if chamadas[0] > 200:
+            raise RuntimeError("prever() ficou num ciclo: 200 nomes tentados")
+        return original(*a, **k)
+    monkeypatch.setattr(caminhos, "ler_bytes", contar)
+    try:
+        anexos.prever(esp, "foto.png", b"png")
+        resultado = "aceitou"
+    except ValueError as e:
+        resultado = "recusou: " + str(e)
+    except RuntimeError as e:
+        resultado = str(e)
+    assert resultado.startswith("recusou") and "ligação simbólica" in resultado, resultado
+    assert anexos.prever(Espaco.de("bea", tmp_path / "dados").criar(), "foto.png", b"png") == "foto.png"   # controlo

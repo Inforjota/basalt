@@ -42,6 +42,14 @@ def _erro(e, tipo=True) -> str:
         return f"{type(e).__name__}: o motor saiu com código {e.returncode}"
     m = SEGREDO_RX.sub("•••", (f"{type(e).__name__}: " if tipo else "") + str(e))
     return "(mensagem omitida: tinha o que parece uma password ou chave)" if tem_segredo_texto(m) else m
+def caminho_para_registo(caminho: str) -> str:
+    """ronda 10 (achado G7 da r3): o caminho de um pedido como vai para o registo — sem a query, descodificado e com o que pareça
+    uma chave tapado; se ainda assim parecer ter uma password, nem vai."""
+    p = urllib.parse.unquote((caminho or "").split("?")[0])
+    m = SEGREDO_RX.sub("•••", p)
+    return "(caminho omitido: parecia ter uma chave ou password)" if tem_segredo_texto(m) else m
+
+
 # PORTE: antes caminhos fixos (+ variáveis); agora as pastas do espaço do utilizador do pedido (config.Via segue o espaço activo do fio)
 REAL = Via("real")
 COPIA = Via("copia")
@@ -1290,7 +1298,7 @@ class H(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *a):
         if not self.path.startswith("/static/"):
-            print(time.strftime("%d/%m %H:%M:%S"), self.command, self.path.split("?")[0], flush=True)
+            print(time.strftime("%d/%m %H:%M:%S"), self.command, caminho_para_registo(self.path), flush=True)
 
     # ── quem é ──
     def _ip(self):
@@ -1547,6 +1555,8 @@ class H(BaseHTTPRequestHandler):
             return self._json(400, {"erro": "Ficheiro vazio."})
         if n > anexos.TAMANHO_MAX:
             return self._json(413, {"erro": "Ficheiro demasiado grande (máximo %d MiB)." % (anexos.TAMANHO_MAX // (1024 * 1024))})
+        if anexos.nome_com_segredo(nome):         # ronda 10 (achado G7 da r3)
+            return self._json(400, {"erro": "O nome do ficheiro tem o que parece uma chave ou password — muda-lhe o nome; não guardei."})
         if not anexos.nome_ok(nome):
             return self._json(400, {"erro": "Nome de ficheiro inválido (letras, dígitos, espaços, . _ - e uma extensão conhecida)."})
         dados = self.rfile.read(n)
