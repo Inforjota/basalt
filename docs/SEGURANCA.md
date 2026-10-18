@@ -25,14 +25,24 @@
 - **Cada utilizador no seu espaço.** Dois utilizadores no mesmo espaço são recusados ao carregar o `basalt.toml`, a não ser
   que `[basalt] espaco_partilhado = true`. `basalt utilizador novo` nunca dá a uma conta nova o espaço de outra. Ligações
   simbólicas com nome de nota ou de anexo não saem do espaço: não se listam, não se servem, não se importam nem exportam.
+  A âncora de confiança é a raiz de dados configurada (`dados`, e os caminhos que o administrador põe à mão no `basalt.toml` ou no
+  ambiente): tudo o que está por baixo dela abre-se pasta a pasta com `O_NOFOLLOW`, e um ancestral que seja uma ligação recusa a
+  leitura, a listagem e a escrita. As escritas CAS conferem a pasta imediatamente antes de trocar o ficheiro; trocar uma pasta
+  por uma ligação nesse instante exige escrever na pasta de dados do próprio servidor — quem pode isso já tem as notas todas.
 - **Contas no mesmo browser.** A cópia local (IndexedDB) e a fila sem internet têm dono. Quando entra outra conta no mesmo
   browser, a cópia da anterior sai antes de chegar a nova, e a fila sem internet da anterior fica guardada à parte, em nome
   dela, até voltar a entrar. O servidor recusa (403, sem mexer em nada) um pedido que traga o dono de outra conta, por isso
   um separador antigo nunca grava em nome de quem entrou depois. «Terminar sessão» tira a cópia do browser. Todos os pedidos da
   página levam o dono (`X-Basalt-Dono`; as imagens dos anexos, em `?d=`): sem ele, o servidor responde 428 e não lê nem grava
-  nada (só `/api/eu`, que diz o dono, fica de fora). O service worker guarda uma cópia da API por dono e só a serve a esse dono.
+  nada (só `/api/eu`, que diz o dono, fica de fora). O service worker guarda uma cópia da API por dono e só a serve a esse dono;
+  as lápides (notas que deram 404/410) também são por dono. Uma edição fica presa à conta com que a nota abriu: se o separador
+  passar a ser de outra conta antes de gravar, nada sobe nem entra na fila em nome da nova — a edição fica à parte, em nome da
+  conta original, e sobe quando ela voltar. As leituras sem internet confirmam dono, geração e cópia na mesma transacção em que
+  lêem as notas, e uma resposta da cópia do service worker volta a ser verificada depois de lido o corpo.
   Os agentes e scripts entram por token (`Authorization: Bearer`) e não precisam de dono; um script que use a sessão do browser
-  ou o cabeçalho do proxy tem de mandar o `X-Basalt-Dono` que `GET /api/eu` lhe der.
+  ou o cabeçalho do proxy tem de mandar o `X-Basalt-Dono` que `GET /api/eu` lhe der. A única rota da API sem login nem dono é
+  `GET /api/saude` (o healthcheck do Docker e da monitorização): responde `{"ok": true}` e mais nada — nenhum dado das notas,
+  das contas ou da configuração. Fora da API só são públicos a página de entrar, o manifesto e os ícones da PWA.
 - **Revogar sem reiniciar.** O servidor relê os utilizadores do `basalt.toml` quando ele muda. Apagar um utilizador ou o hash
   do token MCP vale no pedido seguinte, para as sessões e para o `/mcp`. Cada sessão guarda uma impressão da senha com que
   abriu e só vale com ela: mudar a senha termina as sessões dessa conta, também se a mudares com o servidor parado.
@@ -58,7 +68,9 @@
 - **Contra fugas de chave.** As chaves de API só entram por variável de ambiente ou ficheiro `0600`. Não aparecem nos erros,
   nem quando o fornecedor as repete numa resposta 401. Um redirect para outro endereço não leva o cabeçalho `Authorization`.
   Os erros não repetem o texto das notas (de um erro do fornecedor de IA só se diz o código, o tipo e uma dica — a mensagem
-  dele pode citar o que lhe mandámos), e os erros do MCP não mostram caminhos do disco.
+  dele pode citar o que lhe mandámos), e os erros do MCP não mostram caminhos do disco. O registo HTTP não leva os parâmetros
+  do pedido e mascara (ou omite) um caminho com o que parece uma chave, também codificada; um anexo cujo nome tenha o que parece
+  uma chave é recusado.
 
 ## O que NÃO protege (e o que fazer)
 

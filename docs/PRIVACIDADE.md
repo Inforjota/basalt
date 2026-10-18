@@ -22,7 +22,7 @@ No servidor (`<dados>` é a pasta do `basalt.toml`; cada utilizador tem `<dados>
 | e-mail, nome, hash da senha, hash do token MCP | `basalt.toml` | autenticação | enquanto o utilizador existir |
 | sessões: hash do cookie, e-mail, hora de criação e de expiração, e uma impressão (não reversível) do hash da senha com que abriram | `<dados>/sessoes.json` | manter o login | até expirarem (`[auth] sessao_horas`), saíres, o utilizador deixar de existir ou mudar de senha; as que já não valem saem do ficheiro ao arrancar o servidor e, durante o uso, no máximo de hora a hora (mesmo que ninguém volte com o cookie delas) |
 | tentativas de login falhadas por IP | memória do processo | travar força bruta | esquecem-se as mais velhas que `[auth] janela_minutos` (a cada tentativa, de todos os IPs); perdem-se ao reiniciar |
-| registos do servidor (stdout/journal) | onde o systemd/Docker os puser | diagnóstico | rotação do sistema; método, caminho (sem os parâmetros) e hora de cada pedido; **não** contêm texto de notas nem chaves |
+| registos do servidor (stdout/journal) | onde o systemd/Docker os puser | diagnóstico | rotação do sistema; método, caminho (sem os parâmetros; um caminho com o que parece uma chave sai mascarado ou omitido) e hora de cada pedido; **não** contêm texto de notas nem chaves |
 
 No browser de cada utilizador (para funcionar sem internet):
 
@@ -31,7 +31,7 @@ No browser de cada utilizador (para funcionar sem internet):
 | cópia das notas, fila de edições sem internet e conflitos | IndexedDB do site | até «Terminar sessão», «Apagar cópia deste aparelho», ou entrar outra conta no mesmo browser |
 | respostas da API (texto das notas) | cache do service worker | idem |
 | anexos já vistos | cache HTTP do browser | o browser decide; antes de mostrar um, pergunta sempre ao servidor se ainda pode |
-| fila sem internet de uma conta que saiu | IndexedDB, guardada à parte em nome dessa conta | até essa conta voltar a entrar no mesmo browser (aí é enviada) ou se limparem os dados do site |
+| fila sem internet de uma conta que saiu (e edições abertas com ela que o separador já não pôde gravar, porque entretanto entrou outra conta) | IndexedDB, guardada à parte em nome dessa conta | até essa conta voltar a entrar no mesmo browser (aí é enviada) ou se limparem os dados do site |
 
 A tranca da cópia no browser depende de respostas do servidor (sessão expirada, conta removida). Um dispositivo que nunca mais
 se liga continua a poder ler a cópia que tem. Em computadores partilhados, diz aos utilizadores para usarem «Terminar sessão».

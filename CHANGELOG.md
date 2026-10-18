@@ -127,3 +127,32 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   - Testes: `testes/test_ronda9_donos.py`, `testes/test_ronda9_pagina_donos.py`, `testes/test_sw.py` (`TestUmaCachePorDono`),
     `testes/test_ronda9_ficheiros.py`, `testes/test_ronda9_revogar.py`, `testes/test_ronda9_ia.py`, `testes/test_ronda9_menores.py`,
     `testes/test_ronda9_copia_apagada.py`.
+- Segurança, ronda 10 (auditoria externa do pacote, ronda 3):
+  - **A edição fica presa à conta com que a nota abriu:** se o separador passar a ser de outra conta entre abrir e gravar (abriu
+    sem internet com a cópia de A e entretanto B entrou), a edição não sobe nem entra na fila da cópia de B — nem com o dono
+    novo, nem com o antigo. Fica guardada à parte neste aparelho, em `pendentes-de:<A>`, e sobe em nome de A quando A voltar a
+    entrar; a página diz isso e oferece «copiar o meu texto». Sem conta conhecida não se guarda (não se sabe de quem é).
+  - **Leitura sem internet numa só transacção:** as notas da cópia lêem-se na mesma transacção da IndexedDB em que se confirma
+    o dono, a geração, a tranca e a cópia ligada; a fila sem internet também, e cada envio leva esse dono. Uma troca de conta
+    entre as duas leituras já não mostra (nem envia) as notas da outra conta.
+  - **Resposta da cópia verificada depois de ler o corpo:** uma resposta da cópia do service worker volta a ver tranca, dono,
+    geração e cópia apagada DEPOIS de `res.json()`, antes de chegar à página.
+  - **Lápides do service worker por conta:** um 404/410 de uma conta já não tira, sem internet, a cópia de outra conta do mesmo
+    URL. As lápides de pedidos sem dono (e as de versões anteriores) continuam a valer para todas.
+  - **Revogar sem janela:** ao reler o `basalt.toml`, a lista de utilizadores é substituída ANTES de se publicar a marca que
+    dispensa o trinco — nenhum pedido vê a marca nova com a lista antiga (Bearer e cabeçalho do proxy).
+  - **Ligações simbólicas em qualquer ancestral:** a âncora de confiança é a raiz de dados configurada (`dados`) — o que está
+    por baixo (espaços, notas, anexos, Entrada) abre-se pasta a pasta com `O_NOFOLLOW` a partir dela, também as listagens e as
+    leituras (antes partia da pasta do espaço, que podia ser alcançada por uma ligação). Um ancestral que seja uma ligação
+    recusa a leitura, a listagem e a escrita. A própria raiz de dados pode ser uma ligação (é escolha de quem instala).
+  - **Retenção decide pelo conteúdo actual:** a cache de «nota retida» guarda-se pelo sha256 do texto, não pela hora/tamanho;
+    trocar a nota por outra com o mesmo tamanho e a mesma hora já não herda a decisão antiga.
+  - **Nomes de anexo com chaves:** um anexo cujo nome tenha o que parece uma chave ou password é recusado pelo guarda (envio
+    pela página e importação do Obsidian); o registo HTTP omite os parâmetros e mascara (ou omite) caminhos com o que parece uma chave, também
+    codificada (`%5F`); o relatório da importação mascara os nomes saltados.
+  - **Sessões expiradas saem do ficheiro ao arrancar** (antes ficavam até à primeira poda durante o uso).
+  - **`importar --simular` não fica preso:** uma pasta de anexos inacessível ou que é uma ligação recusa a simulação (como a
+    gravação) em vez de procurar `nome_2`, `nome_3`… para sempre; e há um limite de nomes.
+  - **Documentação:** `/api/saude` é a única rota da API sem login nem dono (o healthcheck: responde `{"ok": true}` e mais nada); fora da API
+    só são públicos a página de entrar, o manifesto e os ícones da PWA.
+  - Testes: `testes/test_ronda10.py` (servidor, SW), `testes/test_ronda10_pagina.py` (página, Chromium). Cada um falha em cbf5489.
