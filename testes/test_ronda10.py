@@ -3,6 +3,7 @@
 Cada teste falha no código de cbf5489 pela razão certa (menos os controlos, que passam nos dois); a prova está em CHANGELOG.md,
 secção «Segurança, ronda 10»."""
 import os
+import shutil
 import threading
 from pathlib import Path
 
@@ -273,3 +274,18 @@ def test_m2_prever_com_a_pasta_dos_anexos_simbolica_recusa_em_vez_de_ciclar(tmp_
         resultado = str(e)
     assert resultado.startswith("recusou") and "ligação simbólica" in resultado, resultado
     assert anexos.prever(Espaco.de("bea", tmp_path / "dados").criar(), "foto.png", b"png") == "foto.png"   # controlo
+
+
+# ───────────────────────── M3: as lápides do service worker são por dono ─────────────────────────
+@pytest.mark.skipif(shutil.which("node") is None, reason="precisa do node")
+def test_m3_um_404_da_conta_b_nao_tira_a_copia_da_conta_a():
+    from test_sw import sw
+    comum = "/api/nota?nome=comum"
+    r = sw([{"url": comum, "dono": "d-a"},                       # A guarda a nota «comum»
+            {"url": comum, "dono": "d-b", "rede": "404"},         # B não a tem: 404 → lápide
+            {"url": comum, "dono": "d-a", "rede": "rede"},        # A sem rede: deve continuar a ver a sua cópia
+            {"url": comum, "dono": "d-b", "rede": "rede"}])       # controlo: B sem rede não recebe nada
+    assert r["passos"][1]["status"] == 404, r["passos"][1]
+    assert r["passos"][2].get("deCache") and r["passos"][2]["status"] == 200, \
+        f"o 404 da conta B apagou (por lápide comum) a cópia da conta A: {r['passos'][2]}"
+    assert "erro" in r["passos"][3], r["passos"][3]

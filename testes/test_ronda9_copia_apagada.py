@@ -17,7 +17,7 @@ import json
 import pytest
 
 from pagina_falsa import NOTA as NOTA_PAGINA, com_nota, com_sw, esperar, pronta, reset
-from test_sw import API, NODE, NOTA, sw
+from test_sw import API, DONO, NODE, NOTA, sw
 
 # o trinco do service worker larga-se ao fim de TRINCO_MS (3000 no sw.js); nos ensaios, 150 ms
 TRINCO = dict(locks=True, trinco_ms=150)
@@ -35,7 +35,7 @@ class TestServiceWorker:
         r = sw([{"url": NOTA, "gancho": self.A_MEIO_DO_PUT}, {"url": NOTA, "rede": "rede"}], **TRINCO)
         g = r["passos"][0]["gancho"]
         assert g["disparou"] and g["resultados"][0]["status"] == 404, f"o ensaio não montou o 404 a meio do put: {g}"
-        assert NOTA in r["caches"].get("basaltcfg-apagadas", []), "o 404 posterior não deixou a lápide da nota"
+        assert NOTA in r["caches"].get("basaltcfg-apagadas-" + DONO, []), "o 404 posterior não deixou a lápide da nota"
         assert NOTA not in r["caches"].get(API, []), \
             "o 200 guardado depois da lápide ficou na cache da API: aceitar() não voltou a ver a lápide DEPOIS do put"
         assert "erro" in r["passos"][1], f"sem rede, a nota apagada serviu-se da cópia: {r['passos'][1]}"

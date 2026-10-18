@@ -191,6 +191,6 @@ class TestTrancaELapides:
 
     def test_um_410_deixa_lapide_e_uma_resposta_boa_mais_nova_volta_a_guardar(self):
         r = sw([{"url": NOTA, "rede": "410"}, {"url": NOTA, "rede": "ok"}, {"url": NOTA, "rede": "rede"}])
-        assert NOTA in r["caches"].get("basaltcfg-apagadas", []), r["caches"]
+        assert NOTA in r["caches"].get("basaltcfg-apagadas-" + DONO, []), r["caches"]
         assert r["passos"][2]["status"] == 200 and r["passos"][2]["deCache"], r["passos"]
 

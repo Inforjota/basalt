@@ -253,7 +253,7 @@ async ([fonte, api]) => {
   async function guardada(){ var c = lojas.get(api); var g = c ? await c.match(url) : undefined; if(!g) return null;
     return {inicio: g.headers.get("X-Basalt-Inicio"), texto: (await g.json()).texto}; }
   function trancasN(){ var c = lojas.get("basaltcfg-copia-trancada"); return c ? c.m.size : 0; }
-  async function lapide(){ var c = lojas.get("basaltcfg-apagadas"); var r = c ? await c.match(url) : undefined; return r ? await r.text() : null; }
+  async function lapide(){ var c = lojas.get("basaltcfg-apagadas-d-ana"); var r = c ? await c.match(url) : undefined; return r ? await r.text() : null; }
   async function porTranca(id, hora){ var c = await caches.open("basaltcfg-copia-trancada"); await c.put("/__tranca/" + id, new Response(String(hora))); }
   async function offline(){ semRede = true;
     try { var r = await sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}})); return r ? (r.status + (r.headers.get("X-Basalt-From-Cache") ? " cache" : "")) : "nada"; }

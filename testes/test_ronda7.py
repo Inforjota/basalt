@@ -196,7 +196,7 @@ async ([fonte, api, reais]) => {
   var caches = {
     open: async function(n){ if(!lojas.has(n)) lojas.set(n, new Cache(n)); return lojas.get(n); },
     has: async function(n){
-      if(n === "basaltcfg-apagadas"){
+      if(n.indexOf("basaltcfg-apagadas") === 0){   // ronda 10 (M3): a loja do dono e a comum
         ganchoHas.n++;
         if(ganchoHas.em && ganchoHas.n === ganchoHas.em){ ganchoHas.parado = true; await new Promise(function(r){ ganchoHas.solta = r; }); }
       }
@@ -230,7 +230,7 @@ async ([fonte, api, reais]) => {
   function guardada(){ return guardadaU(url); }
   async function guardadaReal(){ return lerEntrada(await window.caches.match(url, {cacheName: api})); }
   function trancasN(){ var c = lojas.get("basaltcfg-copia-trancada"); return c ? c.m.size : 0; }
-  async function lapideU(u){ var c = lojas.get("basaltcfg-apagadas"); var r = c ? await c.match(u) : undefined; return r ? await r.text() : null; }
+  async function lapideU(u){ var c = lojas.get("basaltcfg-apagadas-d-ana"); var r = c ? await c.match(u) : undefined; return r ? await r.text() : null; }
   function lapide(){ return lapideU(url); }
   async function porTranca(id, hora){ var c = await caches.open("basaltcfg-copia-trancada"); await c.put("/__tranca/" + id, new Response(String(hora))); }
   async function offline(){ semRede = true;

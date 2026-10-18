@@ -327,9 +327,15 @@ async function destrancar(lista) {
     }
   } catch (e) {}
 }
+// ronda 10 (achado M3 da r3): as lápides eram comuns às contas (chave = só o URL) — um 404 de B ao URL «comum» deixava de servir,
+// sem rede, a cópia de A desse URL. Agora cada dono tem as suas («basaltcfg-apagadas-<dono>»); só um pedido SEM dono põe uma
+// lápide na loja comum, que continua a valer para todas (o lado seguro: na dúvida não se serve).
+function lojaLapides(dono) {
+  return dono ? MARCA_APAGADAS + "-" + dono : MARCA_APAGADAS;
+}
 async function marcarApagada(pedido, inicio) {
   try {
-    var c = await caches.open(MARCA_APAGADAS), q = agora(), real = Date.now();   // ronda 7: a idade conta-se no relógio real
+    var c = await caches.open(lojaLapides(donoDoPedido(pedido))), q = agora(), real = Date.now();   // ronda 7: a idade conta-se no relógio real
     // ronda 6 (achado M9 da ronda 4): a lápide leva a hora a que o pedido do 404/410 PARTIU (a cópia leva a do seu pedido — é a
     // mesma régua) e nunca desce: uma lápide mais nova já posta fica
     var marca = inicio || q, ja = await c.match(pedido.url);
@@ -344,14 +350,19 @@ async function marcarApagada(pedido, inicio) {
     }
   } catch (e) {}
 }
+// ronda 10 (M3): vê a loja do dono do pedido e a comum (lápides sem dono e as de antes desta ronda, que eram de todos)
 async function apagadaDepois(pedido, inicio) {
   try {
-    if (!(await caches.has(MARCA_APAGADAS))) return false;
-    var r = await (await caches.open(MARCA_APAGADAS)).match(pedido.url);
-    if (!r) return false;
-    var l = Number(await r.text()) || 0;
-    viuInstante(l);
-    return inicio <= l;
+    var dono = donoDoPedido(pedido), lojas = dono ? [lojaLapides(dono), MARCA_APAGADAS] : [MARCA_APAGADAS], depois = false;
+    for (var i = 0; i < lojas.length; i++) {
+      if (!(await caches.has(lojas[i]))) continue;
+      var r = await (await caches.open(lojas[i])).match(pedido.url);
+      if (!r) continue;
+      var l = Number(await r.text()) || 0;
+      viuInstante(l);
+      if (inicio <= l) depois = true;                              // continua: viuInstante vê as duas horas
+    }
+    return depois;
   } catch (e) {
     return true;                                                   // na dúvida, não guardar
   }
