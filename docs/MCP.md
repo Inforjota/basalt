@@ -1,6 +1,6 @@
 # Basalt por MCP — os teus agentes de IA a ler e escrever nas tuas notas
 
-O Basalt é um servidor **MCP** (Model Context Protocol): o Claude Code, o Codex, o Cursor, o claude.ai e qualquer outro cliente
+O Basalt é um servidor **MCP** (Model Context Protocol): o Claude Code, o Codex, o Cursor e qualquer outro cliente
 MCP podem procurar, ler, criar e corrigir notas — **com as mesmas regras da interface**: trinco, escrita atómica (CAS), recusa de
 segredos em claro, histórico git. Um agente nunca sobrepõe o que outro (ou tu) gravou no mesmo instante, e **não há ferramenta para
 apagar** notas: apaga-se na interface, com histórico.
@@ -11,7 +11,7 @@ apagar** notas: apaga-se na interface, com histórico.
 |---|---|---|
 | Quem lança | o cliente MCP lança `python3 -m basalt mcp` | o servidor web já está a correr; o cliente fala com `https://…/mcp` |
 | Autenticação | nenhuma — é o teu utilizador do sistema | **só** `Authorization: Bearer <token>` (nunca a cookie da sessão) |
-| Para quê | Claude Code / Codex / Cursor na mesma máquina ou por SSH | claude.ai, agentes noutra máquina, equipa |
+| Para quê | Claude Code / Codex / Cursor na mesma máquina ou por SSH | agentes noutra máquina, equipa |
 
 ### stdio
 
@@ -49,7 +49,8 @@ sozinho) ou corre `python3 -m basalt sincronizar` depois. Por HTTP já é o serv
    ```bash
    claude mcp add --transport http basalt https://basalt.exemplo.pt/mcp --header "Authorization: Bearer bslt_…"
    ```
-   No claude.ai: Definições → Conectores → «Adicionar conector personalizado» com o mesmo URL e cabeçalho.
+   **claude.ai (site, Desktop, telemóvel) e ChatGPT não aceitam um cabeçalho fixo** (o claude.ai só numa beta limitada a
+   algumas organizações; o ChatGPT nunca): precisam de OAuth. Até lá, usa o Claude Code ou o Codex com o token.
 3. Se o Basalt está atrás de um proxy com login (SSO), `location /mcp` **não** pode exigir esse login — o agente não tem
    browser. Exemplo nginx:
    ```nginx

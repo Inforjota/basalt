@@ -75,7 +75,7 @@ claude mcp add basalt -- python3 -m basalt --config ~/basalt-data/basalt.toml mc
 ```
 
 Then, in Claude Code: "search my notes for what I decided about the server", "append to note `project_x` that …".
-Codex, Cursor, claude.ai (over HTTP with a token) and the conflict protocol: [docs/MCP.md](docs/MCP.md).
+Codex, Cursor (over HTTP with a token) and the conflict protocol: [docs/MCP.md](docs/MCP.md).
 
 ## Layout
 
