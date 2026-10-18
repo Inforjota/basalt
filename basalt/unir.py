@@ -195,7 +195,7 @@ def aplicar(real, manter, fundir, m, a=None, b=None):
     with open(real.parent / ".basalt-unir.lock", "w") as lk:
         fcntl.flock(lk, fcntl.LOCK_EX)
         pa, pb = real / f"{manter}.md", real / f"{fundir}.md"
-        bruto_a, bruto_b = pa.read_bytes(), pb.read_bytes()       # os bytes reais: é o hash DELES que o CAS confere
+        bruto_a, bruto_b = caminhos.ler(pa), caminhos.ler(pb)       # os bytes reais: é o hash DELES que o CAS confere
         if a is None:
             a = bruto_a.decode("utf-8")
         if b is None:
@@ -210,7 +210,7 @@ def aplicar(real, manter, fundir, m, a=None, b=None):
         for p in caminhos.notas(real):
             if p in (pa, pb):
                 continue
-            bruto = p.read_bytes()
+            bruto = caminhos.ler(p)
             t = bruto.decode("utf-8", errors="replace")
             if p.name == "MEMORY.md":
                 linhas = t.splitlines(keepends=True)

@@ -10,18 +10,75 @@ import stat
 from pathlib import Path
 
 
+# ───────────────────────── ronda 10 (achado G4 da r3): âncoras de confiança ─────────────────────────
+# Antes a «raiz de confiança» era a própria pasta da nota ou dos anexos (`copia/`, `memoria/`): abria-se seguindo ligações, por isso
+# `A/copia` → `B/copia` (ou `A` → `B`) passava a verificação e servia as notas de outra conta. Agora a confiança fica só na raiz
+# que o administrador configurou — a pasta `dados` do basalt.toml (registada por `config.Espaco.de`) — e numa pasta dada por
+# variável de ambiente FORA dela. De lá para baixo (`<espaco>/copia/<nota>`, `<espaco>/memoria/anexos/…`) cada componente abre-se
+# com O_NOFOLLOW a partir do descritor do anterior: as listagens, as leituras e a verificação são a mesma operação.
+_ANCORAS: set[str] = set()
+
+
+def definir_ancora(raiz) -> None:
+    """regista uma raiz de confiança (normalmente a pasta `dados` do basalt.toml)."""
+    if raiz:
+        _ANCORAS.add(os.path.abspath(os.fspath(raiz)))
+
+
+def _ancoras() -> list[str]:
+    extra = [os.path.abspath(a) for a in (os.environ.get("BASALT_ANCORA") or "").split(os.pathsep) if a]
+    return sorted(_ANCORAS.union(extra), key=len, reverse=True)
+
+
+def ancora_de(pasta) -> tuple[str, list[str]]:
+    """(raiz de confiança, componentes abaixo dela) de `pasta`: a âncora mais longa que a contém; sem nenhuma, a própria pasta."""
+    s = os.path.abspath(os.fspath(pasta))
+    for a in _ancoras():
+        if s == a:
+            return a, []
+        if s.startswith(a.rstrip(os.sep) + os.sep):
+            return a, [x for x in s[len(a.rstrip(os.sep)) + 1:].split(os.sep) if x]
+    return s, []
+
+
 def regular(p) -> bool:
-    """um ficheiro normal com esse nome: não é uma ligação simbólica (mesmo que aponte para dentro) nem uma pasta."""
+    """um ficheiro normal com esse nome, a que se chega sem passar por NENHUMA ligação simbólica abaixo da âncora (nem no
+    próprio nome, nem nas pastas acima dele — ronda 10, achado G4 da r3)."""
     p = Path(p)
     try:
-        return not p.is_symlink() and p.is_file()
-    except OSError:
+        os.close(abrir(p.parent, [p.name]))
+        return True
+    except (OSError, ValueError):
         return False
 
 
 def notas(pasta, padrao="*.md") -> list[Path]:
-    """os ficheiros normais de `pasta` que casam com o padrão, por ordem de nome — sem ligações simbólicas."""
-    return [p for p in sorted(Path(pasta).glob(padrao)) if regular(p)]
+    """os ficheiros normais de `pasta` que casam com o padrão, por ordem de nome — sem ligações simbólicas, nem nos ficheiros nem
+    nas pastas acima deles (até à âncora). Uma pasta que não existe dá lista vazia; uma pasta a que só se chega por uma ligação
+    simbólica é recusada (Recusado)."""
+    import fnmatch
+    return [Path(pasta) / nome for nome, tipo, _st in listar_dir(pasta) if tipo == "f" and fnmatch.fnmatchcase(nome, padrao)]
+
+
+def ler(p) -> bytes:
+    """os bytes do ficheiro `p`, lidos pelo descritor verificado (sem ligações até à âncora) — substitui `Path.read_bytes`."""
+    p = Path(p)
+    return ler_bytes(p.parent, [p.name])
+
+
+def pasta_contida(pasta) -> None:
+    """recusa (Recusado) uma pasta a que só se chega por uma ligação simbólica abaixo da âncora; não existir não é recusa.
+    Para quem ainda escreve por caminho (o CAS troca ficheiros por renameat2): verifica-se antes de cada escrita."""
+    try:
+        os.close(abrir_pasta(pasta))
+    except FileNotFoundError:
+        pass
+
+
+def ler_texto(p) -> str:
+    """o texto do ficheiro `p`, lido pelo descritor verificado (sem ligações até à âncora) — substitui `Path.read_text`."""
+    p = Path(p)
+    return ler_bytes(p.parent, [p.name]).decode("utf-8", errors="replace")
 
 
 # ───────────────────────── ronda 9 (anexos sem ligações simbólicas): aberturas a partir de uma raiz de confiança ─────────────────────────
@@ -88,13 +145,15 @@ def abrir_subpasta(dfd: int, nome: str, criar: bool = False) -> int:
 
 
 def abrir_pasta(raiz, rel="", criar: bool = False) -> int:
-    """o descritor da pasta `raiz`/`rel`. A `raiz` é de confiança (pode ser ela própria um caminho com ligações); de `rel` para
-    baixo nenhum componente pode ser uma ligação simbólica."""
+    """o descritor da pasta `raiz`/`rel`. Só a ÂNCORA de `raiz` (ver `ancora_de`) é de confiança e pode ter ligações; da âncora
+    para baixo — o resto de `raiz` e todo o `rel` — nenhum componente pode ser uma ligação simbólica (ronda 10, achado G4 da r3:
+    antes a própria `raiz` abria-se seguindo ligações)."""
     partes = _partes(rel, vazio_ok=True)
-    raiz = os.fspath(raiz)
+    ancora, pre = ancora_de(raiz)
+    partes = pre + partes
     if criar:
-        os.makedirs(raiz, exist_ok=True)
-    fd = os.open(raiz, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        os.makedirs(ancora, exist_ok=True)
+    fd = os.open(ancora, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
     try:
         for p in partes:
             novo = abrir_subpasta(fd, p, criar)

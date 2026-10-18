@@ -19,6 +19,8 @@ import urllib.parse
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from . import caminhos
+
 ENV_CONFIG = "BASALT_CONFIG"
 LOCAIS = ("./basalt.toml", "~/.config/basalt/basalt.toml", "/etc/basalt/basalt.toml")
 ESPACO_OMISSAO = "principal"
@@ -197,6 +199,7 @@ class Espaco:
     @classmethod
     def de(cls, nome: str, raiz_dados: Path | str, ambiente: dict | None = None) -> "Espaco":
         amb = os.environ if ambiente is None else ambiente
+        caminhos.definir_ancora(Path(raiz_dados).expanduser())   # ronda 10 (G4 da r3): abaixo da raiz de dados nada segue ligações
         raiz = Path(raiz_dados).expanduser() / nome
         d = Path(amb.get("BASALT_DADOS_ESPACO", raiz / "dados")).expanduser()
 
@@ -229,7 +232,7 @@ class Espaco:
                 "BASALT_TRINCO": str(self.trinco), "BASALT_EXCLUIR": str(self.excluir), "BASALT_SIG_DB": str(self.semantica),
                 "BASALT_INBOX": str(self.inbox), "BASALT_CAS_SALVOS": str(self.cas_salvos),
                 "BASALT_VERSOES_OFFLINE": str(self.versoes_offline), "BASALT_CATEGORIAS": str(self.categorias),
-                "BASALT_UNIR_JOBS": str(self.jobs_unir)}
+                "BASALT_UNIR_JOBS": str(self.jobs_unir), "BASALT_ANCORA": str(self.raiz.parent)}
 
 
 def ambiente_filho(espaco: "Espaco | None" = None) -> dict:

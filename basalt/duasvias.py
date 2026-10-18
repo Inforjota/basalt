@@ -37,7 +37,7 @@ IGNORA = {"index.md", "CONFIG.md", "MEMORY.md"}
 
 
 def h(p: Path):
-    return hashlib.sha1(p.read_bytes()).hexdigest() if p.exists() else None
+    return hb(ler(p))
 
 
 def hb(b):
@@ -46,7 +46,7 @@ def hb(b):
 
 def ler(p: Path):
     try:
-        return p.read_bytes()
+        return caminhos.ler(p)           # ronda 10 (G4 da r3): pelo descritor verificado — nem a nota nem as pastas acima dela são ligações
     except FileNotFoundError:
         return None
 
@@ -80,7 +80,7 @@ def notas_de(d: Path):
 def tem_segredo(p: Path):
     """True se a nota tiver um segredo em claro — o mesmo critério das outras entradas (basalt.segredos: chaves, tokens,
     chaves privadas E passwords escritas à mão). PORTE: antes consultava também um cofre de passwords externo."""
-    return tem_segredo_texto(p.read_text(encoding="utf-8", errors="replace"))
+    return tem_segredo_texto(caminhos.ler_texto(p))
 
 
 def tem_segredo_bytes(b, nome):

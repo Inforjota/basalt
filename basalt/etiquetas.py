@@ -70,7 +70,7 @@ def do_espaco(esp) -> list[dict]:
     textos = []
     for p in caminhos.notas(esp.real):
         try:
-            textos.append(p.read_text(encoding="utf-8"))
+            textos.append(caminhos.ler(p).decode("utf-8"))
         except (OSError, UnicodeDecodeError):
             continue
     c = contar(textos)

@@ -129,4 +129,5 @@ def tem_segredo_bytes(b: bytes) -> bool:
 
 
 def tem_segredo_ficheiro(p: Path) -> bool:
-    return tem_segredo_texto(Path(p).read_text(encoding="utf-8", errors="replace"))
+    from . import caminhos
+    return tem_segredo_texto(caminhos.ler_texto(p))

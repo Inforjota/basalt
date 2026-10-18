@@ -244,7 +244,7 @@ def todas_notas():
         # só nomes que se conseguem abrir (ex.: as cópias «x.CONFLITO-<data>.md» ficam de fora; davam 404)
         if p.name in IGNORA or p.stem in ex or not NOME_RX.match(p.stem):
             continue
-        t = p.read_text(encoding="utf-8", errors="replace")
+        t = caminhos.ler_texto(p)
         out.append({"nome": p.stem, "titulo": campo(t, "name") or p.stem, "desc": campo(t, "description"),
                     "tipo": (campo(t, "type") or "outros"), "mtime": int(p.stat().st_mtime), "editavel": True})
     cs = cats_de()
@@ -270,7 +270,7 @@ def backlinks(nome):
         loc = localizar(o["nome"])
         if not loc or o["nome"] == nome:
             continue
-        t = loc[0].read_text(encoding="utf-8", errors="replace")
+        t = caminhos.ler_texto(loc[0])
         linha = next((l.strip() for l in t.splitlines() if rx.search(l)), None)
         if linha is not None:
             out.append({"nome": o["nome"], "contexto": re.sub(r"\s+", " ", linha)[:220]})
@@ -385,7 +385,7 @@ def entrada():
     if not pend:
         return []
     out = []
-    textos = {p.stem: _norm(p.read_text(encoding="utf-8", errors="replace")) for p in caminhos.notas(COPIA)} if pend else {}
+    textos = {p.stem: _norm(caminhos.ler_texto(p)) for p in caminhos.notas(COPIA)} if pend else {}
     pal = {n: _palavras(t) for n, t in textos.items()}
     df = {}
     for ws in pal.values():
@@ -456,7 +456,7 @@ def entrada_juntar(t, nome, auto=None):
             return 400, {"erro": "Escolhe uma nota desta memória."}
         if tem_segredo_texto(reg["texto"]):
             return 400, {"erro": "A ideia tem o que parece uma password ou chave — guarda-a num gestor de palavras-passe, não numa nota."}
-        b = loc[0].read_bytes(); atual = b.decode("utf-8", "replace")
+        b = caminhos.ler(loc[0]); atual = b.decode("utf-8", "replace")
         data = time.strftime("%d/%m/%Y", time.strptime(reg["t"][:10], "%Y-%m-%d")) if re.match(r"\d{4}-\d{2}-\d{2}", reg.get("t", "")) else time.strftime("%d/%m/%Y")
         linha = f"- {data}: {reg['texto'].strip()} _(da Entrada, via {reg.get('de', '?')})_"
         novo = atual.rstrip("\n") + "\n\n" + linha + "\n"
@@ -492,7 +492,7 @@ def entrada_apagar(t):
 # PORTE: era um modelo local fixo; agora `ia.actual().chat_json`. Sem IA de chat a entrada automática não faz nada (vigia_entrada
 # nem arranca). Os travões usam `sim` do motor: em pesquisa só por palavras a escala é outra e quase nada passa (fica «dúvida»).
 def _candidatas(texto, n=3):
-    textos = {p.stem: _norm(p.read_text(encoding="utf-8", errors="replace")) for p in caminhos.notas(COPIA)}
+    textos = {p.stem: _norm(caminhos.ler_texto(p)) for p in caminhos.notas(COPIA)}
     pal = {k: _palavras(v) for k, v in textos.items()}
     df = {}
     for ws in pal.values():
@@ -510,7 +510,7 @@ def _candidatas(texto, n=3):
 def decidir_entrada(texto):
     """→ {acao: juntar|lixo|duvida, nota, confianca, motivo}. A decisão final é dos travões, não do modelo."""
     cands, raras = _candidatas(texto)
-    desc = "\n".join(f"{i}) {k} — {campo((COPIA / (k + '.md')).read_text(encoding='utf-8', errors='replace'), 'description')[:200]}"
+    desc = "\n".join(f"{i}) {k} — {campo(caminhos.ler_texto(COPIA / (k + '.md')), 'description')[:200]}"
                      for i, (k, *_) in enumerate(cands, 1)) or "(nenhuma)"
     try:
         d = ia_mod.actual().chat_json(f"""Ideia guardada à pressa pelo utilizador: «{texto[:1500]}»
@@ -611,7 +611,7 @@ def entrada_desfazer(t):
     if reg.get("juntado_em") and reg.get("linha"):
         loc = localizar(reg["juntado_em"])
         if loc and loc[1]:
-            b = loc[0].read_bytes(); txt = b.decode("utf-8", "replace")
+            b = caminhos.ler(loc[0]); txt = b.decode("utf-8", "replace")
             if reg["linha"] in txt:
                 novo = txt.replace("\n\n" + reg["linha"], "", 1) if ("\n\n" + reg["linha"]) in txt else txt.replace(reg["linha"], "", 1)
                 c, g = gravar(reg["juntado_em"], novo, sha(b))
@@ -655,7 +655,7 @@ def grafo():
         loc = localizar(o["nome"])
         if not loc:
             continue
-        for alvo in ligacoes_de(loc[0].read_text(encoding="utf-8", errors="replace")):
+        for alvo in ligacoes_de(caminhos.ler_texto(loc[0])):
             if alvo in ids and alvo != o["nome"]:
                 links.append({"source": o["nome"], "target": alvo})
                 grau[o["nome"]] = grau.get(o["nome"], 0) + 1; grau[alvo] = grau.get(alvo, 0) + 1
@@ -707,7 +707,7 @@ def _reindexar(esp=None):
 def _correr_fusao(j, esp):
     with config.dentro(esp):
         try:
-            a = (REAL / f"{j['manter']}.md").read_text(encoding="utf-8"); b = (REAL / f"{j['fundir']}.md").read_text(encoding="utf-8")
+            a = caminhos.ler(REAL / f"{j['manter']}.md").decode("utf-8"); b = caminhos.ler(REAL / f"{j['fundir']}.md").decode("utf-8")
             j.update(estado="a_fundir", passo="A IA está a juntar as duas notas — pode levar 1-3 minutos."); _job_grava(j)
             m = unir.fundir_llm(a, b, j["manter"], j["fundir"])
             j.update(passo="A verificar que não se perdeu nada…"); _job_grava(j)
@@ -792,13 +792,13 @@ def indice():
     if tem_segredo_ficheiro(p):
         return {"markdown": "_O índice tem neste momento algo que parece uma password — não o mostro aqui._",
                 "atualizado": int(p.stat().st_mtime), "notas": 0}
-    t = p.read_text(encoding="utf-8", errors="replace")
+    t = caminhos.ler_texto(p)
     return {"markdown": t, "atualizado": int(p.stat().st_mtime), "notas": len(re.findall(r"\]\([^)]+\.md\)", t))}
 
 
 def estado():
     notas = todas_notas()
-    lig = sum(len(ligacoes_de(localizar(o["nome"])[0].read_text(encoding="utf-8", errors="replace")))
+    lig = sum(len(ligacoes_de(caminhos.ler_texto(localizar(o["nome"])[0])))
               for o in notas if localizar(o["nome"]))
     ped = 0
     try:
@@ -831,21 +831,21 @@ def gravar(nome, texto, base_hash):
         with trinco_copia():
             if not p.exists():
                 return 404, {"erro": "Nota não encontrada."}
-            b = p.read_bytes()
+            b = caminhos.ler(p)
             actual = sha(b)
             if base_hash != actual:         # o 409 traz SEMPRE o texto actual e o hash dele (lidos juntos)
                 return 409, {"estado": "conflito", "erro": "A nota mudou entretanto (noutro sítio). Recarrega para veres a versão nova.",
                              "actual": b.decode("utf-8", "replace"), "hash_actual": actual}
             pr = REAL / p.name              # a memória real já mudou e o vigia ainda não trouxe → não sobrepor
             if pr.exists():
-                rh = sha(pr.read_bytes())
+                rh = sha(caminhos.ler(pr))
                 if rh != actual and rh != _hash_no_ledger(p.name):
                     return 409, {"erro": "A nota acabou de mudar na memória (um agente); espera uns segundos e recarrega.",
                                  "hash_actual": actual, "actual": b.decode("utf-8", "replace"), "pendente": True, "estado": "ocupado"}
             dados = texto.encode("utf-8")
             motivo = cas().escrever(p, dados, actual, "web")
             if motivo:
-                b = p.read_bytes() if p.exists() else b""
+                b = caminhos.ler(p) if caminhos.regular(p) else b""
                 return 409, {"estado": "conflito", "erro": f"Não gravei: {motivo}. Revê a versão que lá está.",
                              "actual": b.decode("utf-8", "replace"), "hash_actual": sha(b)}
     except Ocupado:
@@ -880,7 +880,7 @@ def pacote():
     for o in todas_notas():
         loc = localizar(o["nome"])
         if loc:
-            b = loc[0].read_bytes()
+            b = caminhos.ler(loc[0])
             out.append(dict(o, texto=b.decode("utf-8", "replace"), hash=sha(b)))
     return {"gerado": int(time.time()), "notas": out}
 
@@ -974,7 +974,7 @@ MARCA_CONFIRMAR = "⚠️ a confirmar (versão offline vs agentes)"
 
 
 def _texto_hash(p):
-    b = p.read_bytes()
+    b = caminhos.ler(p)
     return b.decode("utf-8", "replace"), sha(b)
 
 
@@ -1478,7 +1478,7 @@ class H(BaseHTTPRequestHandler):
                     nome = g("nome"); loc = localizar(nome)
                     if not loc:
                         return self._json(404, {"erro": "Nota não encontrada (ou reservada por ter dados sensíveis)."})
-                    p, ed = loc; b = p.read_bytes(); t = b.decode("utf-8", errors="replace")
+                    p, ed = loc; b = caminhos.ler(p); t = b.decode("utf-8", errors="replace")
                     toque("ler", [nome])
                     return self._json(200, {"nome": nome, "editavel": ed, "texto": t, "hash": sha(b),
                                             "meta": {"name": campo(t, "name"), "description": campo(t, "description"), "type": campo(t, "type")},

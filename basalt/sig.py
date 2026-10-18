@@ -23,7 +23,7 @@ try:                                    # PORTE: o numpy era obrigatório; agora
 except ImportError:
     np = None
 
-from . import config, retidas
+from . import caminhos, config, retidas
 from . import entrada as entrada_mod      # «entrada» aqui é o comando do CLI
 from .config import Via
 from .ia import IA, IAIndisponivel, actual as ia, definir as definir_ia   # noqa: F401  (IA, definir_ia: para quem importa o sig)
@@ -224,7 +224,7 @@ def _retida_agora(nome, excl):
     if guardado and guardado[0] == marca:
         return guardado[1]
     try:
-        r = tem_segredo_texto(p.read_text(encoding="utf-8", errors="replace"))
+        r = tem_segredo_texto(caminhos.ler_texto(p))
     except OSError:
         r = True
     _RETIDA_AGORA[str(p)] = (marca, r)

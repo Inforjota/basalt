@@ -18,7 +18,7 @@ import re
 import sys
 import urllib.parse
 
-from . import __version__, config, entrada
+from . import __version__, caminhos, config, entrada
 from .config import Config, Utilizador
 from .lexical import IndiceLexical, tokens
 from .segredos import MOTIVO as MOTIVO_SEGREDO, SEGREDO_RX, tem_segredo_texto
@@ -205,7 +205,7 @@ class ServidorMCP:
         loc = self.web.localizar(nome)
         if not loc:
             return None
-        b = loc[0].read_bytes()
+        b = caminhos.ler(loc[0])
         return loc, b, b.decode("utf-8", "replace")
 
     def _t_ler_nota(self, a, u):

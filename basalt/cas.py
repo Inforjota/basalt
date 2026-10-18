@@ -18,6 +18,7 @@ trazia o mtime da nota — uma nota de 90 dias era podada no mesmo instante) e r
 import ctypes, hashlib, os, re, time
 from pathlib import Path
 
+from . import caminhos
 from .config import Via
 
 _libc = ctypes.CDLL(None, use_errno=True)
@@ -72,6 +73,14 @@ def trocar(alvo, novo, esperado, rotulo="cas"):
     """põe `novo` (bytes; None = apagar) em `alvo`, que tinha o hash `esperado` (None = não existia).
     Devolve (Troca, "") — falta confirmar() — ou (None, motivo) se nem trocou (o alvo fica como estava)."""
     alvo = Path(alvo)
+    # ronda 10 (achado G4 da r3): nem a nota nem nenhuma pasta acima dela (até à âncora, a raiz de dados) pode ser uma ligação
+    # simbólica — `A/copia` → `B/copia` escrevia na conta B. A troca continua por caminho (renameat2); verifica-se imediatamente antes.
+    try:
+        caminhos.pasta_contida(alvo.parent)
+        if os.path.islink(alvo):
+            raise caminhos.Recusado(40, "ligação simbólica", str(alvo))
+    except caminhos.Recusado:
+        return None, "a nota ou a pasta dela é uma ligação simbólica — não escrevo"
     if esperado is None:
         if novo is None:
             return None, "nada a fazer"

@@ -17,7 +17,7 @@ sem IA não faz nada (e não deixa a memória a meio).
 import datetime, fcntl, hashlib, json, os, re, subprocess, sys, time, uuid
 from pathlib import Path
 
-from . import arrumar as arr, cas, config, retidas, unir
+from . import arrumar as arr, caminhos, cas, config, retidas, unir
 from . import ia as _ia
 from .config import Via
 
@@ -30,12 +30,12 @@ HOJE = datetime.date.today().isoformat()
 
 
 def ler(n):
-    return (REAL / f"{n}.md").read_text(encoding="utf-8")
+    return caminhos.ler(REAL / f"{n}.md").decode("utf-8")
 
 
 def _ler2(n):
     """(texto, hash do que se leu) — o hash é o «esperado» do CAS na escrita que se segue."""
-    b = (REAL / f"{n}.md").read_bytes()
+    b = caminhos.ler(REAL / f"{n}.md")
     return b.decode("utf-8"), cas.sha(b)
 
 
@@ -60,7 +60,7 @@ def corpo(t):
 def estrela3(n):
     if not (REAL / "MEMORY.md").exists():          # PORTE: sem índice não há ⭐⭐⭐ (antes dava erro)
         return False
-    idx = (REAL / "MEMORY.md").read_text(encoding="utf-8")
+    idx = caminhos.ler(REAL / "MEMORY.md").decode("utf-8")
     return any(f"({n}.md)" in l and "⭐⭐⭐" in l for l in idx.splitlines())
 
 
@@ -151,7 +151,7 @@ def arquivar(principal, velha):
             tv2 = tv[:m.end()] + marca + tv[m.end():] if m else marca + tv
             mudou = _escrever(velha, tv2, hv) or mudou
         idx = REAL / "MEMORY.md"
-        b = idx.read_bytes() if idx.exists() else b""                    # PORTE: sem índice não há linha a tirar
+        b = caminhos.ler(idx) if idx.exists() else b""                    # PORTE: sem índice não há linha a tirar
         t = b.decode("utf-8")
         novo = "".join(l for l in t.splitlines(keepends=True) if f"({velha}.md)" not in l)
         if novo != t:

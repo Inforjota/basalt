@@ -147,7 +147,7 @@ def pendentes_soltos():
     for p in sorted(caminhos.notas(PASTA)):
         if p.name == "MEMORY.md" or p.stat().st_mtime > lim:
             continue
-        linhas = [l.strip("-* ").strip() for l in p.read_text(encoding="utf-8", errors="replace").splitlines() if marca.search(l)]
+        linhas = [l.strip("-* ").strip() for l in caminhos.ler_texto(p).splitlines() if marca.search(l)]
         if linhas:
             out.append((int((agora - p.stat().st_mtime) / 86400), p.stem, linhas[:2]))
     return sorted(out, reverse=True)

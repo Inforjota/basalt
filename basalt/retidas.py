@@ -41,7 +41,7 @@ def notas(pasta, ignora=IGNORA):
         if p.name in ignora or ".bak" in p.name or ".CONFLITO-" in p.name:
             continue
         try:
-            t = p.read_text(encoding="utf-8", errors="replace")
+            t = caminhos.ler_texto(p)
         except OSError:
             continue
         if retida(p.stem, t, excl):
@@ -61,7 +61,7 @@ def nomes_retidos(pasta):
             out.add(p.stem)
             continue
         try:
-            if tem_segredo_texto(p.read_text(encoding="utf-8", errors="replace")):
+            if tem_segredo_texto(caminhos.ler_texto(p)):
                 out.add(p.stem)
         except OSError:
             continue
