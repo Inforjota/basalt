@@ -43,6 +43,8 @@ GANCHO = ('window.__t = {guardarEdicaoOffline: guardarEdicaoOffline, sincronizar
           'dono: function(){ return typeof DONO === "undefined" ? null : DONO; }, '
           'donoOk: function(){ return typeof DONO_OK === "undefined" ? null : DONO_OK; }, '
           'outraConta: function(){ return typeof OUTRA_CONTA === "undefined" ? null : OUTRA_CONTA; }, '
+          # ronda 10 (G1 da r3): «a página abriu sem rede com a cópia de A» = DONO=A ainda por confirmar
+          'donoPorConfirmar: function(){ if(typeof DONO_OK !== "undefined") DONO_OK = false; }, '
           # ronda 9 (achados 2-5 da ronda 8): a cópia apagada a meio, o relógio da meta e o protocolo do SW
           'confirmarGravacaoComRede: typeof confirmarGravacaoComRede === "function" ? confirmarGravacaoComRede : null, '
           'confirmarEnvioFila: typeof confirmarEnvioFila === "function" ? confirmarEnvioFila : null, '

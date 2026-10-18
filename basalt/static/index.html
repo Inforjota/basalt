@@ -922,6 +922,9 @@ const EN = {
   "gravar outra vez": "save again",
   "a nota mudou entretanto.": "the note changed in the meantime.",
   "copiar o meu texto": "copy my text",
+  "esta nota foi aberta com outra conta, e entretanto entrou outra neste browser — não gravei em nome da conta nova.": "this note was opened with another account, and a different one has signed in on this browser since — I didn't save on behalf of the new account.",
+  "entrou outra conta neste browser desde que abriste esta nota — não gravei em nome dela. A tua edição ficou guardada neste aparelho, à parte, em nome da conta com que a abriste, e sobe quando essa conta voltar a entrar.": "another account signed in on this browser since you opened this note — I didn't save on its behalf. Your edit was kept on this device, set aside under the account you opened it with, and will upload when that account signs in again.",
+  "entrou outra conta neste browser desde que abriste esta nota — não gravei em nome dela, nem guardei (não sei de que conta era). Copia o teu texto.": "another account signed in on this browser since you opened this note — I didn't save on its behalf, nor keep it (I don't know which account it belonged to). Copy your text.",
   "recarregar": "reload",
   "copiado.": "Copied.",
   "copiado (modo alternativo).": "Copied (compatibility mode).",
@@ -1296,6 +1299,9 @@ async function apiSend(method, path, body, opcoes){
   // (um pedido só por separador; sem rede falha depressa e a escrita segue para a fila como antes)
   if(!DONO_OK && !OUTRA_CONTA){ try{ await verificarDono(); }catch(e){} }
   if(!DONO) throw erroSemDono();                         // ronda 9 (achado G2 da ronda 2): antes seguia sem dono
+  // ronda 10 (achado G1 da r3): a escrita de uma edição leva o dono com que ela foi aberta; se a conta do separador mudou
+  // entretanto (verificarDono acabou de adoptar outra), não se envia — nem com o dono novo, nem com o antigo
+  if(opcoes && opcoes.dono !== undefined && DONO !== opcoes.dono) throw erroEdicaoDeOutraConta();
   var res, inicio = agora(), geracaoAntes = GERACAO_COPIA;   // ronda 7
   try{
     res = await fetch(path, {
@@ -1890,7 +1896,10 @@ function marcarApagadaAqui(nome, inicio, geracao){
 /* ronda 6 (achado G6 da ronda 4): a geração da cópia lê-se DENTRO da transacção que escreve — se já não é a que o pedido capturou,
    alguém apagou (e religou) a cópia entretanto e nada se escreve (saida.valor = "desligada"). Uma geração persistente acima
    da que este separador conhece (outro separador apagou, sem localStorage) passa a ser a dele. geracao == null: só isso. */
-function seGeracaoIgual(tx, saida, geracao, fn){
+function seGeracaoIgual(tx, saida, geracao, fn, dono){
+  // ronda 10 (achado G1 da r3): `dono` = o dono com que a edição foi ABERTA. Se este separador já mudou de conta, ou a cópia é de
+  // outra, nada se escreve (saida.valor = "outra-conta") — antes comparava-se só com o DONO actual, que já podia ser o novo.
+  if(dono !== undefined && DONO !== dono){ saida.valor = "outra-conta"; return; }
   var g = tx.objectStore("meta").get("geracao");
   g.onsuccess = function(){
     var actual = (g.result && Number(g.result.valor)) || 0;
@@ -2071,8 +2080,9 @@ function seCopiaLigada(tx, saida, fn){
 }
 /* ronda 7 (geração na gravação offline): `geracao` é a da cópia quando a edição começou a gravar — se outro separador apagou
    e religou a cópia entretanto (sem localStorage este não sabe), a edição é de uma cópia que já não existe: não entra */
-function guardarEdicaoOffline(nome, baseTexto, texto, geracao){
+function guardarEdicaoOffline(nome, baseTexto, texto, geracao, dono){
   if(COPIA_DESLIGADA) return Promise.reject(erroCopiaDesligada());
+  if(dono !== undefined && DONO !== dono) return Promise.reject(erroEdicaoDeOutraConta());   // ronda 10 (G1)
   return transacao(["fila", "notas", "meta"], function(tx, saida){
     var fila = tx.objectStore("fila"), notas = tx.objectStore("notas");
     seCopiaLigada(tx, saida, function(){ seGeracaoIgual(tx, saida, geracao, function(){
@@ -2089,11 +2099,47 @@ function guardarEdicaoOffline(nome, baseTexto, texto, geracao){
           if(local) instanteNaTx(tx, function(q){ local.texto = texto; local.porEnviar = true; local.guardadoEm = q; notas.put(local); });   // ronda 9 (achado 4 da ronda 8)
         };
       };
-    }); });
+    }, dono); });
   }).then(function(v){
+    if(v === "outra-conta") throw erroEdicaoDeOutraConta();
     if(v === "desligada") throw (COPIA_DESLIGADA ? erroCopiaDesligada() : erroCopiaRefeita());
     return atualizarContadorFila();
   });
+}
+/* ronda 10 (achado G1 da r3): uma edição aberta com a conta A, que este separador só vai gravar depois de ter passado a ser de B
+   (abriu sem rede com a cópia de A, e entretanto B entrou), NUNCA sobe nem fica na cópia de B. Fica à parte em
+   «pendentes-de:A» — como o resto do que A tinha por enviar (trocarDono) — e sobe em nome de A quando A voltar a entrar.
+   Se a cópia voltou entretanto a ser de A (outro separador), vai directa para a fila dela. Sem dono conhecido (""): não se guarda
+   (não se sabe de quem é) — o texto fica no editor, com o botão de copiar. */
+function guardarEdicaoDeOutraConta(dono, nome, baseTexto, texto){
+  if(!dono) return Promise.resolve("sem-dono");
+  return transacao(["fila", "meta"], function(tx, saida){
+    var meta = tx.objectStore("meta"), gd = meta.get("dono");
+    saida.valor = "pendente";
+    gd.onsuccess = function(){
+      var actual = gd.result ? gd.result.valor : undefined;
+      function item(ja){
+        var i = {nome: nome, base_texto: ja && ja.base_texto != null ? ja.base_texto : baseTexto, texto: texto, quando: Date.now(), rev: novaRevisao()};
+        return i;
+      }
+      if(actual === dono){                                   // a cópia é outra vez de A: fila normal dela
+        var fila = tx.objectStore("fila"), gf = fila.get(nome);
+        gf.onsuccess = function(){ fila.put(item(gf.result)); saida.valor = "fila"; };
+        return;
+      }
+      var gp = meta.get("pendentes-de:" + dono);
+      gp.onsuccess = function(){
+        var ja = gp.result || {chave: "pendentes-de:" + dono, fila: [], conflitos: []};
+        var antes = (ja.fila || []).filter(function(i){ return i.nome === nome; })[0];
+        meta.put({chave: "pendentes-de:" + dono, fila: juntarPorNome(ja.fila, [item(antes)]), conflitos: ja.conflitos || []});
+      };
+    };
+  });
+}
+function erroEdicaoDeOutraConta(){
+  var e = new Error(t("esta nota foi aberta com outra conta, e entretanto entrou outra neste browser — não gravei em nome da conta nova."));
+  e.edicaoDeOutraConta = true;
+  return e;
 }
 
 /* a revisão `rev` subiu: tira-a da fila SÓ se ainda for a que lá está; devolve "removida" ou "mais-nova" */
@@ -3802,6 +3848,7 @@ async function montarNotasShell(main, alvoInicial){
     var nota;
     try{
       nota = await apiGet("/api/nota?nome=" + encodeURIComponent(alvo.nome));
+      var donoVista = DONO;                            // ronda 10 (G1): a conta com que esta nota foi lida
     }catch(e){
       renderErrorBox(centro, tf("não consegui abrir esta nota: {erro}", {erro: e.message}), function(){ abrir(alvo); });
       return;
@@ -3812,6 +3859,8 @@ async function montarNotasShell(main, alvoInicial){
     var geracaoVista = await geracaoActual();          // ronda 9 (achado 5): ANTES de ler o conflito (na dúvida, os botões recusam)
     try{ conflito = await idbGet("conflitos", alvo.nome); }catch(e){}
     try{ filaItem = await idbGet("fila", alvo.nome); }catch(e){}
+    if(DONO !== donoVista){ abrir(alvo); return; }   // ronda 10 (G1): mudou de conta a meio da leitura — lê-se outra vez
+    nota.dono = donoVista;                             // ronda 10 (G1): a edição fica presa a esta conta
     if(conflito){
       renderConflito(nota, conflito, centro, contexto, geracaoVista);
       return;
@@ -3935,7 +3984,8 @@ function renderConflito(nota, conflito, centro, contexto, geracaoVista){
     var geracao = await geracaoActual();                       // ronda 6 G6: a persistente
     function copiaMudou(){ return COPIA_DESLIGADA || geracao !== GERACAO_COPIA; }
     try{
-      var res = await apiSend("PUT", "/api/nota?nome=" + encodeURIComponent(nota.nome), {texto: texto, base_hash: baseHash});
+      var res = await apiSend("PUT", "/api/nota?nome=" + encodeURIComponent(nota.nome), {texto: texto, base_hash: baseHash},
+                              nota.dono !== undefined ? {dono: nota.dono} : undefined);   // ronda 10 (G1)
       if(copiaMudou()){
         showToast(msgOk + " " + t("A cópia deste aparelho foi apagada entretanto — não lhe toquei."));
         reabrir();
@@ -3987,7 +4037,7 @@ function renderConflito(nota, conflito, centro, contexto, geracaoVista){
   }
   centro.querySelector("#conf-mao").addEventListener("click", function(){
     var notaMesclada = {
-      nome: nota.nome, projeto: nota.projeto, editavel: nota.editavel,
+      nome: nota.nome, projeto: nota.projeto, editavel: nota.editavel, dono: nota.dono,   // ronda 10 (G1)
       texto: "<<<<<<< " + t("SERVIDOR (actual)") + "\n" + actualTexto + "\n=======\n" + conflito.teu + "\n>>>>>>> " + t("A TUA VERSÃO (sem rede)") + "\n",
       hash: actualHash, meta: nota.meta, backlinks: nota.backlinks || [],
       parecidas: nota.parecidas || [], historico: nota.historico || [], categorias: nota.categorias || [],
@@ -4085,6 +4135,9 @@ function renderNotaCompleta(nota, centro, contexto){
     // um PUT com esse hash passava por cima do que os agentes mudaram, sem junção. Por isso grava-se na fila (com a base
     // original) e sobe logo pela junção de 3 vias.
     var editaSobreFila = !!nota.porEnviar && !nota.resolveConflito;
+    // ronda 10 (achado G1 da r3): a conta com que a nota foi aberta. A edição só grava (no servidor ou na fila deste aparelho) em
+    // nome DELA; se o separador passou a ser de outra conta, fica à parte para a conta certa (guardarEdicaoDeOutraConta).
+    var donoEdicao = nota.dono !== undefined ? nota.dono : DONO;
     var porGravar = false;
     var editorApi = null;
     var edInstance = null;               // só existe no modo CodeMirror — precisa de destruir() ao sair
@@ -4373,13 +4426,28 @@ function renderNotaCompleta(nota, centro, contexto){
     centro.querySelector("#ed-cancelar").addEventListener("click", cancelar);
     centro.querySelector("#ed-gravar").addEventListener("click", gravar);
 
+    // ronda 10 (G1): entrou outra conta neste separador desde que a nota abriu — nada sobe em nome dela; a edição fica à parte
+    // em nome da conta com que foi aberta (sobe quando ela voltar), e o texto continua no editor para copiar
+    async function gravadaParaOutraConta(texto){
+      var r = await guardarEdicaoDeOutraConta(donoEdicao, nota.nome, baseTextoEdicao, texto).catch(function(){ return "erro"; });
+      var guardou = (r === "pendente" || r === "fila");
+      banner.innerHTML = '<div class="state-error"><p>⚠️ ' +
+        (guardou ? t("entrou outra conta neste browser desde que abriste esta nota — não gravei em nome dela. A tua edição ficou guardada neste aparelho, à parte, em nome da conta com que a abriste, e sobe quando essa conta voltar a entrar.")
+                 : t("entrou outra conta neste browser desde que abriste esta nota — não gravei em nome dela, nem guardei (não sei de que conta era). Copia o teu texto.")) +
+        '</p><button id="ed-copiar-conta" class="btn" type="button">' + t("copiar o meu texto") + '</button></div>';
+      banner.querySelector("#ed-copiar-conta").addEventListener("click", function(){
+        try{ navigator.clipboard.writeText(texto).then(function(){ showToast(t("copiado.")); }); }catch(err){ showToast(t("não consegui copiar automaticamente — selecciona e copia à mão.")); }
+      });
+    }
+
     async function gravar(){
       banner.innerHTML = '<div class="state-loading"><span class="spinner"></span>' + t("a gravar…") + '</div>';
       var textoActual = editorApi.obterTexto();
+      if(DONO !== donoEdicao){ await gravadaParaOutraConta(textoActual); return; }   // ronda 10 (G1)
       var geracao = await geracaoActual();   // se a cópia for apagada (e religada) enquanto o PUT corre, o resultado já não toca na cópia
       if(editaSobreFila){
         try{
-          await guardarEdicaoOffline(nota.nome, baseTextoEdicao, textoActual, geracao);
+          await guardarEdicaoOffline(nota.nome, baseTextoEdicao, textoActual, geracao, donoEdicao);
           nota.texto = textoActual;
           banner.innerHTML = "";
           showToast(t("guardado — a juntar com a versão do servidor…"));
@@ -4387,13 +4455,14 @@ function renderNotaCompleta(nota, centro, contexto){
           renderVer();
           sincronizarFila();
         }catch(e2){
+          if(e2 && e2.edicaoDeOutraConta){ await gravadaParaOutraConta(textoActual); return; }
           banner.innerHTML = '<div class="state-error"><p>⚠️ ' + tf("não consegui guardar: {erro}", {erro: escapeHtml(e2.message)}) + "</p></div>";
         }
         return;
       }
       try{
         var res = await apiSend("PUT", "/api/nota?nome=" + encodeURIComponent(nota.nome),
-          {texto: textoActual, base_hash: nota.hash});
+          {texto: textoActual, base_hash: nota.hash}, {dono: donoEdicao});   // ronda 10 (G1)
         nota.texto = textoActual;
         nota.hash = res.hash;
         nota.porEnviar = false;
@@ -4408,6 +4477,7 @@ function renderNotaCompleta(nota, centro, contexto){
         limparSessaoEdicao();
         renderVer();
       }catch(e){
+        if(e && e.edicaoDeOutraConta){ await gravadaParaOutraConta(textoActual); return; }   // ronda 10 (G1): nada saiu
         if(e.status === 409 && e.data && e.data.pendente){
           banner.innerHTML = '<div class="state-error"><p>⚠️ ' + escapeHtml(e.message) + '</p>' +
             '<button id="ed-de-novo" class="btn btn-primary" type="button">' + t("gravar outra vez") + '</button></div>';
@@ -4448,7 +4518,7 @@ function renderNotaCompleta(nota, centro, contexto){
         }else if(e.semRede){
           // sem rede — guarda no aparelho em vez de perder a edição; sobe sozinho quando houver rede
           try{
-            await guardarEdicaoOffline(nota.nome, baseTextoEdicao, textoActual, geracao);
+            await guardarEdicaoOffline(nota.nome, baseTextoEdicao, textoActual, geracao, donoEdicao);
             if(nota.resolveConflito){ nota.resolveConflito = false; await apagarConflitoSeIgual(nota.nome, nota.conflitoQuando, geracao).catch(function(){}); }   // 
             nota.texto = textoActual;
             nota.porEnviar = true;
@@ -4457,6 +4527,7 @@ function renderNotaCompleta(nota, centro, contexto){
             limparSessaoEdicao();
             renderVer();
           }catch(e2){
+            if(e2 && e2.edicaoDeOutraConta){ await gravadaParaOutraConta(textoActual); return; }
             banner.innerHTML = '<div class="state-error"><p>⚠️ ' + tf("não consegui guardar nem no aparelho: {erro}", {erro: escapeHtml(e2.message)}) + "</p></div>";
           }
         }else{
