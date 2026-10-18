@@ -173,3 +173,35 @@ def test_g4_controlo_raiz_de_dados_simbolica_e_de_confianca(tmp_path):
     with config.dentro(a):
         assert web.localizar("minha") is not None
         assert "MEU" in caminhos_ler(web.localizar("minha")[0]).decode()
+
+
+# ───────────────────────── G6: a decisão de retenção segue o conteúdo actual, não a marca do ficheiro ─────────────────────────
+@pytest.mark.parametrize("como", ["no-sitio", "outro-inode"])
+def test_g6_nota_trocada_com_o_mesmo_tamanho_e_mtime_volta_a_ser_lida(memoria, tmp_path, como):
+    from basalt import sig
+    from conftest import FM
+    limpa = FM.format(nome="router") + "\nO router do escritório reinicia às segundas sem avisar.\n"
+    suja = FM.format(nome="router") + "\nsenha do router: Tr0ub4dor&3 e mais nada a dizer.\n"
+    suja = suja[:-1].ljust(len(limpa.encode("utf-8")) - (len(suja.encode("utf-8")) - len(suja)) - 1, "x") + "\n"
+    assert len(suja.encode("utf-8")) == len(limpa.encode("utf-8"))
+    from basalt.segredos import tem_segredo_texto
+    assert tem_segredo_texto(suja) and not tem_segredo_texto(limpa)
+    router = memoria.real / "router.md"
+    router.write_text(limpa, encoding="utf-8")
+    c = sig.db()
+    c.execute("INSERT INTO pedaco (fonte, ref, titulo, trecho, hash, vec) VALUES ('nota', 'router#0', 'router', ?, 'h', x'')",
+              ("[router] O router do escritório reinicia às segundas.",))
+    c.commit()
+    refs = lambda: {r.split("#")[0] for f, r, *_ in sig.carregar(c) if f == "nota"}
+    assert refs() == {"router"}                                              # controlo: limpa, vai para a pergunta
+    st = router.stat()
+    if como == "no-sitio":
+        router.write_text(suja, encoding="utf-8")
+    else:
+        novo = tmp_path / "router.novo"
+        novo.write_text(suja, encoding="utf-8")
+        os.replace(novo, router)
+    os.utime(router, ns=(st.st_atime_ns, st.st_mtime_ns))                    # o mesmo mtime e o mesmo tamanho
+    assert router.stat().st_mtime_ns == st.st_mtime_ns and router.stat().st_size == st.st_size
+    assert refs() == set(), "a decisão antiga (limpa) ficou: os pedaços de uma nota que agora tem uma password iam para a pergunta"
+    c.close()
