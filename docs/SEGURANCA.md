@@ -67,7 +67,8 @@
   com nome de Claude/ChatGPT/OpenAI/Anthropic que volte para outro sítio é recusado antes do consentimento. PKCE S256 obrigatório, `resource`
   e `iss` conferidos. O consentimento é uma página do Basalt, com a sessão do Basalt (ou do proxy): leva um CSRF preso ao pedido, à
   conta e à sessão; o «Permitir» só se aceita da mesma origem (`Origin`, `Sec-Fetch-Site`), sem `Authorization`; a página tem
-  `Content-Security-Policy` estrita (`form-action` só para o próprio Basalt e o endereço de regresso, `frame-ancestors 'none'`). Um pedido
+  `Content-Security-Policy` estrita (`default-src 'none'`, sem scripts, `frame-ancestors 'none'`; sem `form-action`, que o Chrome aplicaria
+  também às redirecções que o claude.ai/ChatGPT fazem a seguir ao «Permitir» e partia a ligação). Um pedido
   fica preso à primeira conta que o abre. Tokens opacos (só o sha256 em `oauth.sqlite`, 0600), presos à conta, ao espaço e à
   senha: mudar a senha ou apagar a conta revoga-os; um `basalt.toml` que não carrega fecha também o `/mcp` sem gastar a renovação.
   Código e renovação são de uso único — o segundo uso revoga a ligação inteira (quem roubou um deles fica sem nada). Os tokens OAuth

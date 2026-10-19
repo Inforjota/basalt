@@ -483,6 +483,58 @@ def test_samesite_strict(srv, navegador, tmp_path):
         app.shutdown(); app.server_close()
 
 
+def test_regresso_com_segunda_redireccao(srv, navegador):
+    """o browser carrega em «Permitir» → 303 para a aplicação → a aplicação redirige OUTRA VEZ, para outra origem (é o que o callback
+    do claude.ai/ChatGPT pode fazer a seguir). O Chrome aplica o `form-action` da CSP a toda a cadeia de redirecções que se segue a
+    um formulário: se a página de consentimento prender o form-action à origem do regresso, a 2.ª redirecção fica bloqueada e a pessoa
+    vê uma página em branco (foi o que partiu a ligação ao claude.ai noutro servidor desta família)."""
+    s = srv(nome="localhost")
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    recebido = {}
+
+    class App(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path.startswith("/cb"):                      # 1.ª paragem (127.0.0.1): manda para a 2.ª, noutra origem (localhost)
+                recebido["cb"] = dict(urllib.parse.parse_qsl(urllib.parse.urlsplit(self.path).query))
+                self.send_response(302)
+                self.send_header("Location", f"http://localhost:{self.server.server_address[1]}/fim")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            recebido["fim"] = self.path
+            b = b"<p id=fim>fim</p>"
+            self.send_response(200); self.send_header("Content-Type", "text/html"); self.send_header("Content-Length", str(len(b)))
+            self.end_headers(); self.wfile.write(b)
+
+        def log_message(self, *a):
+            pass
+    app = ThreadingHTTPServer(("127.0.0.1", 0), App)
+    threading.Thread(target=app.serve_forever, daemon=True).start()
+    try:
+        cb = f"http://127.0.0.1:{app.server_address[1]}/cb"
+        st, cli, _ = registar(s, [cb])
+        v, c = pkce()
+        st, pag, _ = pedir_autorizacao(s, cli["client_id"], c, redirect=cb, state="st2")
+        pid = pid_de(pag)
+        ctx = navegador.new_context()
+        try:
+            p = ctx.new_page()
+            p.goto(s.url + "/entrar")
+            p.fill("#email", ANA); p.fill("#senha", SENHA); p.click("#ok")
+            p.wait_for_url(s.url + "/", timeout=10000)
+            p.goto(s.url + f"/oauth/authorize?pedido={pid}")
+            p.wait_for_selector("button[value=permitir]", timeout=10000)
+            p.click("button[value=permitir]")
+            p.wait_for_selector("#fim", timeout=10000)                       # chegou à 2.ª paragem
+            assert p.url == f"http://localhost:{app.server_address[1]}/fim"
+        finally:
+            ctx.close()
+        assert recebido["cb"]["state"] == "st2" and recebido["cb"].get("code") and recebido.get("fim") == "/fim"
+        assert trocar(s, cli["client_id"], v, recebido["cb"]["code"], redirect=cb)[0] == 200
+    finally:
+        app.shutdown(); app.server_close()
+
+
 def test_entrar_volta_ao_pedido(srv, navegador):
     """sem sessão: o consentimento manda para /entrar?volta=…, e depois de entrar volta-se ao pedido (só a esse tipo de endereço)."""
     s = srv(nome="localhost")
@@ -636,8 +688,9 @@ def test_csp_consentimento(srv):
     st, pag, cab = s.pedir("GET", f"/oauth/authorize?pedido={pid_de(pag)}", cab={"Cookie": cookie})
     assert st == 200
     csp = cab["content-security-policy"]
-    for d in ("default-src 'none'", "frame-ancestors 'none'", "base-uri 'none'", "form-action 'self' https://claude.ai"):
+    for d in ("default-src 'none'", "frame-ancestors 'none'", "base-uri 'none'"):
         assert d in csp, csp
+    assert "form-action" not in csp, csp           # o Chrome aplicava-o à cadeia de redirecções a seguir ao «Permitir» (ver test_regresso_com_segunda_redireccao)
     assert "script-src" not in csp and "<script" not in pag
     assert cab["x-frame-options"] == "DENY" and "no-store" in cab["cache-control"] and cab["x-content-type-options"] == "nosniff"
     assert cab["referrer-policy"] == "same-origin"

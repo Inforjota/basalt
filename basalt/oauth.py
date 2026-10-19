@@ -215,11 +215,6 @@ def redirect_coincide(pedido: str, registados) -> bool:
     return False
 
 
-def origem_de(u: str) -> str:
-    p = urllib.parse.urlsplit(u)
-    return f"{p.scheme}://{p.netloc}"
-
-
 def pkce_ok(verifier, challenge) -> bool:
     if not isinstance(verifier, str) or not _RE_VERIFIER.match(verifier) or not isinstance(challenge, str):
         return False
@@ -335,18 +330,19 @@ _CSS = ("body{font-family:system-ui,-apple-system,Segoe UI,sans-serif;background
         "padding:0;font-size:13px;text-decoration:underline;margin-top:14px}")
 
 
-def _csp(form_action: str = "") -> str:
-    return ("default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
-            + (" " + form_action if form_action else ""))
+# Sem `form-action`: o Chrome (e a CSP3) aplicam-no também a TODA a cadeia de redirecções que se segue ao «Permitir» — o callback do
+# claude.ai/ChatGPT redirige outra vez a seguir — e a pessoa ficava numa página em branco. O formulário não precisa dele: a página não
+# tem scripts (default-src 'none'), tudo o que vem de fora vai escapado, e o POST leva CSRF + Origin + Sec-Fetch-Site.
+CSP = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'; base-uri 'none'"
 
 
-def _pagina(h, status: int, titulo: str, corpo: str, idioma: str, form_action: str = "", extra=(), cabeca: str = ""):
+def _pagina(h, status: int, titulo: str, corpo: str, idioma: str, extra=(), cabeca: str = ""):
     b = (f"<!doctype html><html lang={idioma}><head><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
          f"<meta name=robots content=noindex>{cabeca}<title>{html.escape(titulo)}</title><style>{_CSS}</style></head>"
          f"<body><div class=c>{corpo}</div></body></html>").encode("utf-8")
     h.send_response(status)
     h.send_header("Content-Type", "text/html; charset=utf-8")
-    h.send_header("Content-Security-Policy", _csp(form_action))
+    h.send_header("Content-Security-Policy", CSP)
     h.send_header("X-Frame-Options", "DENY")
     for k, v in SEM_CACHE:
         h.send_header(k, v)
@@ -772,7 +768,7 @@ class OAuth:
                  f"<button class=p name=decisao value=permitir>{T['permitir']}</button></div>"
                  + (f"<button class=l name=decisao value=sair>{T['outra_conta']}</button>" if self.cfg.auth.modo == "senha" else "")
                  + f"</form><p class=n>{T['desligar']}</p>")
-        _pagina(h, 200, T["titulo"], corpo, i, form_action=origem_de(ru))
+        _pagina(h, 200, T["titulo"], corpo, i)
 
     # ── 2) POST /oauth/autorizar (Permitir / Recusar / Outra conta) ──
     def decidir(self, h):
