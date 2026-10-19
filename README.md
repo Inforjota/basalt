@@ -32,7 +32,7 @@ nunca sobrepor** o que tu escreveste. Funciona sem internet, num só ficheiro Py
 ## Instalar em 2 minutos
 
 ```bash
-git clone https://github.com/REPO_POR_DEFINIR/basalt && cd basalt
+git clone https://github.com/MrJQ1987/basalt && cd basalt
 python3 -m basalt iniciar --dados ~/basalt-dados --email tu@exemplo.pt   # pede a senha; cria basalt.toml e as pastas
 export BASALT_CONFIG=~/basalt-dados/basalt.toml                          # os comandos seguintes encontram o ficheiro
 python3 -m basalt serve                                                  # http://127.0.0.1:8121

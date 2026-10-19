@@ -158,10 +158,11 @@ def test_readme_iniciar_depois_serve_com_o_caminho_do_toml(doc):
     pytest.fail(f"{doc}: não há bloco de arranque com `iniciar`")
 
 
-def test_marcador_do_repositorio_nos_tres_docs():
-    for doc in ("README.md", "README.en.md", "docs/INSTALAR.md"):
+def test_endereco_do_repositorio_nos_docs_e_no_site():
+    for doc in ("README.md", "README.en.md", "docs/INSTALAR.md", "site/index.html"):
         t = _ler(doc)
-        assert "git clone https://github.com/REPO_POR_DEFINIR/basalt" in t, f"{doc}: falta o marcador REPO_POR_DEFINIR no clone"
+        assert "git clone https://github.com/MrJQ1987/basalt" in t, f"{doc}: falta o clone do repositório público"
+        assert "REPO_POR_DEFINIR" not in t, f"{doc}: ficou o marcador REPO_POR_DEFINIR"
         assert "github.com/…" not in t, f"{doc}: ficou um URL com reticências"
 
 

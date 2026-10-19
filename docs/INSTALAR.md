@@ -3,7 +3,7 @@
 ## 1. À mão (qualquer Linux com Python ≥ 3.11 e git)
 
 ```bash
-git clone https://github.com/REPO_POR_DEFINIR/basalt && cd basalt
+git clone https://github.com/MrJQ1987/basalt && cd basalt
 python3 -m basalt iniciar --dados ~/basalt-dados --email tu@exemplo.pt --nome "O teu nome"
 export BASALT_CONFIG=~/basalt-dados/basalt.toml      # os comandos seguintes (serve, indexar, utilizador…) encontram-no
 python3 -m basalt serve
