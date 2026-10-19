@@ -96,7 +96,9 @@ sozinho) ou corre `python3 -m basalt sincronizar` depois. Por HTTP já é o serv
    O claude.ai e o ChatGPT não usam tokens: ligam-se por OAuth (secção acima).
 3. Se o Basalt está atrás de um proxy com login (SSO), `location /mcp` **não** pode exigir esse login — o agente não tem
    browser. Com o OAuth, também `/.well-known/`, `/oauth/register` e `/oauth/token` ficam sem SSO (são chamados pela nuvem da IA);
-   `/oauth/authorize` e `/oauth/autorizar` abrem-se no teu browser e podem ficar com o login. Exemplo nginx:
+   `/oauth/authorize?pedido=…` e `/oauth/autorizar` abrem-se no teu browser e ficam com o login — mas a **1.ª** chamada a
+   `/oauth/authorize` (a query OAuth, com vários `&`) passa sem login, senão o SSO perde o `client_id` no regresso
+   (ver o exemplo em [INSTALAR.md](INSTALAR.md), secção do proxy). Exemplo nginx do `/mcp`:
    ```nginx
    location /mcp {                       # sem auth_request: o Basalt valida o Bearer
        proxy_pass http://127.0.0.1:8121;

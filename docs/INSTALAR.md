@@ -138,7 +138,23 @@ location ~ ^/(mcp|\.well-known/oauth-|oauth/(register|token)$) {   # chamadas pe
     proxy_set_header X-Basalt-Email "";
     client_max_body_size 1m;
 }
-# /oauth/authorize e /oauth/autorizar abrem-se no TEU browser: podem ficar atrás do login, como o resto.
+# /oauth/authorize — a 1.ª chamada (vinda da IA, com client_id=…&redirect_uri=…&state=…) também fica SEM login: muitos
+# proxies de SSO (oauth2-proxy com `rd=$request_uri`, por exemplo) não codificam o endereço de regresso e perdem tudo depois do
+# 1.º «&» — a IA mostra «client_id ?». Esta fase não precisa de conta: o Basalt só guarda o pedido e recarrega para
+# ?pedido=<id>, e é ESSA que tem de passar pelo login (é lá que se vê a conta e se aprova).
+location = /oauth/authorize {
+    if ($arg_pedido = "") { rewrite ^ /__basalt_oauth_inicio last; }
+    # … o mesmo auth_request / X-Basalt-Email do resto do sítio …
+    proxy_pass http://127.0.0.1:8121;
+}
+location = /__basalt_oauth_inicio {
+    internal;
+    proxy_pass http://127.0.0.1:8121/oauth/authorize$is_args$args;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Basalt-Email "";
+}
+# /oauth/autorizar (o botão «Permitir») fica atrás do login, como o resto.
 ```
 
 Depois, na interface, **🔌 Ligar a tua IA** → escolhe a IA → «Verificar ligação» (abre a página pelo `url_publico`). A prova
