@@ -403,6 +403,20 @@ def test_refresh_reutilizado(srv):
     assert renovar(s, outro["client_id"], t["refresh_token"])[0] == 400
 
 
+def test_renovacao_poda_tokens_expirados(srv):
+    """a poda da base (`_limpar`) só corria no registo de clientes e no /oauth/authorize — mas o caminho quente de uma ligação
+    é a renovação (uma por hora, durante meses): os tokens de acesso expirados ficavam na base até alguém voltar a ligar uma IA."""
+    import sqlite3
+    s = srv()
+    cid, t, _ = tokens(s)
+    agora = oauth.RELOGIO()
+    oauth.RELOGIO = lambda: agora + 8 * 86400                                       # o 1.º acesso expirou há mais de 7 dias
+    assert renovar(s, cid, t["refresh_token"])[0] == 200
+    with sqlite3.connect(str(s.dados / "oauth.sqlite")) as c:
+        n = c.execute("SELECT COUNT(*) FROM tokens WHERE tipo='acesso'").fetchone()[0]
+    assert n == 1, f"{n} tokens de acesso na base depois da renovação: o expirado há 8 dias devia ter saído"
+
+
 # ───────────────────────── 8. CSRF do consentimento ─────────────────────────
 def test_csrf_consentimento(srv):
     s = srv()

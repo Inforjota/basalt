@@ -988,6 +988,7 @@ class OAuth:
                 revogada, motivo = familia, "conta_mudou"
             else:
                 conn.execute("UPDATE tokens SET usado=? WHERE hash=?", (t, _h(tok)))
+                self._limpar(conn, t)           # a renovação é o caminho quente (uma por hora, meses a fio): a poda também corre aqui
                 par = self._emitir(conn, familia, recurso)
                 if par is None:
                     tx.desfazer()
