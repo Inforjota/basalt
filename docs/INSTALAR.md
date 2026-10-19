@@ -2,6 +2,8 @@
 
 ## 1. À mão (qualquer Linux com Python ≥ 3.11 e git)
 
+Windows ou Mac, ou só um portátil? Ver a [secção 8](#8-só-com-um-portátil).
+
 ```bash
 git clone https://github.com/inforjota/basalt && cd basalt
 python3 -m basalt iniciar --dados ~/basalt-dados --email tu@exemplo.pt --nome "O teu nome"
@@ -185,3 +187,45 @@ ficheiros Markdown com histórico git — `git -C <dados>/<espaco>/memoria log` 
 
 `git pull` e reiniciar o serviço (systemd: voltar a copiar `basalt/` para `/opt/basalt`; Docker: `docker compose build`).
 As versões seguem SemVer; o [CHANGELOG](../CHANGELOG.md) diz o que muda e o que é preciso fazer.
+
+## 8. Só com um portátil
+
+Não é preciso servidor. O que muda é **onde** corre e **quando** a IA da nuvem chega lá.
+
+**Sistema.** O Basalt precisa de Linux: as escritas seguras usam trocas atómicas do Linux (`renameat2`), e o arranque
+(`iniciar`, `serve`, `mcp`) prova-as na pasta dos dados — se não servirem, pára com uma mensagem a dizer porquê.
+
+| portátil | como |
+|---|---|
+| **Linux** | a secção 1, tal e qual |
+| **Windows** | no **WSL2** (`wsl --install`, depois a secção 1 dentro do Ubuntu). Os dados ficam no Linux (`~/basalt-dados`), **nunca** em `/mnt/c/…` — as pastas do Windows não têm as trocas atómicas. O Obsidian do Windows abre a pasta por `\\wsl$\Ubuntu\home\<tu>\basalt-dados\<espaco>\memoria`. |
+| **Mac** | com o **Docker Desktop** e os dados num volume do Docker (não numa pasta do Mac): `cd docker && docker compose -f compose.yml -f compose.volume.yml run --rm basalt iniciar --dados /dados --email tu@exemplo.pt --modo senha --escutar 0.0.0.0` e depois `… up -d`. Para ver as notas no Obsidian, `docker compose cp basalt:/dados/. ./copia-dados` (cópia, não a pasta viva). *Ainda não provado num Mac real — conta-nos como correu.* |
+
+**Sem internet para o Basalt** (só este computador): a interface em http://127.0.0.1:8121, o Obsidian na mesma pasta, e os
+agentes do terminal — Claude Code e Codex — ligados por stdio (ver [MCP.md](MCP.md)). Nada sai do portátil.
+
+**Claude (site, app, telemóvel) e ChatGPT.** Chamam o Basalt a partir da nuvem deles, por isso o portátil precisa de um
+endereço **https fixo** na internet. Sem servidor nem portas abertas no router, um túnel faz isso:
+
+- **Tailscale Funnel** (grátis, sem domínio): instala o Tailscale, entra, e `tailscale funnel --bg 8121` dá um endereço fixo do
+  tipo `https://portatil.nome-da-rede.ts.net`.
+- **Cloudflare Tunnel com um domínio teu**: `cloudflared tunnel create basalt`, `cloudflared tunnel route dns basalt notas.exemplo.pt`
+  e `cloudflared tunnel run --url http://127.0.0.1:8121 basalt`.
+- ⚠️ O túnel rápido sem conta (`cloudflared tunnel --url …`, endereço `*.trycloudflare.com`) **não serve**: o endereço muda a cada
+  arranque e as IAs ligadas deixam de o encontrar.
+
+Depois põe esse endereço no `basalt.toml` (secção 4, «Traz a tua IA»), reinicia e liga a IA pela página **🔌 Ligar a tua IA**:
+
+```toml
+[basalt]
+url_publico = "https://portatil.nome-da-rede.ts.net"
+anfitrioes = ["portatil.nome-da-rede.ts.net"]
+```
+
+Precisa de um utilizador com senha (`iniciar --email …`): em modo `aberto` não há OAuth. O Basalt continua a escutar só em
+`127.0.0.1` — quem chega de fora é o túnel.
+
+**O preço de ser um portátil:** a IA só chega às notas **enquanto o portátil está ligado, acordado e com o Basalt a correr**. Com
+a tampa fechada, o Claude no telemóvel diz que não consegue ligar-se — as notas não se perdem, só não estão lá. Para estar
+sempre disponível é preciso uma máquina sempre ligada (um mini-PC, um Raspberry Pi 5, ou uma VPS pequena): a secção 3 (systemd)
+e a 4 (proxy) servem para isso.

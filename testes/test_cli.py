@@ -95,3 +95,15 @@ def test_definir_chave_no_bloco_certo():
         cli.definir_chave_utilizador(t, "c@x.pt", "x", "y")
     t4 = cli.acrescentar_utilizador(t, cli.bloco_utilizador("c@x.pt", "c", "C", False))
     assert t4.index("c@x.pt") > t4.index("b@x.pt") and t4.index("c@x.pt") < t4.index("[ia]")
+
+
+def test_arranque_para_com_mensagem_clara_se_a_pasta_nao_tem_trocas_atomicas(tmp_path, monkeypatch):
+    """19/10/2026: num portátil Windows (/mnt/c no WSL) ou Mac (pasta partilhada com o Docker) a falha era só na 1.ª gravação."""
+    rc, out, err = correr("iniciar", "--dados", str(tmp_path / "d"), "--sem-ia")
+    assert rc == 0, err                                            # caso bom: disco Linux
+    from basalt import cas
+    monkeypatch.setattr(cas, "troca_suportada", lambda pasta: "Invalid argument (EINVAL)")
+    with pytest.raises(SystemExit) as e:
+        cli.main(["--config", str(tmp_path / "d" / "basalt.toml"), "serve"])
+    msg = str(e.value)
+    assert "não serve para os dados" in msg and "/mnt/c" in msg and "Só com um portátil" in msg

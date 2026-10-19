@@ -240,3 +240,30 @@ class TestSalvos:
 
     def test_guardar_a_parte_sem_nada_que_guardar_devolve_none(self, memoria, alvo):
         assert cas._guardar_a_parte(cas.Troca(alvo, "e", "n", memoria.real / ".nao-existe.tmp")) is None
+
+
+# ── 19/10/2026: o arranque prova as trocas atómicas na pasta dos dados (portátil Windows/Mac: /mnt/c, pasta partilhada) ──
+def test_troca_suportada_num_disco_linux(tmp_path):
+    from basalt import cas
+    assert cas.troca_suportada(tmp_path) is None
+    assert list(tmp_path.iterdir()) == []           # não deixa lixo
+
+
+def test_troca_recusada_explica_e_nao_deixa_lixo(tmp_path, monkeypatch):
+    import errno as _e
+    from basalt import cas
+
+    def sem_troca(a, b, flags):
+        raise OSError(_e.EINVAL, "Invalid argument", str(b))
+    monkeypatch.setattr(cas, "_renameat2", sem_troca)
+    motivo = cas.troca_suportada(tmp_path)
+    assert motivo and "EINVAL" in motivo
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_troca_sem_linux(tmp_path, monkeypatch):
+    from basalt import cas
+    monkeypatch.setattr(cas, "TEM_RENAMEAT2", False)
+    assert "não é Linux" in cas.troca_suportada(tmp_path)
+    with pytest.raises(OSError):
+        cas._renameat2(tmp_path / "a", tmp_path / "b", 0)

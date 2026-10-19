@@ -1,0 +1,11 @@
+# Mac e Windows (Docker Desktop): os dados num VOLUME do Docker (disco Linux), não numa pasta partilhada do anfitrião —
+# as escritas seguras precisam de trocas atómicas do Linux, que as pastas partilhadas não garantem (o arranque confere).
+#   docker compose -f compose.yml -f compose.volume.yml run --rm basalt iniciar --dados /dados --email tu@exemplo.pt --modo senha --escutar 0.0.0.0
+#   docker compose -f compose.yml -f compose.volume.yml up -d        → http://127.0.0.1:8121
+# Para tirar as notas: `docker compose cp basalt:/dados/. ./copia-dados` (ou o `exportar` dentro do contentor).
+services:
+  basalt:
+    volumes:
+      - basalt-dados:/dados           # substitui o ./dados do compose.yml (o Compose junta os volumes pelo caminho no contentor)
+volumes:
+  basalt-dados: {}

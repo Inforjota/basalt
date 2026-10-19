@@ -2,7 +2,8 @@
 FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
- && useradd --create-home --uid 1000 basalt
+ && useradd --create-home --uid 1000 basalt \
+ && mkdir /dados && chown basalt:basalt /dados   # um volume do Docker novo herda este dono (Mac/Windows: compose.volume.yml)
 WORKDIR /app
 COPY basalt/ /app/basalt/
 # Dentro do contentor o servidor escuta em 0.0.0.0 (senão a porta publicada não chega lá); o compose só a publica em

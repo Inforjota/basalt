@@ -15,14 +15,16 @@ escrita que ainda estivesse a decorrer no inode trocado perdia-se); em SALVOS a 
 trazia o mtime da nota — uma nota de 90 dias era podada no mesmo instante) e repete-se só o que tem o MESMO conteúdo agora
 (antes comparava-se o hash no nome, dado quando o ficheiro podia estar a meio de ser escrito: apagava-se a versão completa).
 """
-import ctypes, hashlib, os, re, time
+import ctypes, errno, hashlib, os, re, tempfile, time
 from pathlib import Path
 
 from . import caminhos
 from .config import Via
 
 _libc = ctypes.CDLL(None, use_errno=True)
-_libc.renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+TEM_RENAMEAT2 = hasattr(_libc, "renameat2")      # só Linux (glibc/musl); o macOS e o Windows não a têm → troca_suportada() explica
+if TEM_RENAMEAT2:
+    _libc.renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
 _AT_FDCWD, _NOREPLACE, _EXCHANGE = -100, 1, 2
 GRACA = float(os.environ.get("BASALT_CAS_GRACA", "0.3"))
 SALVOS = Via("cas_salvos")        # PORTE: antes BASALT_CAS_SALVOS ou ~/.local/share; agora a pasta do espaço (a variável ainda vence, ver config.Espaco.de)
@@ -31,9 +33,39 @@ SALVOS_MAX = int(os.environ.get("BASALT_CAS_SALVOS_MAX", "500"))      # e nunca 
 
 
 def _renameat2(a, b, flags):
+    if not TEM_RENAMEAT2:
+        raise OSError(errno.ENOSYS, "renameat2 não existe neste sistema (só Linux)", str(b))
     if _libc.renameat2(_AT_FDCWD, os.fsencode(str(a)), _AT_FDCWD, os.fsencode(str(b)), flags) != 0:
         e = ctypes.get_errno()
         raise OSError(e, os.strerror(e), str(b))
+
+
+def troca_suportada(pasta) -> str | None:
+    """Prova, na própria pasta, as duas trocas de que o CAS depende (criar sem sobrepor e trocar dois ficheiros de uma vez).
+    None = tudo bem; senão o motivo, para o arranque parar com uma mensagem clara em vez de falhar na 1.ª gravação.
+    Falham, p. ex.: macOS/Windows sem Linux, e no WSL as pastas do Windows (/mnt/c/…)."""
+    if not TEM_RENAMEAT2:
+        return "este sistema não é Linux (falta a renameat2)"
+    d = Path(tempfile.mkdtemp(prefix=".basalt-troca-", dir=pasta))
+    a, b, c = d / "a", d / "b", d / "c"
+    try:
+        a.write_bytes(b"a"); b.write_bytes(b"b")
+        _renameat2(a, b, _EXCHANGE)
+        if a.read_bytes() != b"b" or b.read_bytes() != b"a":
+            return "a troca atómica não trocou os ficheiros"
+        _renameat2(a, c, _NOREPLACE)
+        if a.exists() or c.read_bytes() != b"b":
+            return "o rename sem sobrepor não se comportou como devia"
+        return None
+    except OSError as e:
+        return f"{e.strerror or e} ({errno.errorcode.get(e.errno, e.errno)})"
+    finally:
+        for f in (a, b, c):
+            try:
+                f.unlink()
+            except FileNotFoundError:
+                pass
+        d.rmdir()
 
 
 def sha(b):

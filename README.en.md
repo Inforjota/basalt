@@ -42,7 +42,7 @@ python3 -m basalt serve                                                   # http
 Docker: run `iniciar` first, then `docker compose up -d` (the container needs the `basalt.toml`). As a systemd service:
 `sistema/basalt.service`. The exact steps, the HTTPS proxy and local AI are in [docs/INSTALAR.md](docs/INSTALAR.md) (Portuguese).
 
-Requirements: Python ≥ 3.11, `git` (history), Linux (CAS uses `renameat2`). Optional: Ollama for local embeddings and AI.
+Requirements: Python ≥ 3.11, `git` (history), Linux (CAS uses `renameat2`; Windows inside WSL2, Mac with Docker — see [“Só com um portátil”](docs/INSTALAR.md#8-só-com-um-portátil)). Optional: Ollama for local embeddings and AI.
 
 ## Configure
 

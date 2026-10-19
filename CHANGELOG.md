@@ -4,6 +4,12 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Portátil, Windows e Mac (19/10/2026)
+- O arranque (`iniciar`, `serve`, `mcp`) prova as trocas atómicas na pasta dos dados (`cas.troca_suportada`) e pára com uma mensagem
+  clara se não servirem (macOS/Windows sem Linux, `/mnt/c` no WSL, pastas partilhadas) — antes só falhava na 1.ª gravação, e no
+  macOS o `import` rebentava. `docs/INSTALAR.md` § 8 «Só com um portátil» (WSL2, Docker com volume, Tailscale Funnel/Cloudflare
+  Tunnel, o que muda com a tampa fechada); `docker/compose.volume.yml`; a imagem cria `/dados` do utilizador 1000.
+
 ### 1.0.0b1 — primeira versão pública (beta)
 - **Traz a tua IA** (OAuth 2.1 para o MCP remoto): o Claude (site, Desktop, telemóvel) e o ChatGPT ligam-se ao `/mcp` sem cabeçalhos,
   e o Claude Code também por OAuth. `basalt/oauth.py` (só stdlib): metadados do recurso e do servidor (RFC 9728/8414), registo

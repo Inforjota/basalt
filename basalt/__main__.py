@@ -179,6 +179,21 @@ def _git_init(esp):
 
 
 # ───────────────────────────── comandos ─────────────────────────────
+def _verificar_trocas(cfg: Config, a):
+    """as escritas seguras (CAS) precisam de trocas atómicas do Linux na pasta dos dados — provar antes de arrancar."""
+    from . import cas
+    for esp in _espacos(cfg, a):
+        for pasta in (esp.real, esp.copia):
+            pasta = pasta if pasta.exists() else pasta.parent
+            motivo = cas.troca_suportada(pasta)
+            if motivo:
+                _falha(f"a pasta {pasta} não serve para os dados: {motivo}.\n"
+                       "  O Basalt precisa de Linux e de um disco Linux (ext4, xfs, btrfs, zfs, tmpfs…).\n"
+                       "  Windows: dentro do WSL2, com os dados no Linux (~/basalt-dados), nunca em /mnt/c.\n"
+                       "  Mac: com o Docker, num volume do Docker (docker/compose.yml), não numa pasta partilhada do Mac.\n"
+                       "  Ver docs/INSTALAR.md, «Só com um portátil».")
+
+
 def cmd_iniciar(a):
     from . import auth
     dados = Path(a.dados or "./basalt-dados").expanduser().resolve()
@@ -209,6 +224,7 @@ def cmd_iniciar(a):
         esp.criar()
         if cfg.git:
             _git_init(esp)
+    _verificar_trocas(cfg, argparse.Namespace(utilizador=""))
     print(f"✓ {caminho}\n✓ dados em {dados}" + (f"\n✓ utilizador {email} ({modo})" if email else f"\n· modo {modo}, sem utilizadores (só localhost)"))
     print(f"\nA seguir:\n  python3 -m basalt --config {caminho} serve   → http://{config.endereco(a.escutar, a.porta)}\n"
           f"  python3 -m basalt --config {caminho} mcp     → para os agentes (ver docs/MCP.md)")
@@ -216,6 +232,7 @@ def cmd_iniciar(a):
 
 def cmd_serve(a):
     cfg = _cfg(a)
+    _verificar_trocas(cfg, a)
     try:
         from . import web
     except ImportError as e:
@@ -366,6 +383,7 @@ def cmd_exportar(a):
 
 def cmd_mcp(a):
     from . import mcp
+    _verificar_trocas(_cfg(a), a)
     argv = []
     if a.config:
         argv += ["--config", a.config]
