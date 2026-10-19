@@ -273,6 +273,26 @@ def test_dcr_redirects_extra(srv):
     assert registar(s, ["https://app.exemplo.pt/oauth/cb2"])[0] == 400             # à letra
 
 
+def test_pendentes_limites(srv, monkeypatch):
+    """a 1.ª fase do /oauth/authorize não tem conta (docs/INSTALAR.md: fica sem SSO) — o que a trava é o limite de pedidos
+    por aprovar, por IP e no total; os pedidos caducam (15 min) e os decididos saem na poda seguinte."""
+    s = srv()
+    st, cli, _ = registar(s)
+    _, c = pkce()
+    monkeypatch.setattr(oauth, "PENDENTES_POR_IP", 3)
+    estados = [pedir_autorizacao(s, cli["client_id"], c)[0] for _ in range(4)]
+    assert estados == [200, 200, 200, 429], estados
+    agora = oauth.RELOGIO()
+    oauth.RELOGIO = lambda: agora + 901                                             # caducaram: há vaga outra vez
+    st, pag, _ = pedir_autorizacao(s, cli["client_id"], c)
+    assert st == 200
+    monkeypatch.setattr(oauth, "PENDENTES_MAX", 1)                                  # o tecto total vale mesmo com vaga no IP
+    assert pedir_autorizacao(s, cli["client_id"], c)[0] == 429
+    cookie = s.entrar()
+    assert consentir(s, cookie, pid_de(pag), "recusar")[0] == 303                   # decidido → sai na poda do pedido seguinte
+    assert pedir_autorizacao(s, cli["client_id"], c)[0] == 200
+
+
 # ───────────────────────── 4. o fluxo completo ─────────────────────────
 def test_fluxo_completo(srv):
     s = srv()
