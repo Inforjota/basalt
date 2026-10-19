@@ -8,6 +8,10 @@ nunca sobrepor** o que tu escreveste. Funciona sem internet, num só ficheiro Py
 
 ## Porquê
 
+- **Traz a tua IA.** Liga o **Claude** (site, Desktop, telemóvel), o **ChatGPT**, o **Claude Code** e o **Codex** às tuas notas em dois
+  minutos: botão 🔌 **Ligar a tua IA** → escolhe a IA → copia o endereço → **Permitir**. Sem colar cabeçalhos: o Basalt traz o seu
+  próprio OAuth 2.1 (com PKCE, só a tua conta, revogas quando quiseres). Precisa de um endereço https público
+  (`url_publico`, [docs/INSTALAR.md](docs/INSTALAR.md)); detalhe em [docs/MCP.md](docs/MCP.md).
 - **Ficheiros teus, em Markdown.** A pasta `memoria/` é um cofre Obsidian normal: abres com o Obsidian, com o `vim`, com o que
   quiseres. Nada de bases de dados proprietárias; o histórico é `git`. Já tens um cofre? `basalt importar` traz as notas e os
   anexos sem sobrepor nada ([docs/OBSIDIAN.md](docs/OBSIDIAN.md)).
@@ -63,7 +67,7 @@ claude mcp add basalt -- python3 -m basalt --config ~/basalt-dados/basalt.toml m
 ```
 
 Depois, no Claude Code: «procura nas minhas notas o que decidi sobre o servidor», «acrescenta à nota `projecto_x` que …».
-Codex, Cursor (por HTTP com token) e o protocolo de conflito: [docs/MCP.md](docs/MCP.md).
+Claude (site/telemóvel) e ChatGPT por OAuth, Codex e Cursor por HTTP com token, e o protocolo de conflito: [docs/MCP.md](docs/MCP.md).
 
 ## Como está arrumado
 

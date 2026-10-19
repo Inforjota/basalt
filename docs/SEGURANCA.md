@@ -61,6 +61,19 @@
   endereço em que escuta. Se o servidor está exposto à rede, define `[basalt] anfitrioes` com o nome público: aí o `Host` e o `Origin`
   têm de estar na lista, em todos os pedidos e em todos os modos. O servidor escuta em `127.0.0.1` por omissão e `validar()` recusa o
   modo `aberto` fora de localhost.
+- **Ligações das IAs (OAuth, «Traz a tua IA»).** Só existe com `[basalt] url_publico` https e fora do modo `aberto`; sem isso as
+  rotas `/.well-known/*` e `/oauth/*` dão 404. Os endereços de regresso (`redirect_uri`) são uma lista fechada (Claude, ChatGPT,
+  loopback e `[oauth] redirects_extra`): um site de phishing não consegue registar-se como cliente para receber o código. Um cliente
+  com nome de Claude/ChatGPT/OpenAI/Anthropic que volte para outro sítio é recusado antes do consentimento. PKCE S256 obrigatório, `resource`
+  e `iss` conferidos. O consentimento é uma página do Basalt, com a sessão do Basalt (ou do proxy): leva um CSRF preso ao pedido, à
+  conta e à sessão; o «Permitir» só se aceita da mesma origem (`Origin`, `Sec-Fetch-Site`), sem `Authorization`; a página tem
+  `Content-Security-Policy` estrita (`form-action` só para o próprio Basalt e o endereço de regresso, `frame-ancestors 'none'`). Um pedido
+  fica preso à primeira conta que o abre. Tokens opacos (só o sha256 em `oauth.sqlite`, 0600), presos à conta, ao espaço e à
+  senha: mudar a senha ou apagar a conta revoga-os; um `basalt.toml` que não carrega fecha também o `/mcp` sem gastar a renovação.
+  Código e renovação são de uso único — o segundo uso revoga a ligação inteira (quem roubou um deles fica sem nada). Os tokens OAuth
+  e os pessoais da página só valem no `/mcp`, nunca na `/api`; a página das ligações não aceita tokens (um token não cria nem revoga
+  tokens). Limites por IP no registo, nos pedidos pendentes e no `/oauth/token`. O registo do servidor diz quem ligou o quê
+  (cliente, anfitrião de regresso, os primeiros caracteres da ligação) e nunca um token.
 - **Contra força bruta.** scrypt (n=2¹⁴) nas senhas; limite de tentativas por IP; mensagem igual e o mesmo trabalho scrypt
   para e-mail inexistente e senha errada; sessões com prazo, guardadas só por hash. O IP é o da ligação. O `X-Forwarded-For`
   só conta quando a ligação vem de loopback ou de `[auth] proxies_de_confianca`, e lê-se da direita, para o visitante não
@@ -82,6 +95,11 @@
 - **Proxy noutra máquina ou no Docker**: a ligação não vem de loopback, por isso o `X-Forwarded-For` é ignorado e todos os
   visitantes partilham o limite de tentativas do IP do proxy. Põe o IP (ou a rede) do proxy em `[auth] proxies_de_confianca`.
 - **Token MCP** = os poderes de escrita do utilizador. Guarda-o no cliente; para revogar, gera outro ou apaga o hash do toml.
+- **Uma IA ligada** tem os mesmos poderes que um token: lê e escreve todas as notas da conta (não há âmbito «só ler» na v1). O nome que
+  um cliente dá a si próprio no registo dinâmico não se prova — o consentimento mostra o endereço de regresso, que é o que conta.
+  Se não pediste a ligação, não carregues em Permitir. Revoga o que não usas na página **Ligar a tua IA**.
+- **O Claude e o ChatGPT chegam pela internet.** O `/mcp`, `/.well-known/` e `/oauth/register|token` têm de estar abertos ao mundo (sem
+  SSO); a protecção é o token. Se não precisas deles, não ponhas `url_publico`.
 - **Cópia no browser de um dispositivo que não volta a ligar-se.** A tranca da cópia local depende de respostas do servidor:
   um portátil que nunca mais fala com ele continua a ler a cópia que tem. Num dispositivo partilhado, usa «Terminar sessão»
   ou «Apagar cópia deste aparelho».

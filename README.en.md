@@ -8,6 +8,10 @@ overwriting** what you wrote. Works offline, in plain Python, on your own machin
 
 ## Why
 
+- **Bring your own AI.** Connect **Claude** (web, Desktop, phone), **ChatGPT**, **Claude Code** and **Codex** to your notes in two
+  minutes: the 🔌 **Connect your AI** button → pick the AI → copy the address → **Allow**. No headers to paste: Basalt ships its
+  own OAuth 2.1 (PKCE, your account only, revoke any time). Needs a public https address (`url_publico`,
+  [docs/INSTALAR.md](docs/INSTALAR.md)); details in [docs/MCP.md](docs/MCP.md).
 - **Your files, in Markdown.** `memoria/` is a regular Obsidian vault: open it with Obsidian, `vim`, anything. No proprietary
   database; history is `git`. Already have a vault? `basalt importar` brings notes and attachments in without overwriting
   anything ([docs/OBSIDIAN.md](docs/OBSIDIAN.md)).
@@ -75,7 +79,7 @@ claude mcp add basalt -- python3 -m basalt --config ~/basalt-data/basalt.toml mc
 ```
 
 Then, in Claude Code: "search my notes for what I decided about the server", "append to note `project_x` that …".
-Codex, Cursor (over HTTP with a token) and the conflict protocol: [docs/MCP.md](docs/MCP.md).
+Claude (web/phone) and ChatGPT over OAuth, Codex and Cursor over HTTP with a token, and the conflict protocol: [docs/MCP.md](docs/MCP.md).
 
 ## Layout
 

@@ -31,7 +31,10 @@ cópia editável sem rede (PWA), pesquisa por significado, arrumação automáti
 7. **Escrita de agentes por MCP** (`basalt mcp`): JSON-RPC 2.0 por stdio (Claude Code, Codex, Cursor) e por HTTP
    (`POST /mcp`, token de portador por utilizador; `GET /mcp` → 405). Ferramentas: `procurar`, `ler_nota`, `escrever_nota`
    (CAS com `base_hash` → conflito em vez de perder), `acrescentar_nota`, `criar_nota`, `listar_notas`, `guardar_ideia`.
-   Recursos `basalt://nota/<nome>`. Não há ferramenta para apagar. OAuth para clientes remotos: fase posterior (documentado).
+   Recursos `basalt://nota/<nome>`. Não há ferramenta para apagar. «Traz a tua IA»: OAuth 2.1 para o claude.ai e o ChatGPT
+   (`oauth.py`: RFC 9728/8414/7591, PKCE S256, `iss`, `resource`; lista fechada de `redirect_uri`; tokens opacos em
+   `<dados>/oauth.sqlite`, só válidos no `/mcp`), ligado só com `[basalt] url_publico` https e fora do modo aberto; página
+   «Ligar a tua IA» (`#/ligar`) com tokens pessoais e revogação. CIMD fica para depois.
 8. **Obsidian**: a pasta `memoria/` É um cofre. `basalt importar PASTA` e `basalt exportar PASTA`. Anexos em
    `memoria/anexos/`, servidos só-leitura em `/anexos/<nome>`; colar ou largar um ficheiro no editor guarda-o lá e insere
    `![[nome]]`; `[[ligações]]` e `#etiquetas` autocompletam-se a partir das notas; o pedido à IA pode ser cancelado a meio.
@@ -53,6 +56,7 @@ basalt/                          (git; o repositório público)
     ia.py                        fornecedores (nenhum/openai/anthropic/claude-cli) + limites
     auth.py                      cabecalho/senha/aberto, sessões, tokens Bearer
     mcp.py                       servidor MCP (stdio + HTTP)
+    oauth.py                     «Traz a tua IA»: OAuth 2.1 do /mcp (descoberta, registo, consentimento, tokens, ligações)
     lexical.py                   BM25 (pesquisa sem embeddings)
     obsidian.py · anexos.py · etiquetas.py
     static/                      index.html, sw.js, entrar.html, manifest, ícones, vendor/ (MIT/ISC, sem internet)
@@ -60,7 +64,7 @@ basalt/                          (git; o repositório público)
   testes/                        pytest (conftest aponta ao pacote), test_sem_rasto.py, testes de página (Chromium)
   docker/                        Dockerfile, docker-compose.yml
   sistema/                       basalt.service (systemd)
-  docs/                          INSTALAR.md, MCP.md, OBSIDIAN.md, PRIVACIDADE.md, SEGURANCA.md
+  docs/                          INSTALAR.md, MCP.md, OBSIDIAN.md, PRIVACIDADE.md, PROVA-REAL.md, SEGURANCA.md
   site/                          página de entrada PT/EN (estática; só se publica com autorização do autor)
 ```
 

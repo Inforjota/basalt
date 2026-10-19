@@ -112,6 +112,39 @@ reiniciar; as outras opções só mudam ao reiniciar.
 autenticado (p. ex. `proxy_set_header X-Basalt-Email $upstream_http_x_auth_request_email;` com o oauth2-proxy). A rota `/mcp`
 não pode exigir esse login (ver [MCP.md](MCP.md)).
 
+### Traz a tua IA (Claude e ChatGPT pelo OAuth)
+
+Para ligar o Claude (site, Desktop, telemóvel) e o ChatGPT, o Basalt precisa de saber o seu endereço público **https**:
+
+```toml
+[basalt]
+url_publico = "https://basalt.exemplo.pt"   # sem caminho nem barra no fim; liga o OAuth do /mcp
+anfitrioes = ["basalt.exemplo.pt"]          # obrigatório: o mesmo nome
+```
+
+(ou `BASALT_URL_PUBLICO`). É este endereço — e não o `X-Forwarded-Proto` nem o `Host` de cada pedido — que entra nos metadados e
+nos tokens, por isso tem de ser exactamente o que vais colar no Claude/ChatGPT (mais `/mcp`). Em modo `aberto` o OAuth não existe
+(não há contas a quem pedir licença): usa o Claude Code ou o Codex com um token.
+
+O Claude e o ChatGPT chamam o Basalt **a partir da nuvem deles**, não do teu computador: o endereço tem de se ver na internet
+(um proxy público, ou um túnel como o Cloudflare Tunnel ou o Tailscale Funnel se o Basalt está em casa). Se o proxy tem login (SSO),
+estas rotas ficam **sem** ele — a protecção é o token:
+
+```nginx
+location ~ ^/(mcp|\.well-known/oauth-|oauth/(register|token)$) {   # chamadas pela nuvem da IA
+    proxy_pass http://127.0.0.1:8121;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Basalt-Email "";
+    client_max_body_size 1m;
+}
+# /oauth/authorize e /oauth/autorizar abrem-se no TEU browser: podem ficar atrás do login, como o resto.
+```
+
+Depois, na interface, **🔌 Ligar a tua IA** → escolhe a IA → «Verificar ligação» (abre a página pelo `url_publico`). A prova
+final é a ligação aparecer na lista com «último uso». A base das ligações fica em `<dados>/oauth.sqlite` (entra nas cópias de
+segurança com o resto da pasta de dados; sem ela, as IAs têm de voltar a ligar-se).
+
 ## 5. IA local (opcional, recomendado)
 
 ```bash

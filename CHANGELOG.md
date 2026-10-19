@@ -5,6 +5,16 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 ## [Por lançar]
 
 ### 1.0.0b1 — primeira versão pública (beta)
+- **Traz a tua IA** (OAuth 2.1 para o MCP remoto): o Claude (site, Desktop, telemóvel) e o ChatGPT ligam-se ao `/mcp` sem cabeçalhos,
+  e o Claude Code também por OAuth. `basalt/oauth.py` (só stdlib): metadados do recurso e do servidor (RFC 9728/8414), registo
+  dinâmico (RFC 7591) com lista fechada de `redirect_uri` (Claude, ChatGPT, loopback, `[oauth] redirects_extra`), PKCE S256, `iss`
+  (RFC 9207), `resource` (RFC 8707); tokens opacos em `<dados>/oauth.sqlite` (só o sha256), acesso 1 h, renovação rodada 30 dias,
+  reutilização de código ou renovação revoga a ligação; os tokens OAuth só valem no `/mcp`; mudar a senha ou apagar a conta revoga.
+  Liga-se com `[basalt] url_publico = "https://…"` (novo, também `BASALT_URL_PUBLICO`; tem de estar em `anfitrioes`) fora do modo
+  aberto; sem isso nada muda. O `/mcp` passa a responder `401` com `resource_metadata`; `?access_token=` → `400`.
+  Página **Ligar a tua IA** (botão 🔌, `#/ligar`, PT/EN): passos por IA, copiar, «Verificar ligação», tokens pessoais `bslt_`
+  (mostrados uma vez, revogáveis, para o Codex), lista de ligações com «Revogar». Testes: `testes/test_oauth.py`, `testes/test_ligar.py`.
+  Documentação: `docs/MCP.md`, `docs/SEGURANCA.md`, `docs/INSTALAR.md` (proxy sem SSO nas rotas da IA), `docs/PROVA-REAL.md`.
 - Porte da instalação de origem (Inforjota, 09/2026) para um pacote só com a biblioteca-padrão do Python:
   `basalt/config.py` (um `basalt.toml`, vários utilizadores, um espaço por utilizador), `auth.py` (cabecalho / senha / aberto;
   tokens Bearer para agentes), `cas.py` (escrita atómica compare-and-swap, nada se perde numa corrida), `duasvias.py`

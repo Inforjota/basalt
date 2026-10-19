@@ -10,6 +10,8 @@ idioma = "pt"                     # língua da interface: pt (omissão) · en (i
 git = true                         # fotografias git da memória: histórico, diário, desfazer fusões (precisa do `git`)
 # anfitrioes = ["basalt.exemplo.pt"]   # atrás de um proxy: o nome público; Host/Origin com outro nome recebem 421 (DNS rebinding)
 # espaco_partilhado = false        # true = dois utilizadores podem partilhar o mesmo `espaco` (vêem e editam as mesmas notas)
+# url_publico = "https://basalt.exemplo.pt"   # «Traz a tua IA»: o endereço https por que a internet chega aqui; liga o OAuth do /mcp
+                                   # para o Claude (site/Desktop/telemóvel) e o ChatGPT. O nome tem de estar também em `anfitrioes`.
 
 [git]                              # quem assina as fotografias git da memória
 nome = "Basalt"
@@ -32,6 +34,9 @@ nome = "Eu"
 # senha_hash = "scrypt$…"          # gera com: basalt utilizador senha eu@exemplo.pt
 # mcp_token_hash = "…"             # gera com: basalt utilizador mcp-token eu@exemplo.pt (o token só se mostra uma vez)
 admin = true
+
+# [oauth]                          # «Traz a tua IA» (só com url_publico): endereços de regresso aceites além dos do Claude, ChatGPT e loopback
+# redirects_extra = ["https://cliente.exemplo.com/oauth/callback"]   # só https; um cliente MCP novo que precise de OAuth
 
 [ia]
 fornecedor = "openai"              # nenhum | openai (Ollama, OpenRouter, Mistral, LM Studio…) | anthropic | claude-cli
