@@ -624,6 +624,17 @@ body.modo-notas .obsidian-shell{
 /* ---------- entrada: acções novas (juntar/eliminar) — 25/09 ---------- */
 .btn-perigo{color:var(--danger); background:transparent}
 .btn-perigo:hover{background:var(--danger-bg)}
+/* Ligar a tua IA */
+.ligar-ias{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0}
+.ligar-cartao{border:1px solid var(--border); border-radius:10px; padding:14px 16px; margin-bottom:20px}
+.ligar-passos{margin:0 0 10px 1.2em; padding:0}
+.ligar-passos li{margin:4px 0}
+.ligar-copiar{display:flex; gap:8px; align-items:flex-start; margin:8px 0}
+.ligar-pre{flex:1; margin:0; padding:8px 10px; overflow-x:auto; white-space:pre-wrap; word-break:break-all; border-radius:8px; background:var(--bg-elev2); font-size:13px}
+.ligar-aviso{color:var(--danger); font-weight:600}
+.ligar-verif-lista{list-style:none; padding:0; margin:8px 0}
+.ligar-lista{list-style:none; padding:0; margin:8px 0 12px}
+.ligar-ligacao{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid var(--border)}
 .btn-link{
   border:none; background:none; color:var(--accent); padding:4px 2px; min-height:auto;
   cursor:pointer; text-decoration:underline; font-size:.85rem;
@@ -696,6 +707,7 @@ body.modo-notas .obsidian-shell{
     <button id="salto-rapido-btn" class="icon-btn" type="button" title="Saltar para nota (Ctrl+O)" aria-label="Saltar para nota">🧭</button>
     <button id="theme-toggle" class="icon-btn" type="button" title="Alternar tema" aria-label="Alternar tema">🌙</button>
     <button id="ajuda-btn" class="icon-btn" type="button" title="Ajuda desta página" aria-label="Ajuda desta página" aria-pressed="false">?</button>
+    <button id="ligar-ia-btn" class="icon-btn" type="button" title="Ligar a tua IA" aria-label="Ligar a tua IA">🔌</button>
     <button id="sair-btn" class="icon-btn" type="button" title="Terminar sessão" aria-label="Terminar sessão" hidden>⏻</button>
   </div>
 </header>
@@ -733,6 +745,55 @@ body.modo-notas .obsidian-shell{
 const IDIOMA = document.documentElement.lang.toLowerCase().startsWith("en") ? "en" : "pt";
 const LOCALE = IDIOMA === "en" ? "en-GB" : "pt-PT";
 const EN = {
+  "Abre-se esta página do Basalt: carrega em Permitir.": "This Basalt page opens: click Allow.",
+  "Ainda não há nenhuma IA ligada a esta conta.": "No AI is connected to this account yet.",
+  "As IAs e os tokens com acesso às notas desta conta. Revogar corta o acesso logo.": "The AIs and tokens with access to this account's notes. Revoking cuts access right away.",
+  "Cola este endereço e carrega em Adicionar, depois em Ligar.": "Paste this address and click Add, then Connect.",
+  "Cola isto no terminal.": "Paste this in the terminal.",
+  "Cola o comando no terminal.": "Paste the command in the terminal.",
+  "Copia já: este token só se mostra agora. Quem o tiver lê e escreve as tuas notas — guarda-o como uma senha.": "Copy it now: this token is only shown once. Whoever has it can read and write your notes - keep it like a password.",
+  "Copiar": "Copy",
+  "Cria um token (mostra-se uma só vez).": "Create a token (shown only once).",
+  "Cria um token para o Codex (mostra-se uma só vez).": "Create a token for Codex (shown only once).",
+  "Criar token": "Create token",
+  "Criar token para o Codex": "Create token for Codex",
+  "Criar → cola este endereço → autenticação OAuth.": "Create → paste this address → OAuth authentication.",
+  "Depois de actualizar o Basalt, remove e volta a adicionar a aplicação (o ChatGPT guarda a lista de ferramentas antiga).": "After updating Basalt, remove and add the app again (ChatGPT keeps the old list of tools).",
+  "Escolhe a tua IA para veres os passos e o endereço a copiar.": "Pick your AI to see the steps and the address to copy.",
+  "Escolher a IA": "Pick the AI",
+  "Esta conta tem também um token de administrador no basalt.toml (não se revoga aqui).": "This account also has an administrator token in basalt.toml (it is not revoked here).",
+  "Este Basalt está em modo aberto (sem contas): só as aplicações neste computador se ligam — usa o Claude Code ou o Codex.": "This Basalt is in open mode (no accounts): only apps on this computer can connect - use Claude Code or Codex.",
+  "Junta o bloco ao ~/.codex/config.toml e põe o token na variável BASALT_TOKEN.": "Add the block to ~/.codex/config.toml and put the token in the BASALT_TOKEN variable.",
+  "Liga o Claude, o ChatGPT, o Claude Code ou o Codex às tuas notas, e vê ou revoga as ligações.": "Connect Claude, ChatGPT, Claude Code or Codex to your notes, and see or revoke the connections.",
+  "Ligar a tua IA": "Connect your AI",
+  "Ligações activas": "Active connections",
+  "Na primeira vez, no Claude Code: /mcp → Autenticar (abre o browser) → Permitir.": "The first time, in Claude Code: /mcp → Authenticate (opens the browser) → Allow.",
+  "No ChatGPT: Definições → Apps (se não vires «Criar», liga Avançado → Modo de programador).": "In ChatGPT: Settings → Apps (if you do not see \"Create\", turn on Advanced → Developer mode).",
+  "No Claude (site, app ou telemóvel): Personalizar → Conectores → «Adicionar conector personalizado».": "In Claude (web, app or phone): Customize → Connectors → \"Add custom connector\".",
+  "No plano gratuito só há um conector; em Team/Enterprise quem adiciona é o Owner.": "The free plan allows one connector; on Team/Enterprise the Owner adds it.",
+  "O que daqui não se prova: se o Basalt só se vê na tua rede de casa, o Claude e o ChatGPT não lhe chegam — ligam-se a partir da nuvem deles (o Claude sai de 160.79.104.0/21). A prova real é a ligação aparecer na lista abaixo com o último uso.": "What cannot be proven from here: if Basalt is only visible on your home network, Claude and ChatGPT cannot reach it - they connect from their own cloud (Claude comes from 160.79.104.0/21). The real proof is the connection showing up in the list below with its last use.",
+  "Outra": "Other",
+  "Precisa de um endereço público https: o administrador põe url_publico no basalt.toml (ver docs/INSTALAR.md).": "Needs a public https address: the administrator sets url_publico in basalt.toml (see docs/INSTALAR.md).",
+  "Qualquer aplicação MCP por HTTP: usa este endereço. Se pedir OAuth, aceita e carrega em Permitir; se pedir um cabeçalho, cria um token.": "Any MCP app over HTTP: use this address. If it asks for OAuth, accept and click Allow; if it asks for a header, create a token.",
+  "Revogar": "Revoke",
+  "Revogar todas": "Revoke all",
+  "Revogar todas as ligações desta conta? As IAs ligadas deixam de chegar às tuas notas.": "Revoke all connections of this account? The connected AIs will no longer reach your notes.",
+  "Usa o Claude, o ChatGPT ou o Codex com as tuas notas: escolhe a tua IA.": "Use Claude, ChatGPT or Codex with your notes: pick your AI.",
+  "Verificar ligação": "Check connection",
+  "desde {quando} · último uso: {uso}": "since {quando} · last used: {uso}",
+  "estás a abrir o Basalt por {aqui}: para verificar, abre-o por {publico}": "you are opening Basalt through {aqui}: to check, open it through {publico}",
+  "falta o url_publico no basalt.toml (o Claude e o ChatGPT precisam de um endereço público https)": "url_publico is missing in basalt.toml (Claude and ChatGPT need a public https address)",
+  "ligação revogada.": "connection revoked.",
+  "nunca": "never",
+  "o /mcp não responde": "/mcp does not respond",
+  "o /mcp sem token pede a ligação (401 com resource_metadata)": "/mcp without a token asks to connect (401 with resource_metadata)",
+  "o endereço público é https": "the public address is https",
+  "o servidor de autorização não responde": "the authorization server does not respond",
+  "o servidor de autorização responde (PKCE S256, iss)": "the authorization server responds (PKCE S256, iss)",
+  "os metadados do recurso não respondem": "the resource metadata does not respond",
+  "os metadados do recurso respondem e apontam para este endereço": "the resource metadata responds and points to this address",
+  "todas as ligações foram revogadas.": "all connections were revoked.",
+  "token pessoal «{nome}»": "personal token \"{nome}\"",
   "erro {status}": "error {status}",
   "a cópia deste aparelho está trancada até voltares a entrar (a sessão tinha expirado)": "this device's copy is locked until you sign in again (the session had expired)",
   "a sincronizar…": "syncing…",
@@ -3367,9 +3428,202 @@ async function route(){
     case "arrumar": return viewArrumar(main);
     case "recentes": return viewRecentes(main);
     case "diario": return viewDiario(main, parts[1]);
+    case "ligar": return viewLigar(main);
     default: return viewHome(main);
   }
 }
+
+/* ========================================================================
+   Ligar a tua IA — «Traz a tua IA»: o Claude, o ChatGPT, o Claude Code e o Codex a trabalhar com as tuas notas pelo /mcp.
+   Uma acção principal (escolher a IA); cada cartão abre os passos e UM bloco para copiar. O que não se aplica a este servidor
+   (sem url_publico, modo aberto) diz-se numa linha, sem «modo avançado». As ligações e os tokens são só da conta desta sessão.
+   ==================================================================== */
+
+var LIGAR_IAS = ["claude", "chatgpt", "claude-code", "codex", "outra"];
+var LIGAR_NOMES = {"claude": "Claude", "chatgpt": "ChatGPT", "claude-code": "Claude Code", "codex": "Codex", "outra": "…"};
+
+function ligarBlocoCopiar(texto, rotulo){
+  return '<div class="ligar-copiar"><pre class="ligar-pre">' + escapeHtml(texto) + '</pre>' +
+    '<button class="btn" type="button" data-copiar="' + escapeHtml(texto) + '"' + (rotulo ? ' aria-label="' + escapeHtml(rotulo) + '"' : "") + '>' +
+    t("Copiar") + "</button></div>";
+}
+
+function ligarPassos(lista){
+  return '<ol class="ligar-passos">' + lista.map(function(p){ return "<li>" + p + "</li>"; }).join("") + "</ol>";
+}
+
+function ligarCartao(ia, d){
+  var url = d.mcp || (location.origin + "/mcp");
+  var nuvem = d.oauth;                                   // o claude.ai e o ChatGPT saem da nuvem: precisam do OAuth e de https público
+  var semNuvem = '<p class="dim-note">' + (d.motivo === "aberto"
+      ? t("Este Basalt está em modo aberto (sem contas): só as aplicações neste computador se ligam — usa o Claude Code ou o Codex.")
+      : t("Precisa de um endereço público https: o administrador põe url_publico no basalt.toml (ver docs/INSTALAR.md).")) + "</p>";
+  var verificar = '<button class="btn" type="button" data-verificar="1">' + t("Verificar ligação") + '</button><div class="ligar-verif"></div>';
+  if(d.motivo !== "aberto") semNuvem += verificar;
+  if(ia === "claude"){
+    if(!nuvem) return semNuvem;
+    return ligarPassos([t("No Claude (site, app ou telemóvel): Personalizar → Conectores → «Adicionar conector personalizado»."),
+                        t("Cola este endereço e carrega em Adicionar, depois em Ligar."),
+                        t("Abre-se esta página do Basalt: carrega em Permitir.")]) +
+      ligarBlocoCopiar(url) + '<p class="dim-note">' + t("No plano gratuito só há um conector; em Team/Enterprise quem adiciona é o Owner.") + "</p>" + verificar;
+  }
+  if(ia === "chatgpt"){
+    if(!nuvem) return semNuvem;
+    return ligarPassos([t("No ChatGPT: Definições → Apps (se não vires «Criar», liga Avançado → Modo de programador)."),
+                        t("Criar → cola este endereço → autenticação OAuth."),
+                        t("Abre-se esta página do Basalt: carrega em Permitir.")]) +
+      ligarBlocoCopiar(url) + '<p class="dim-note">' + t("Depois de actualizar o Basalt, remove e volta a adicionar a aplicação (o ChatGPT guarda a lista de ferramentas antiga).") + "</p>" + verificar;
+  }
+  if(ia === "claude-code"){
+    if(nuvem){
+      return ligarPassos([t("Cola isto no terminal."), t("Na primeira vez, no Claude Code: /mcp → Autenticar (abre o browser) → Permitir.")]) +
+        ligarBlocoCopiar("claude mcp add --transport http basalt " + url) + verificar;
+    }
+    return ligarPassos([t("Cria um token (mostra-se uma só vez)."), t("Cola o comando no terminal.")]) +
+      '<button class="btn btn-primary" type="button" data-token="Claude Code">' + t("Criar token") + '</button><div class="ligar-token"></div>';
+  }
+  if(ia === "codex"){
+    return ligarPassos([t("Cria um token para o Codex (mostra-se uma só vez)."), t("Junta o bloco ao ~/.codex/config.toml e põe o token na variável BASALT_TOKEN.")]) +
+      '<button class="btn btn-primary" type="button" data-token="Codex">' + t("Criar token para o Codex") + '</button><div class="ligar-token"></div>';
+  }
+  return '<p>' + t("Qualquer aplicação MCP por HTTP: usa este endereço. Se pedir OAuth, aceita e carrega em Permitir; se pedir um cabeçalho, cria um token.") + "</p>" +
+    ligarBlocoCopiar(url) +
+    '<button class="btn" type="button" data-token="MCP">' + t("Criar token") + '</button><div class="ligar-token"></div>';
+}
+
+function ligarBlocoToken(origem, url, token){
+  if(origem === "Codex"){
+    return ligarBlocoCopiar('[mcp_servers.basalt]\nurl = "' + url + '"\nbearer_token_env_var = "BASALT_TOKEN"') +
+      ligarBlocoCopiar("export BASALT_TOKEN=" + token);
+  }
+  if(origem === "Claude Code"){
+    return ligarBlocoCopiar('claude mcp add --transport http basalt ' + url + ' --header "Authorization: Bearer ' + token + '"');
+  }
+  return ligarBlocoCopiar("Authorization: Bearer " + token);
+}
+
+function ligarQuando(seg){
+  if(!seg) return t("nunca");
+  return fmtDataCurta(new Date(seg * 1000));
+}
+
+function ligarLista(d){
+  var l = d.ligacoes || [];
+  var linhas = l.map(function(x){
+    var nome = x.tipo === "pessoal" ? tf("token pessoal «{nome}»", {nome: x.nome}) : x.nome;
+    return '<li class="ligar-ligacao" data-id="' + escapeHtml(x.id) + '"><div><strong>' + escapeHtml(nome) + "</strong>" +
+      (x.onde ? ' <span class="dim-note">→ ' + escapeHtml(x.onde) + "</span>" : "") +
+      '<div class="dim-note">' + tf("desde {quando} · último uso: {uso}", {quando: ligarQuando(x.criado), uso: ligarQuando(x.ultimo_uso)}) + "</div></div>" +
+      '<button class="btn btn-perigo" type="button" data-revogar="' + escapeHtml(x.id) + '">' + t("Revogar") + "</button></li>";
+  }).join("");
+  return (l.length ? '<ul class="ligar-lista">' + linhas + "</ul>" +
+      '<button class="btn btn-perigo" type="button" id="ligar-revogar-todas">' + t("Revogar todas") + "</button>"
+    : '<p class="dim-note">' + t("Ainda não há nenhuma IA ligada a esta conta.") + "</p>") +
+    (d.token_admin ? '<p class="dim-note">' + t("Esta conta tem também um token de administrador no basalt.toml (não se revoga aqui).") + "</p>" : "");
+}
+
+async function ligarVerificar(d, alvo){
+  var ok = [], mal = [];
+  function linha(passou, texto){ (passou ? ok : mal).push((passou ? "✓ " : "✗ ") + texto); }
+  if(!d.url_publico){
+    linha(false, t("falta o url_publico no basalt.toml (o Claude e o ChatGPT precisam de um endereço público https)"));
+  }else{
+    linha(d.url_publico.indexOf("https://") === 0, t("o endereço público é https"));
+    if(d.url_publico !== location.origin){
+      linha(false, tf("estás a abrir o Basalt por {aqui}: para verificar, abre-o por {publico}", {aqui: location.origin, publico: d.url_publico}));
+    }else{
+      try{
+        var prm = await (await fetch("/.well-known/oauth-protected-resource", {credentials: "omit", cache: "no-store"})).json();
+        linha(prm.resource === d.mcp, t("os metadados do recurso respondem e apontam para este endereço"));
+      }catch(e){ linha(false, t("os metadados do recurso não respondem")); }
+      try{
+        var asm = await (await fetch("/.well-known/oauth-authorization-server", {credentials: "omit", cache: "no-store"})).json();
+        linha((asm.code_challenge_methods_supported || []).indexOf("S256") >= 0 && asm.authorization_response_iss_parameter_supported === true,
+              t("o servidor de autorização responde (PKCE S256, iss)"));
+      }catch(e){ linha(false, t("o servidor de autorização não responde")); }
+      try{
+        var r = await fetch("/mcp", {method: "POST", credentials: "omit", cache: "no-store", headers: {"Content-Type": "application/json"},
+                                     body: JSON.stringify({jsonrpc: "2.0", id: 1, method: "tools/list"})});
+        linha(r.status === 401 && /resource_metadata=/.test(r.headers.get("WWW-Authenticate") || ""), t("o /mcp sem token pede a ligação (401 com resource_metadata)"));
+      }catch(e){ linha(false, t("o /mcp não responde")); }
+    }
+  }
+  alvo.innerHTML = '<ul class="ligar-verif-lista">' + ok.concat(mal).map(function(x){ return "<li>" + escapeHtml(x) + "</li>"; }).join("") + "</ul>" +
+    '<p class="dim-note">' + t("O que daqui não se prova: se o Basalt só se vê na tua rede de casa, o Claude e o ChatGPT não lhe chegam — ligam-se a partir da nuvem deles (o Claude sai de 160.79.104.0/21). A prova real é a ligação aparecer na lista abaixo com o último uso.") + "</p>";
+}
+
+async function viewLigar(main){
+  main.innerHTML = renderShell(t("Ligar a tua IA"));
+  var body = main.querySelector(".view-body");
+  renderLoading(body, t("a carregar…"));
+  var d;
+  try{ d = await apiGet("/api/ligacoes"); }
+  catch(e){ return renderErrorBox(body, tf("não consegui carregar: {erro}", {erro: e.message}), function(){ viewLigar(main); }); }
+  var url = d.mcp || (location.origin + "/mcp");
+  body.innerHTML =
+    '<p>' + t("Usa o Claude, o ChatGPT ou o Codex com as tuas notas: escolhe a tua IA.") + "</p>" +
+    '<div class="ligar-ias" role="tablist">' + LIGAR_IAS.map(function(ia){
+      return '<button class="btn ligar-ia" type="button" role="tab" data-ia="' + ia + '" aria-selected="false">' +
+        escapeHtml(ia === "outra" ? t("Outra") : LIGAR_NOMES[ia]) + "</button>";
+    }).join("") + "</div>" +
+    '<div class="ligar-cartao" id="ligar-cartao" hidden></div>' +
+    "<h2>" + t("Ligações activas") + '</h2><div id="ligar-lista">' + ligarLista(d) + "</div>";
+  var cartao = body.querySelector("#ligar-cartao");
+
+  async function recarregarLista(){
+    try{ d = await apiGet("/api/ligacoes"); body.querySelector("#ligar-lista").innerHTML = ligarLista(d); }
+    catch(e){ showToast(tf("não consegui carregar: {erro}", {erro: e.message})); }
+  }
+
+  body.addEventListener("click", async function(e){
+    var b = e.target.closest("button");
+    if(!b || !body.contains(b)) return;
+    if(b.dataset.ia){
+      body.querySelectorAll(".ligar-ia").forEach(function(x){ x.setAttribute("aria-selected", x === b ? "true" : "false"); x.classList.toggle("btn-primary", x === b); });
+      cartao.hidden = false;
+      cartao.dataset.ia = b.dataset.ia;
+      cartao.innerHTML = ligarCartao(b.dataset.ia, d);
+      return;
+    }
+    if(b.dataset.copiar !== undefined){
+      try{ await navigator.clipboard.writeText(b.dataset.copiar); showToast(t("copiado.")); }
+      catch(err){ showToast(t("não consegui copiar automaticamente — selecciona e copia à mão.")); }
+      return;
+    }
+    if(b.dataset.verificar){
+      b.disabled = true;
+      try{ await ligarVerificar(d, b.nextElementSibling); } finally { b.disabled = false; }
+      return;
+    }
+    if(b.dataset.token){
+      b.disabled = true;
+      try{
+        var r = await apiSend("POST", "/api/ligacoes/token", {nome: b.dataset.token});
+        var alvo = b.nextElementSibling;
+        alvo.innerHTML = '<p class="ligar-aviso">' + t("Copia já: este token só se mostra agora. Quem o tiver lê e escreve as tuas notas — guarda-o como uma senha.") + "</p>" +
+          ligarBlocoToken(b.dataset.token, url, r.token);
+        b.hidden = true;
+        recarregarLista();
+      }catch(err){ showToast(err.message); b.disabled = false; }
+      return;
+    }
+    if(b.dataset.revogar || b.id === "ligar-revogar-todas"){
+      var todas = b.id === "ligar-revogar-todas";
+      if(todas && !confirm(t("Revogar todas as ligações desta conta? As IAs ligadas deixam de chegar às tuas notas."))) return;
+      b.disabled = true;
+      try{
+        await apiSend("POST", "/api/ligacoes/revogar", todas ? {todas: true} : {id: b.dataset.revogar});
+        showToast(todas ? t("todas as ligações foram revogadas.") : t("ligação revogada."));
+      }catch(err){ showToast(err.message); }
+      recarregarLista();
+    }
+  });
+}
+
+(function(){
+  var b = document.getElementById("ligar-ia-btn");
+  if(b) b.addEventListener("click", function(){ location.hash = "#/ligar"; });
+})();
 
 /* ========================================================================
    Início
@@ -5806,6 +6060,7 @@ var AJUDA = {
       {sel: "#cmd-input", nome: t("Pesquisar"), texto: t("Escreve para procurares nas notas. Termina a frase com ? para perguntares à IA (responde com as notas como fonte). Começa por guarda: para mandares uma ideia rápida para a Entrada. Atalhos: Ctrl+K ou / trazem-te aqui.")},
       {sel: "#salto-rapido-btn", nome: t("Saltar para nota"), texto: t("Pesquisa rápida para saltares direto para qualquer nota, sem tirar as mãos do teclado (Ctrl+O).")},
       {sel: "#theme-toggle", nome: t("Tema"), texto: t("Alterna entre tema claro e escuro. Fica guardado neste aparelho.")},
+      {sel: "#ligar-ia-btn", nome: t("Ligar a tua IA"), texto: t("Liga o Claude, o ChatGPT, o Claude Code ou o Codex às tuas notas, e vê ou revoga as ligações.")},
       {sel: "#ajuda-btn", nome: t("Ajuda"), texto: t("Esta ajuda — mostra o que cada coisa desta página faz.")}
     ]),
   inicio: [
@@ -5868,6 +6123,10 @@ var AJUDA = {
     {sel: "#diario-notas-mudadas", nome: t("Notas alteradas"), texto: t("Notas que foram alteradas neste dia.")},
     {sel: "#diario-commits", nome: t("Gravações na memória"), texto: t("Gravações feitas na memória nesse dia, com os ficheiros tocados em cada uma.")},
     {sel: "#diario-entrada", nome: t("Entrou na caixa"), texto: t("Ideias que entraram na Entrada neste dia.")}
+  ],
+  ligar: [
+    {sel: ".ligar-ias", nome: t("Escolher a IA"), texto: t("Escolhe a tua IA para veres os passos e o endereço a copiar.")},
+    {sel: "#ligar-lista", nome: t("Ligações activas"), texto: t("As IAs e os tokens com acesso às notas desta conta. Revogar corta o acesso logo.")}
   ]
 };
 

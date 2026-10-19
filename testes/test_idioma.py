@@ -256,7 +256,7 @@ VISIVEL = """() => {
   return {texto, attrs};
 }"""
 
-ROTAS = ["#/", "#/notas", "#/nota/n1", "#/grafo", "#/entrada", "#/arrumar", "#/recentes", "#/diario"]
+ROTAS = ["#/", "#/notas", "#/nota/n1", "#/grafo", "#/entrada", "#/arrumar", "#/recentes", "#/diario", "#/ligar"]
 RE_PT = re.compile(r"ção|ções|ões|[ãçáéíóúâêô]", re.I)
 
 
