@@ -369,6 +369,9 @@ def _responder(handler, estado, obj, extra=None):
     handler.wfile.write(corpo)
 
 
+ORIGENS_IA = frozenset({"claude.ai", "claude.com", "chatgpt.com", "openai.com"})
+
+
 def origem_ok(origem: str, permitidos) -> bool:
     """o Origin (se vier) tem de ser um dos nomes do servidor — defesa contra DNS rebinding em servidores locais. Ronda 8 (Host/Origin): antes
     comparava-se com o Host do MESMO pedido (os dois vêm de quem ataca) e aceitava-se qualquer loopback."""
@@ -390,16 +393,28 @@ def http(handler, servidor: ServidorMCP, autenticador):
     h = handler.headers
     if handler.command != "POST":
         return _responder(handler, 405, {"erro": "o MCP por HTTP só aceita POST"}, {"Allow": "POST"})
+    cfg = servidor.cfg
     origem = h.get("Origin")
-    if origem and not origem_ok(origem, anfitrioes_mcp(servidor.cfg, h.get("Host"))):
+    permitidos = anfitrioes_mcp(cfg, h.get("Host"))
+    if cfg.oauth_activo:                 # «Traz a tua IA»: os conectores do claude.ai/ChatGPT podem mandar o Origin deles
+        permitidos = permitidos | ORIGENS_IA
+    if origem and not origem_ok(origem, permitidos):
         return _responder(handler, 403, {"erro": "Origin não permitido"})
-    desafio = {"WWW-Authenticate": 'Bearer realm="basalt"'}
+    if "access_token=" in urllib.parse.urlsplit(getattr(handler, "path", "") or "").query:
+        return _responder(handler, 400, {"erro": "o token vai no cabeçalho Authorization, nunca no endereço"})
+    if cfg.oauth_activo:
+        # RFC 9728 §5.1: o 401 diz onde estão os metadados — é assim que o claude.ai/ChatGPT descobrem como pedir a ligação
+        desafio = {"WWW-Authenticate": f'Bearer resource_metadata="{cfg.url_publico}/.well-known/oauth-protected-resource", scope="notas"'}
+    else:
+        desafio = {"WWW-Authenticate": 'Bearer realm="basalt"'}
     auth = (h.get("Authorization") or "").strip()
     if not auth.lower().startswith("bearer "):
         return _responder(handler, 401, {"erro": "é preciso Authorization: Bearer <token> (basalt utilizador mcp-token EMAIL)"}, desafio)
     ip = handler.client_address[0] if getattr(handler, "client_address", None) else ""
-    u = autenticador.utilizador_do_pedido(h, ip)
+    u = autenticador.utilizador_do_pedido(h, ip, mcp=True)
     if u is None:
+        if cfg.oauth_activo:
+            desafio = {"WWW-Authenticate": desafio["WWW-Authenticate"] + ', error="invalid_token"'}
         return _responder(handler, 401, {"erro": "token inválido"}, desafio)
     try:
         n = int(h.get("Content-Length") or 0)
@@ -424,7 +439,8 @@ def registar(rotas: dict, cfg: Config, autenticador, web=None) -> ServidorMCP:
     """liga o MCP ao servidor web: rotas[("POST", "/mcp")] e rotas[("GET", "/mcp")] (→ 405). Chamado por web.criar_servidor."""
     servidor = ServidorMCP(cfg, web=web)
     for metodo in ("POST", "GET"):
-        rotas[(metodo, "/mcp")] = lambda h, _s=servidor: http(h, _s, autenticador)
+        # o autenticador do PRÓPRIO servidor do pedido (h.aut): as rotas são de módulo e vários servidores no mesmo processo partilham-nas
+        rotas[(metodo, "/mcp")] = lambda h, _s=servidor: http(h, getattr(h, "servidor_mcp", None) or _s, getattr(h, "aut", None) or autenticador)
     return servidor
 
 

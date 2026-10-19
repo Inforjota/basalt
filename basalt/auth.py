@@ -261,8 +261,9 @@ class Autenticador:
         return f"{COOKIE}=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0"
 
     # ── quem é ──
-    def utilizador_do_pedido(self, cabecalhos, ip: str = "") -> Utilizador | None:
-        """`cabecalhos` é o `self.headers` do handler (ou um dict). None = 401."""
+    def utilizador_do_pedido(self, cabecalhos, ip: str = "", mcp: bool = False) -> Utilizador | None:
+        """`cabecalhos` é o `self.headers` do handler (ou um dict). None = 401. `mcp=True` só no /mcp: aí valem também os tokens
+        do «Traz a tua IA» (OAuth `bsla_` e os pessoais criados na página) — que NUNCA valem na API da página."""
         self.reler_se_mudou()
         if self._fechado:
             return None
@@ -272,6 +273,8 @@ class Autenticador:
         if auth.lower().startswith("bearer "):
             h = hash_token(auth[7:].strip())
             u = next((u for u in self.cfg.utilizadores if u.mcp_token_hash and hmac.compare_digest(u.mcp_token_hash, h)), None)
+            if u is None and mcp and getattr(self, "oauth", None) is not None:
+                return self.oauth.utilizador_do_token(auth[7:].strip())
             return u
         modo = self.cfg.auth.modo
         if modo == "aberto":

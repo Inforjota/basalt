@@ -93,6 +93,11 @@ class CategoriasConfig:
 
 
 @dataclass
+class OAuthConfig:
+    redirects_extra: tuple = ()         # «Traz a tua IA»: endereços de regresso (redirect_uri) aceites além dos de origem (só https)
+
+
+@dataclass
 class Config:
     dados: Path                         # raiz: <dados>/<espaco>/{memoria,copia,dados}
     porta: int = 8121
@@ -110,6 +115,22 @@ class Config:
     origem: Path | None = None          # o toml lido (None = só omissão + ambiente)
     anfitrioes: tuple = ()              # ronda 8 (Host/Origin): nomes por que o servidor aceita ser chamado, além de loopback e escutar
     espaco_partilhado: bool = False     # ronda 8 (um espaço por utilizador): dois utilizadores no mesmo espaço só de propósito
+    url_publico: str = ""               # «Traz a tua IA»: o endereço https por que a internet chega a este servidor (liga o OAuth do /mcp)
+    oauth: OAuthConfig = field(default_factory=OAuthConfig)
+
+    # ── «Traz a tua IA» (OAuth 2.1 no /mcp) ──
+    @property
+    def oauth_activo(self) -> bool:
+        """o OAuth só existe com url_publico e fora do modo aberto (em modo aberto não há contas a quem pedir licença)."""
+        return bool(self.url_publico) and self.auth.modo != "aberto"
+
+    @property
+    def issuer(self) -> str:
+        return self.url_publico
+
+    @property
+    def recurso(self) -> str:
+        return self.url_publico + "/mcp" if self.url_publico else ""
 
     # ── consultas ──
     def utilizador(self, email: str) -> Utilizador | None:
@@ -156,6 +177,15 @@ class Config:
             if not nome_de_maquina_ok(nome_normal(h)):
                 raise ConfigInvalida(f"[basalt] anfitrioes: {h!r} não é um nome de máquina — só o nome, sem https://, porta nem caminho "
                                      f"(ex.: \"basalt.exemplo.pt\")")
+        if self.url_publico:
+            erro = url_publico_erro(self.url_publico)
+            if erro:
+                raise ConfigInvalida(f"[basalt] url_publico: {erro}")
+            if anfitriao_de(self.url_publico) not in anfitrioes(self):
+                raise ConfigInvalida(f"[basalt] url_publico: o anfitrião de {self.url_publico!r} tem de estar também em [basalt] anfitrioes")
+        for r in self.oauth.redirects_extra:
+            if not isinstance(r, str) or not r.startswith("https://") or len(r) > 500 or "#" in r or any(ord(c) < 33 or ord(c) == 127 for c in r):
+                raise ConfigInvalida(f"[oauth] redirects_extra: {r!r} tem de ser um endereço https:// completo, sem espaços nem #")
         if self.auth.modo != "aberto" and not self.utilizadores:
             raise ConfigInvalida("sem utilizadores: acrescenta [[utilizadores]] ou usa `basalt utilizador novo EMAIL`")
 
@@ -371,6 +401,9 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
     cfg.git = (amb.get("BASALT_GIT") or ("1" if b.get("git", True) else "0")) == "1"
     cfg.anfitrioes = tuple(nome_normal(str(x).strip()) for x in (b.get("anfitrioes") or []))   # validar() exige nomes de máquina; ronda 9: «nome.pt.» = «nome.pt»
     cfg.espaco_partilhado = bool(b.get("espaco_partilhado", False))
+    cfg.url_publico = str(amb.get("BASALT_URL_PUBLICO") or b.get("url_publico") or "").strip().rstrip("/")
+    o = t.get("oauth", {}) if isinstance(t.get("oauth"), dict) else {}
+    cfg.oauth = OAuthConfig(redirects_extra=tuple(str(x).strip() for x in (o.get("redirects_extra") or [])))
 
     a = t.get("auth", {})
     cfg.auth = AuthConfig(modo=amb.get("BASALT_AUTH_MODO") or a.get("modo", "senha"),
@@ -502,6 +535,22 @@ def anfitriao_de(host: str | None) -> str:
         return nome_normal(urllib.parse.urlsplit(host if "//" in host else "//" + host).hostname or "")
     except ValueError:
         return ""
+
+
+def url_publico_erro(u: str) -> str:
+    """"" se `u` serve de url_publico: https://nome[:porta] (ou http em loopback, para testes), sem caminho, query, fragmento nem credenciais."""
+    try:
+        p = urllib.parse.urlsplit(u)
+        p.port
+    except ValueError:
+        return f"{u!r} não é um endereço"
+    if p.username or p.password or p.query or p.fragment or p.path not in ("", "/") or not p.hostname:
+        return f"{u!r}: só esquema e nome (ex.: \"https://notas.exemplo.pt\"), sem caminho, ?, # nem credenciais"
+    if p.scheme == "https":
+        return ""
+    if p.scheme == "http" and p.hostname.lower() in LOOPBACK:
+        return ""
+    return f"{u!r} tem de ser https:// (o claude.ai e o ChatGPT só ligam por https)"
 
 
 def anfitrioes(cfg: Config) -> frozenset:

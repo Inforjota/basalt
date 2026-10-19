@@ -1744,9 +1744,15 @@ def criar_servidor(cfg, host=None, porta=None):
     classe = type("Handler", (H,), {"cfg": cfg, "aut": auth.Autenticador(cfg)})
     try:
         from . import mcp
-        mcp.registar(ROTAS_EXTRA, cfg, classe.aut)   # POST /mcp (só Bearer) + GET /mcp → 405; o MCP importa basalt.web sozinho
+        classe.servidor_mcp = mcp.registar(ROTAS_EXTRA, cfg, classe.aut)   # POST /mcp (só Bearer) + GET /mcp → 405; o MCP importa basalt.web sozinho
     except ImportError:
         pass
+    # «Traz a tua IA»: servidor OAuth do /mcp (só activo com url_publico e fora do modo aberto) + página «Ligar a tua IA».
+    # Fica na CLASSE deste servidor (h.oauth): as rotas são de módulo e vários servidores no mesmo processo não se podem cruzar.
+    from . import oauth
+    classe.oauth = oauth.OAuth(cfg, classe.aut)
+    classe.aut.oauth = classe.oauth
+    oauth.registar(ROTAS_EXTRA)
     onde = host if host is not None else cfg.escutar
     srv = (ServidorV6 if ":" in onde else ThreadingHTTPServer)((onde, cfg.porta if porta is None else porta), classe)   # «:» → um endereço IPv6
     srv.daemon_threads = True

@@ -68,6 +68,11 @@ button[disabled]{ opacity:.6; cursor:default; }
     document.title = t(document.title);
     ["p.sub", "label[for=senha]", "#ok"].forEach(function(sel){ var el = document.querySelector(sel); el.textContent = t(el.textContent); });
   }
+  // «Traz a tua IA»: depois de entrar, voltar ao pedido de ligação — SÓ para essa página (nada de redirecionar para fora)
+  function destino(){
+    var v = new URLSearchParams(location.search).get("volta") || "";
+    return /^\/oauth\/authorize\?pedido=[A-Za-z0-9_-]{20,64}$/.test(v) ? v : "/";
+  }
   var f = document.getElementById("f"), erro = document.getElementById("erro"), ok = document.getElementById("ok");
   f.addEventListener("submit", function(ev){
     ev.preventDefault();
@@ -79,7 +84,7 @@ button[disabled]{ opacity:.6; cursor:default; }
     }).then(function(r){
       return r.json().catch(function(){ return {}; }).then(function(d){ return {ok: r.ok, d: d}; });
     }).then(function(x){
-      if(x.ok){ location.href = "/"; return; }
+      if(x.ok){ location.href = destino(); return; }
       erro.textContent = t((x.d && x.d.erro) || "Não foi possível entrar.");
       ok.disabled = false;
     }).catch(function(){
