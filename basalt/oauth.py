@@ -88,7 +88,9 @@ def _h(token: str) -> str:
 
 def _avisar(evento: str, **campos) -> None:
     """uma linha no registo do servidor. Só ids curtos e nomes de anfitrião — nunca tokens, códigos, chaves nem e-mails."""
-    print(time.strftime("%d/%m %H:%M:%S"), "oauth:", evento, " ".join(f"{k}={v}" for k, v in campos.items()), file=sys.stderr, flush=True)
+    linha = f"{time.strftime('%d/%m %H:%M:%S')} oauth: {evento} " + " ".join(f"{k}={v}" for k, v in campos.items())
+    sys.stderr.write(linha + "\n")                     # uma só escrita: as linhas de pedidos simultâneos não se colam
+    sys.stderr.flush()
 
 
 # ───────────────────────────── base de dados (SQLite, 0600) ─────────────────────────────

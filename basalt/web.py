@@ -123,6 +123,7 @@ _excl_lock = threading.Lock()       # PORTE: a 1.ª lista de excluídas de um es
 _job_lock = threading.Lock()        # PORTE: uma fusão de cada vez por servidor (não por espaço): a IA é um recurso único
 _ia_lock = threading.Lock()          # protege as listas de uso por hora
 _ia_editor_lock = threading.Lock()  # um pedido de cada vez à IA do editor
+_REGISTO_TRINCO = threading.Lock()   # uma linha do registo de pedidos de cada vez (sem linhas coladas)
 _ia_usos = []                       # PORTE: o limite horário de pedidos à IA é do servidor (a IA é partilhada), não de cada utilizador
 
 
@@ -1298,7 +1299,11 @@ class H(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *a):
         if not self.path.startswith("/static/"):
-            print(time.strftime("%d/%m %H:%M:%S"), self.command, caminho_para_registo(self.path), flush=True)
+            # uma só escrita com o \n incluído: o print(a, b, c) escreve aos bocados e, com vários pedidos ao mesmo tempo, as
+            # linhas colavam-se no registo («GET /api/entrada19/10 10:42:57 GET …», visto na prova real de 19/10/2026)
+            with _REGISTO_TRINCO:
+                sys.stdout.write(f"{time.strftime('%d/%m %H:%M:%S')} {self.command} {caminho_para_registo(self.path)}\n")
+                sys.stdout.flush()
 
     # ── quem é ──
     def _ip(self):
