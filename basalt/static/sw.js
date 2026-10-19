@@ -2,7 +2,7 @@
 // quando não há rede, nunca esconde uma sessão expirada atrás de dados velhos.
 "use strict";
 
-var CACHE_VERSAO = "basalt-v12";      // sobe de versão quando a lógica de cache muda
+var CACHE_VERSAO = "basalt-v13";      // sobe de versão quando a lógica de cache muda
 // ronda 9 (achado 2 da ronda 7): a página só volta a ligar a cópia com um service worker que fale este protocolo (trinco partilhado
 // e geração gravada em cada entrada). Um SW antigo (v8, sem gerações) ainda a controlar a página não responde → não religa.
 // Protocolo 4 (ronda 9, achado G1 da ronda 2): uma cache da API por dono — um SW de protocolo 3 ainda tinha a cache comum.
@@ -15,8 +15,10 @@ var MARCA_DESLIGADA = "basaltcfg-copia-desligada";
 // as entradas anteriores ao pedido que trouxe a resposta boa, nunca a cache inteira — um trancar mais novo (de outro
 // pedido ou separador, no meio) fica. A entrada antiga "/__quando" (página/sw anteriores) conta como mais uma.
 var MARCA_TRANCADA = "basaltcfg-copia-trancada";
-// lápides — quando uma nota dá 404/410 fica aqui a hora (chave = o URL do pedido). Uma resposta 200 que tenha
-// PARTIDO antes dessa hora (pedido atrasado) já não entra na cache. Não começa por "basalt-": sobrevive ao activate.
+// lápides — quando uma nota dá 404/410 fica aqui a hora. Uma resposta 200 que tenha PARTIDO antes dessa hora (pedido atrasado)
+// já não entra na cache. Não começa por "basalt-": sobrevive ao activate. Ronda 11: cada 404/410 escreve a SUA entrada
+// («/__lapide/<URL codificado>/<hora>») e a lápide que vale é a maior; a entrada antiga (chave = o URL) continua a escrever-se
+// e a ler-se (ver marcarApagada).
 var MARCA_APAGADAS = "basaltcfg-apagadas";
 // ronda 7 (geração): «apagar a cópia» (na página) muda esta marca ANTES de pôr a de desligada. Um pedido que partiu antes
 // disso compara-a ao guardar: se mudou, a cópia foi apagada (e talvez religada) enquanto ele corria e a resposta dele é de
@@ -287,6 +289,16 @@ async function semCopia() {
 // ronda 9 (achados 2 e 3 da ronda 8): a entrada só se serve se a nota não levou lápide DEPOIS de ela partir (um 200 atrasado que
 // entrou depois de um 404, com o trinco preso, não volta a mostrar a nota apagada) e se, DEPOIS de a ler, a cópia continua
 // ligada, destrancada e na mesma geração («apagar a cópia» com o trinco preso pode correr enquanto o cache.match está a meio).
+// ronda 11: um 404/410 ou um 401 pelo disjuntor (trinco preso por esta leitura) podiam entrar DEPOIS de se ver a lápide e antes
+// de se entregar — nas últimas leituras da geração/marcas — e a entrada, já apagada da cache, era entregue na mesma. Agora a
+// ÚLTIMA leitura é a da própria entrada: só se entrega se ainda lá estiver, igual (mesma hora de partida, geração e dono). Quem
+// apaga a nota, tranca ou apaga a cópia tira a entrada da cache depois de pôr a sua marca; se o fez antes desta releitura, ela
+// já não está, e se o fez depois, a entrega aconteceu antes dele.
+function mesmaEntrada(a, b) {
+  return !!(a && b) && ["X-Basalt-Inicio", "X-Basalt-Geracao", "X-Basalt-Dono"].every(function (h) {
+    return a.headers.get(h) === b.headers.get(h);
+  });
+}
 async function daCache(pedido) {
   var dono = donoDoPedido(pedido);
   if (!dono) return null;
@@ -297,7 +309,9 @@ async function daCache(pedido) {
     if (!e || e.headers.get("X-Basalt-Geracao") !== g || e.headers.get("X-Basalt-Dono") !== dono) return null;
     if (await apagadaDepois(pedido, Number(e.headers.get("X-Basalt-Inicio")) || 0)) return null;
     if ((await semCopia()) || (await geracaoDaCopia()) !== g) return null;
-    return marcarComoCache(e);
+    var e2 = await caches.match(pedido, { cacheName: cacheApiDe(dono) });   // ronda 11: o ÚLTIMO await — nada depois disto
+    if (!mesmaEntrada(e, e2)) return null;
+    return marcarComoCache(e2);
   });
   return r.ok ? r.valor : null;
 }
@@ -333,20 +347,62 @@ async function destrancar(lista) {
 function lojaLapides(dono) {
   return dono ? MARCA_APAGADAS + "-" + dono : MARCA_APAGADAS;
 }
+// ronda 11: as entradas por instante de uma nota — «/__lapide/<URL codificado>/<hora>». O encodeURIComponent codifica as «/» do
+// URL, por isso a hora é o último pedaço da chave; o «/» final do prefixo separa «nome=n1» de «nome=n10».
+function prefixoLapide(url) {
+  return "/__lapide/" + encodeURIComponent(url) + "/";
+}
+function horaDaChave(k, prefixo) {
+  var u = chaveDe({ chave: k }), i = u.indexOf(prefixo);
+  return i === -1 ? null : Number(u.slice(i + prefixo.length)) || 0;
+}
+// ronda 11: a lápide de uma nota numa loja = a MAIOR entre a entrada antiga (chave = o URL) e as entradas por instante (0 = nenhuma).
+// As por instante só se acrescentam, e a poda só tira as que têm outra MAIOR da mesma nota — a maior nunca sai. A varredura
+// repete-se (até 3 vezes) até duas seguidas darem o mesmo, e fica a maior de tudo o que se viu.
+async function lapideDe(c, url) {
+  var prefixo = prefixoLapide(url), maior = 0, antes = null;
+  var r = await c.match(url);
+  if (r) maior = Number(await r.text()) || 0;
+  for (var volta = 0; volta < 3; volta++) {
+    var chaves = await c.keys(), estaVolta = 0;
+    for (var i = 0; i < chaves.length; i++) {
+      var h = horaDaChave(chaves[i], prefixo);
+      if (h !== null && h > estaVolta) estaVolta = h;
+    }
+    if (estaVolta > maior) maior = estaVolta;
+    if (antes !== null && estaVolta === antes) break;
+    antes = estaVolta;
+  }
+  viuInstante(maior);
+  return maior;
+}
+// ronda 11 (lápide que recuava): ler-o-máximo-e-escrever na MESMA chave deixava um 404 mais antigo, suspenso entre ler e escrever
+// (pelo disjuntor do trinco, dois 404 correm sem trinco), escrever a sua hora por cima da de um 404 mais novo — e um 200 entre os
+// dois ficava guardado e servia-se sem rede. Agora 1.º a entrada própria deste 404 (só acrescenta: nada a faz recuar), depois a
+// entrada antiga com o máximo visto (para quem só lê essa), e por fim a poda.
 async function marcarApagada(pedido, inicio) {
   try {
     var c = await caches.open(lojaLapides(donoDoPedido(pedido))), q = agora(), real = Date.now();   // ronda 7: a idade conta-se no relógio real
     // ronda 6 (achado M9 da ronda 4): a lápide leva a hora a que o pedido do 404/410 PARTIU (a cópia leva a do seu pedido — é a
     // mesma régua) e nunca desce: uma lápide mais nova já posta fica
-    var marca = inicio || q, ja = await c.match(pedido.url);
-    if (ja) marca = Math.max(marca, Number(await ja.text()) || 0);
+    var marca = inicio || q, prefixo = prefixoLapide(pedido.url);
     viuInstante(marca);
+    await c.put(prefixo + marca, new Response(String(marca)));
+    marca = Math.max(marca, await lapideDe(c, pedido.url));
     await c.put(pedido.url, new Response(String(marca)));
-    var chaves = await c.keys();                                   // as lápides velhas saem (só aqui, num 404 — raro)
+    // poda (só aqui, num 404 — raro): saem as lápides com mais de LAPIDE_DIAS e, desta nota, as por instante abaixo da maior
+    // por instante vista (a maior fica sempre; quem a vir mais alta não tira a dela, por isso a maior de todas nunca sai)
+    var chaves = await c.keys(), daNota = 0;
     for (var i = 0; i < chaves.length; i++) {
-      var r = await c.match(chaves[i]);
+      var h = horaDaChave(chaves[i], prefixo);
+      if (h !== null && h > daNota) daNota = h;
+    }
+    for (var j = 0; j < chaves.length; j++) {
+      var hj = horaDaChave(chaves[j], prefixo);
+      if (hj !== null && hj < daNota) { await c.delete(chaves[j]); continue; }
+      var r = await c.match(chaves[j]);
       var l = r ? Number(await r.text()) || 0 : 0;
-      if (real - l > LAPIDE_DIAS * 86400000) await c.delete(chaves[i]);
+      if (real - l > LAPIDE_DIAS * 86400000) await c.delete(chaves[j]);
     }
   } catch (e) {}
 }
@@ -356,11 +412,8 @@ async function apagadaDepois(pedido, inicio) {
     var dono = donoDoPedido(pedido), lojas = dono ? [lojaLapides(dono), MARCA_APAGADAS] : [MARCA_APAGADAS], depois = false;
     for (var i = 0; i < lojas.length; i++) {
       if (!(await caches.has(lojas[i]))) continue;
-      var r = await (await caches.open(lojas[i])).match(pedido.url);
-      if (!r) continue;
-      var l = Number(await r.text()) || 0;
-      viuInstante(l);
-      if (inicio <= l) depois = true;                              // continua: viuInstante vê as duas horas
+      var l = await lapideDe(await caches.open(lojas[i]), pedido.url);   // ronda 11: a maior (entrada antiga e por instante)
+      if (l && inicio <= l) depois = true;                         // continua: viuInstante vê as duas horas
     }
     return depois;
   } catch (e) {
