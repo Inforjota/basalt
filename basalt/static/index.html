@@ -1305,6 +1305,12 @@ async function apiGet(path, repetido){
   if(await copiaTrancadaAqui()) throw erroCopiaTrancada();
   if(!DONO || DONO !== donoAntes || OUTRA_CONTA) return apiGetFalhaRede(path);
   if(await copiaApagadaDesde(geracaoAntes)) throw erroLeituraCopiaApagada();
+  // ronda 11: as verificações de cima também esperam (a marca do service worker, a geração na IndexedDB) — um 401 que tranca a
+  // cópia, «apagar a cópia» ou outra conta, neste separador ou noutro, pode chegar AÍ. A decisão final toma-se aqui, só com o
+  // que já está em memória: daqui até ao return não há mais nenhum await.
+  if(COPIA_BLOQUEADA || lerLocal("basalt-copia-bloqueada")) throw erroCopiaTrancada();
+  if(!DONO || DONO !== donoAntes || OUTRA_CONTA) return apiGetFalhaRede(path);
+  if(COPIA_DESLIGADA || GERACAO_COPIA !== geracaoAntes) throw erroLeituraCopiaApagada();
   return dados;
 }
 /* ronda 9 (achado 3 da ronda 8): uma resposta da cópia do service worker que chega DEPOIS de «apagar a cópia» (o SW pode tê-la lido

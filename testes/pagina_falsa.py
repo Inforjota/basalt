@@ -35,6 +35,8 @@ GANCHO = ('window.__t = {guardarEdicaoOffline: guardarEdicaoOffline, sincronizar
           'sincronizarPacote: sincronizarPacote, idbGet: idbGet, idbGetAll: idbGetAll, idbPut: idbPut, idbDelete: idbDelete, '
           'tentarOffline: tentarOffline, desligarCopiaLocal: desligarCopiaLocal, religarCopiaLocal: religarCopiaLocal, apiGet: apiGet, '
           'apiSend: apiSend, enviarAnexo: typeof enviarAnexo === "function" ? enviarAnexo : null, trancasNaMarca: trancasNaMarca, desbloquearCopiaLocal: desbloquearCopiaLocal, '
+          # ronda 11: trancar (o que um 401 faz) a meio de uma leitura
+          'bloquearCopiaLocal: typeof bloquearCopiaLocal === "function" ? bloquearCopiaLocal : null, '
           'geracao: function(){ return GERACAO_COPIA; }, desligada: function(){ return COPIA_DESLIGADA; }, '
           'bloqueada: function(){ return COPIA_BLOQUEADA; }, setIdbGet: function(f){ idbGet = f; }, '
           # ronda 8 (contas no mesmo browser): com `typeof`, para o gancho servir também uma página anterior (BASALT_STATIC)
