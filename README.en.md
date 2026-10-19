@@ -33,7 +33,7 @@ overwriting** what you wrote. Works offline, in plain Python, on your own machin
 ## Install in 2 minutes
 
 ```bash
-git clone https://github.com/MrJQ1987/basalt && cd basalt
+git clone https://github.com/inforjota/basalt && cd basalt
 python3 -m basalt iniciar --dados ~/basalt-data --email you@example.com   # asks for a password; creates basalt.toml and folders
 export BASALT_CONFIG=~/basalt-data/basalt.toml                            # the next commands find the file through this
 python3 -m basalt serve                                                   # http://127.0.0.1:8121
