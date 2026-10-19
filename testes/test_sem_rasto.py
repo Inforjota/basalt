@@ -43,6 +43,9 @@ RASTOS = re.compile(r"(?<![\d.])(?:192\.168|10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01]
 CREDITOS = {"README.md", "README.en.md", "CHANGELOG.md", "LICENCA", "pyproject.toml", "site/index.html"}
 PERMITIDO_NOS_CREDITOS = re.compile(_e(_EMPRESA) + "|" + _e("71756164726f73") + r"|\bjos[ée]\b", re.I)
 PRIVADO = re.compile(_e(_EMPRESA), re.I)
+# o endereço público do repositório leva o nome da organização: é onde o pacote vive, não um rasto — vale em qualquer ficheiro
+# (o `git clone` de docs/INSTALAR.md e o teste que o confere); qualquer outra ocorrência fora dos créditos continua a ser rasto
+REPO_PUBLICO = re.compile(r"github\.com/" + _e(_EMPRESA) + r"/basalt\b", re.I)
 
 
 def _ficheiros():
@@ -59,21 +62,25 @@ def _credito(f) -> bool:
     return f.name in CREDITOS or str(f.relative_to(RAIZ)) in CREDITOS
 
 
+def _hits_linhas(linhas, credito: bool, nome: str = "?"):
+    out = []
+    for i, l in enumerate(linhas, 1):
+        for m in RASTOS.finditer(l):
+            if credito and PERMITIDO_NOS_CREDITOS.fullmatch(m.group(0)):
+                continue
+            out.append(f"{nome}:{i}: {m.group(0)!r}  ← {l.strip()[:90]}")
+        if not credito:
+            for m in PRIVADO.finditer(REPO_PUBLICO.sub("", l)):
+                out.append(f"{nome}:{i}: {m.group(0)!r}  ← {l.strip()[:90]}")
+    return out
+
+
 def _hits(f):
     try:
         linhas = f.read_text(encoding="utf-8").splitlines()
     except (UnicodeDecodeError, OSError):
         return []
-    out = []
-    for i, l in enumerate(linhas, 1):
-        for m in RASTOS.finditer(l):
-            if _credito(f) and PERMITIDO_NOS_CREDITOS.fullmatch(m.group(0)):
-                continue
-            out.append(f"{f.relative_to(RAIZ)}:{i}: {m.group(0)!r}  ← {l.strip()[:90]}")
-        for m in PRIVADO.finditer(l):
-            if not _credito(f):
-                out.append(f"{f.relative_to(RAIZ)}:{i}: {m.group(0)!r}  ← {l.strip()[:90]}")
-    return out
+    return _hits_linhas(linhas, _credito(f), str(f.relative_to(RAIZ)))
 
 
 def test_ve_o_pacote_todo():
@@ -116,3 +123,9 @@ def test_detecta_rasto():
     # os créditos só valem em quem pode dizer quem fez: o site de apresentação sim, a página da aplicação não
     assert _credito(RAIZ / "site" / "index.html") and _credito(RAIZ / "README.md") and not _credito(RAIZ / "basalt" / "static" / "index.html")
     assert PRIVADO.search("geral@" + _w(_EMPRESA) + ".com")
+    # o endereço público do repositório passa fora dos créditos; o nome da empresa noutro sítio (mesmo na mesma linha), não
+    org = _w(_EMPRESA)
+    assert not _hits_linhas(["git clone https://github.com/" + org + "/basalt && cd basalt"], credito=False)
+    assert _hits_linhas(["geral@" + org + ".com"], credito=False)
+    assert _hits_linhas(["https://github.com/" + org + "/basalt e https://" + org + ".com"], credito=False)
+    assert _hits_linhas(["https://github.com/" + org + "/outro-projecto"], credito=False)
