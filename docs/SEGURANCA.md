@@ -14,8 +14,8 @@
 - **Contra segredos em claro.** Um só guarda (`basalt.segredos`) para todas as entradas: interface, MCP (incluindo
   `guardar_ideia`), sincronização em duas vias, `basalt.sig guarda`, importação Obsidian e anexos de texto. Recusa padrões de
   chaves (Anthropic, OpenAI, GitHub, AWS, Telegram…) e passwords escritas à mão (`senha: …`, `password = …`), também
-  entre aspas ou crases, a negrito ou com uma observação a seguir (`senha: "…" (router)`). Uma data ou uma
-  hora só deixa de contar como password quando a frase fala da validade da própria senha.
+  entre aspas ou crases, a negrito ou com uma observação a seguir (`senha: "…" (router)`), e em notas com fins de linha
+  do Windows (CR LF). Uma data ou uma hora só deixa de contar como password quando a frase fala da validade da própria senha.
 - **Notas retidas não saem para a IA.** Uma nota está retida quando tem um segredo em claro — no texto ou no nome do ficheiro
   — ou está em `excluidas.txt`. Fica de fora do índice e dos embeddings, da pergunta com fontes (que olha para a nota tal como
   está agora, não para o índice: uma nota que ganhou um segredo depois de indexada já não dá pedaços), das categorias, da

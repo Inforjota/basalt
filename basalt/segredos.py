@@ -53,10 +53,13 @@ _SEPARADOR_RX = re.compile(r"[\n;,.:()\[\]{}|—–]|\s-\s")
 # de ênfase, e acabar no fim da linha, numa pontuação seguida de espaço, num parêntese, num «|», num travessão ou num « - »:
 # «senha: "minhapalavracomplicada"», «senha: `…`», «senha: … (router)», «senha: …; utilizador: ana» passavam como texto.
 # Uma palavra seguida de outra palavra («senha: minhapalavrasecreta escrita no caderno») continua a ser prosa.
+# O fim da linha também pode ser o do Windows (CR LF) ou um CR solto: o `$` em modo multilinha só vê o LF, e uma nota
+# escrita ou sincronizada a partir do Windows («senha: minhapalavrasecreta\r\n») passava inteira como texto.
 _ENVOLVE = "[\"'`\u201c\u201d\u2018\u2019\u00ab\u00bb*_~]{0,3}"
+_FIM_LINHA = r"(?:\r|$)"
 SO_LETRAS_RX = re.compile(r"(?im)\b(?:password|passwd|senha|palavra[- ]passe)\b[^\n:=]{0,40}[:=][ \t]*" + _ENVOLVE
                           + r"([^\W\d_]{8,})" + _ENVOLVE
-                          + r"(?=[ \t]*(?:$|[.,;:!?](?:[ \t]|$)|[(\[{|\u2014\u2013]|-[ \t]))")
+                          + r"(?=[ \t]*(?:" + _FIM_LINHA + r"|[.,;:!?](?:[ \t]|" + _FIM_LINHA + r")|[(\[{|\u2014\u2013]|-[ \t]))")
 _MAIUSCULA_NO_MEIO_RX = re.compile(r"[a-zà-ÿ][A-ZÀ-Þ]")
 _PALAVRAS_CORRENTES = {
     "desconhecida", "desconhecido", "actualizada", "atualizada", "actualizado", "atualizado", "temporariamente",

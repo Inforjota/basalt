@@ -8,7 +8,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 - **Passwords só de letras entre aspas, crases ou com uma observação a seguir:** `senha: "minhapalavracomplicada"`,
   `` senha: `minhaSenhaSecreta` ``, `senha: minhapalavrasecreta (router)` ou `senha: minhapalavrasecreta; utilizador: ana`
   gravavam-se como texto. Agora são recusadas como qualquer outra password — também com «», “”, '', negrito, `,`, `|`, `—` ou
-  ` - ` a seguir. «senha: está no cofre», «senha: "criptografada"» e as outras frases que só falam da senha continuam a gravar-se.
+  ` - ` a seguir, e também numa nota com fins de linha do Windows (CR LF), que antes deixava passar qualquer password só de
+  letras. «senha: está no cofre», «senha: "criptografada"» e as outras frases que só falam da senha continuam a gravar-se.
 - **Uma nota apagada no servidor não volta à cópia sem internet:** com respostas a chegar fora de ordem (rede lenta, vários
   pedidos ao mesmo tempo), a marca «esta nota foi apagada» podia recuar e uma versão antiga da nota ficava guardada e aparecia
   sem internet. Cada resposta 404/410 deixa agora a sua própria marca e vale sempre a mais recente; as marcas que outra mais

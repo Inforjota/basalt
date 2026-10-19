@@ -35,6 +35,30 @@ G1B = [
     "senha: “OlaMundoGrande” (wifi)",
 ]
 
+# o mesmo defeito por outro caminho: fins de linha do Windows (CR LF) ou um CR solto. O «fim da linha» da regra só via o LF,
+# e uma nota escrita ou sincronizada a partir do Windows deixava passar QUALQUER password só de letras — até as que a regra
+# já recusava com LF, e até as de maiúscula no meio (a «falha fechada»).
+G1C = [
+    "senha: minhapalavrasecreta\r\n",
+    "senha: minhapalavrasecreta\r\nutilizador: ana",
+    'senha: "minhapalavracomplicada"\r\n',
+    "senha: `minhapalavrasecreta`\r\nfim",
+    "senha: minhaSenhaSecreta\r\n",
+    "senha: minhapalavrasecreta \r\n",
+    "senha: minhapalavrasecreta;\r\nutilizador: ana",
+    "notas do router:\r\nsenha: minhapalavrasecreta\r\nfim",
+    "senha: minhapalavrasecreta\r",
+]
+
+# controlos com CR LF: falar de passwords sem as escrever continua a gravar, também numa nota do Windows
+CONTROLO_TEXTO_CRLF = [
+    "senha do router: está no cofre\r\n",
+    "senha: desconhecida\r\n",
+    "Estado da senha: sincronizada\r\n",
+    "senha: minhapalavrasecreta escrita no caderno\r\n",
+    "a senha: confirmada, obrigado\r\n",
+]
+
 # controlos: o que já era recusado continua a sê-lo
 CONTROLO_SEGREDO = [
     "senha: minhapalavrasecreta",
@@ -78,6 +102,16 @@ def test_password_so_de_letras_com_aspas_crases_ou_observacao_e_segredo(texto):
 @pytest.mark.parametrize("texto", G1B)
 def test_variantes_de_aspas_enfase_e_separadores_sao_segredo(texto):
     assert tem_segredo_texto(texto), f"«{texto}» devia ser recusado"
+
+
+@pytest.mark.parametrize("texto", G1C)
+def test_password_so_de_letras_com_fim_de_linha_do_windows_e_segredo(texto):
+    assert tem_segredo_texto(texto), f"{texto!r} devia ser recusado"
+
+
+@pytest.mark.parametrize("texto", CONTROLO_TEXTO_CRLF)
+def test_controlo_falar_de_passwords_com_fim_de_linha_do_windows_continua_texto(texto):
+    assert not tem_segredo_texto(texto), f"{texto!r} devia gravar-se"
 
 
 @pytest.mark.parametrize("texto", CONTROLO_SEGREDO)
