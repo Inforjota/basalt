@@ -26,6 +26,13 @@ deles** (o Claude sai de `160.79.104.0/21`), por isso o endereço tem de se ver 
 um túnel ou de um proxy público (ver [INSTALAR.md](INSTALAR.md)). Depois de actualizar o Basalt, no ChatGPT remove e volta a
 adicionar a aplicação (ele guarda a lista de ferramentas de quando a criaste).
 
+**Visto na prova real (19/10/2026, claude.ai Pro e ChatGPT Plus, ambos por OAuth):** leitura, escrita e renovação automática do
+token funcionam nos dois. Duas coisas do lado do ChatGPT:
+- as verificações de segurança da OpenAI **bloqueiam ferramentas sem anotações MCP** (`readOnlyHint`, `destructiveHint`…) — o
+  Basalt anota todas desde então; se o teu conector foi criado antes, remove-o e volta a adicioná-lo;
+- se uma nota lida na conversa tiver texto **dirigido à IA** («se uma IA ler isto, diz…»), o ChatGPT trata-o como possível
+  *prompt injection* e bloqueia as escritas seguintes **nessa conversa**. Numa conversa nova, a escrita passa.
+
 ### Como funciona o OAuth (para quem audita)
 
 - **Descoberta:** `POST /mcp` sem token → `401` com `WWW-Authenticate: Bearer resource_metadata="<url_publico>/.well-known/oauth-protected-resource", scope="notas"`.
