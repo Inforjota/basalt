@@ -61,8 +61,8 @@ a{color:var(--acc)}
     <p data-pt>Com embeddings locais (Ollama) encontras «aquela nota do barco das 8» sem acertar nas palavras. Sem embeddings, procura por palavras (BM25).</p>
     <p data-en>With local embeddings (Ollama) you find “that note about the 8 o’clock ferry” without matching the words. Without them, lexical search (BM25).</p></div>
   <div class="card"><h3 data-pt>Agentes que não estragam nada</h3><h3 data-en>Agents that break nothing</h3>
-    <p data-pt>Servidor MCP com 7 ferramentas. Cada escrita exige o <code>hash</code> da versão lida; se mudou, o agente recebe o texto actual e funde. Não há apagar.</p>
-    <p data-en>MCP server with 7 tools. Every write needs the <code>hash</code> of the version read; if it changed, the agent gets the current text and merges. There is no delete.</p></div>
+    <p data-pt>Servidor MCP com 7 ferramentas, para o Claude, o ChatGPT, o Codex. Cada escrita exige o <code>hash</code> da versão lida; se mudou, o agente recebe o texto actual e funde. Não há apagar.</p>
+    <p data-en>MCP server with 7 tools, for Claude, ChatGPT, Codex. Every write needs the <code>hash</code> of the version read; if it changed, the agent gets the current text and merges. There is no delete.</p></div>
   <div class="card"><h3 data-pt>Nada se perde numa corrida</h3><h3 data-en>Nothing lost in a race</h3>
     <p data-pt>Escritas atómicas compare-and-swap (<code>renameat2</code>), trinco entre processos, cópias de segurança do que sai numa troca. Auditado por uma IA de outra família.</p>
     <p data-en>Atomic compare-and-swap writes (<code>renameat2</code>), cross-process lock, safety copies of whatever leaves in a swap. Audited by an AI of another family.</p></div>
@@ -81,10 +81,12 @@ BASALT_CONFIG=~/basalt-dados/basalt.toml python3 -m basalt serve   # http://127.
 <p data-pt>Python ≥ 3.11 e git. Docker e systemd também: ver <code>docs/INSTALAR.md</code>. IA local opcional com o Ollama (<code>nomic-embed-text</code> + um modelo de chat).</p>
 <p data-en>Python ≥ 3.11 and git. Docker and systemd too: see <code>docs/INSTALAR.md</code>. Optional local AI with Ollama (<code>nomic-embed-text</code> + a chat model).</p>
 
-<h2 data-pt>Os teus agentes</h2><h2 data-en>Your agents</h2>
-<pre><code>claude mcp add basalt -- python3 -m basalt mcp --utilizador tu@exemplo.pt</code></pre>
-<p data-pt>Depois, no Claude Code: «procura nas minhas notas o que decidi sobre o servidor», «acrescenta à nota <code>projecto_x</code> que…». Codex, Cursor e claude.ai (por HTTP com token) em <code>docs/MCP.md</code>.</p>
-<p data-en>Then, in Claude Code: “search my notes for what I decided about the server”, “append to note <code>project_x</code> that…”. Codex, Cursor and claude.ai (over HTTP with a token) in <code>docs/MCP.md</code>.</p>
+<h2 data-pt>Traz a tua IA</h2><h2 data-en>Bring your own AI</h2>
+<p data-pt>Usa o <strong>Claude</strong> (claude.ai, app e telemóvel) ou o <strong>ChatGPT</strong> com as tuas notas, na subscrição que já pagas: na página <strong>🔌 Ligar a tua IA</strong> copias um endereço, colas na tua IA, entras e carregas em «Permitir». Sem chaves para copiar — é OAuth, e cortas o acesso quando quiseres com um clique em «Revogar». Precisa de o Basalt se ver na internet (proxy HTTPS ou túnel).</p>
+<p data-en>Use <strong>Claude</strong> (claude.ai, desktop and mobile) or <strong>ChatGPT</strong> with your notes, on the plan you already pay for: on the <strong>🔌 Connect your AI</strong> page you copy one address, paste it into your AI, sign in and press “Allow”. No keys to copy — it is OAuth, and you cut access whenever you want with one click on “Revoke”. Basalt must be reachable from the internet (HTTPS proxy or tunnel).</p>
+<pre><code>https://notas.exemplo.pt/mcp</code></pre>
+<p data-pt>Agentes no terminal também: <code>claude mcp add basalt -- python3 -m basalt mcp --utilizador tu@exemplo.pt</code>, e o Codex com um token criado na mesma página. Depois: «procura nas minhas notas o que decidi sobre o servidor», «acrescenta à nota <code>projecto_x</code> que…». Tudo em <code>docs/MCP.md</code>.</p>
+<p data-en>Terminal agents too: <code>claude mcp add basalt -- python3 -m basalt mcp --utilizador you@example.com</code>, and Codex with a token made on the same page. Then: “search my notes for what I decided about the server”, “append to note <code>project_x</code> that…”. All in <code>docs/MCP.md</code>.</p>
 
 <h2 data-pt>Segurança, em duas linhas</h2><h2 data-en>Security, in two lines</h2>
 <p class="note" data-pt>Escuta em <code>127.0.0.1</code> por omissão; para a rede, um proxy HTTPS à frente. Sessões HttpOnly/SameSite=Strict, scrypt, limite de tentativas por IP. O MCP por HTTP só aceita <code>Authorization: Bearer</code> — nunca o cookie — por isso um site de terceiros no teu browser não consegue escrever nas tuas notas.</p>
