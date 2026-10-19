@@ -8,8 +8,9 @@ O que conta como segredo:
 - formatos de chaves/tokens conhecidos (`SEGREDO_RX`);
 - uma password escrita à mão a seguir a «password/senha/palavra-passe … :» com algarismo ou símbolo (`PASSWORD_RX`), excepto
   um valor com formato de data/hora quando a MESMA frase fala de validade («validade da senha: 2026-10-06»);
-- uma password só de letras, sozinha no fim da linha, com 12+ letras ou maiúsculas no meio («senha: minhapalavrasecreta»),
-  excepto palavras correntes («senha: alterada», «password: unchanged»).
+- uma password só de letras, com 12+ letras ou maiúsculas no meio («senha: minhapalavrasecreta»), também entre aspas, crases
+  ou ênfase e seguida de uma observação («senha: `minhapalavrasecreta` (router)»), excepto palavras correntes («senha: alterada»,
+  «password: unchanged»).
 
 Falar de passwords sem as escrever continua a poder gravar-se: «senha: está no cofre», «password: ver_no_cofre»,
 «mudar a password todos os meses», «senha do NAS: https://cofre.exemplo.pt».
@@ -48,9 +49,14 @@ _VALIDADE_RX = re.compile(r"(?i)\b(?:validade|expir\w*|venc\w*|prazo|caduc\w*|at
                           r"(?:renew\w*|rotat\w*|changed)\s+(?:on|at|every))\b")
 _SEPARADOR_RX = re.compile(r"[\n;,.:()\[\]{}|—–]|\s-\s")
 
-# password só de letras, sozinha no fim da linha («senha: minhapalavrasecreta»)
-SO_LETRAS_RX = re.compile(r"(?im)\b(?:password|passwd|senha|palavra[- ]passe)\b[^\n:=]{0,40}[:=][ \t]*([^\W\d_]{8,})"
-                          r"[ \t]*[.,;!]?[ \t]*$")
+# password só de letras («senha: minhapalavrasecreta»). Ronda 11: o valor pode vir entre aspas («» “” ‘’ "" ''), crases ou marcas
+# de ênfase, e acabar no fim da linha, numa pontuação seguida de espaço, num parêntese, num «|», num travessão ou num « - »:
+# «senha: "minhapalavracomplicada"», «senha: `…`», «senha: … (router)», «senha: …; utilizador: ana» passavam como texto.
+# Uma palavra seguida de outra palavra («senha: minhapalavrasecreta escrita no caderno») continua a ser prosa.
+_ENVOLVE = "[\"'`\u201c\u201d\u2018\u2019\u00ab\u00bb*_~]{0,3}"
+SO_LETRAS_RX = re.compile(r"(?im)\b(?:password|passwd|senha|palavra[- ]passe)\b[^\n:=]{0,40}[:=][ \t]*" + _ENVOLVE
+                          + r"([^\W\d_]{8,})" + _ENVOLVE
+                          + r"(?=[ \t]*(?:$|[.,;:!?](?:[ \t]|$)|[(\[{|\u2014\u2013]|-[ \t]))")
 _MAIUSCULA_NO_MEIO_RX = re.compile(r"[a-zà-ÿ][A-ZÀ-Þ]")
 _PALAVRAS_CORRENTES = {
     "desconhecida", "desconhecido", "actualizada", "atualizada", "actualizado", "atualizado", "temporariamente",
