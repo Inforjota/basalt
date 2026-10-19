@@ -4,6 +4,23 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Segurança: passwords, notas apagadas e cópia sem internet (19/10/2026)
+- **Passwords só de letras entre aspas, crases ou com uma observação a seguir:** `senha: "minhapalavracomplicada"`,
+  `` senha: `minhaSenhaSecreta` ``, `senha: minhapalavrasecreta (router)` ou `senha: minhapalavrasecreta; utilizador: ana`
+  gravavam-se como texto. Agora são recusadas como qualquer outra password — também com «», “”, '', negrito, `,`, `|`, `—` ou
+  ` - ` a seguir. «senha: está no cofre», «senha: "criptografada"» e as outras frases que só falam da senha continuam a gravar-se.
+- **Uma nota apagada no servidor não volta à cópia sem internet:** com respostas a chegar fora de ordem (rede lenta, vários
+  pedidos ao mesmo tempo), a marca «esta nota foi apagada» podia recuar e uma versão antiga da nota ficava guardada e aparecia
+  sem internet. Cada resposta 404/410 deixa agora a sua própria marca e vale sempre a mais recente; as marcas que outra mais
+  recente da mesma nota já cobre são arrumadas sozinhas (as de mais de 31 dias também, como antes).
+- **A cópia sem internet relê a nota antes de a mostrar:** se a nota fosse apagada, a sessão expirasse ou carregasses em
+  «Apagar a cópia» enquanto o service worker ainda a estava a ir buscar, ela podia aparecer na mesma. Agora só se mostra se
+  continuar exactamente a mesma no fim de todas as verificações.
+- **A página decide no fim:** uma nota vinda da cópia sem internet não se mostra se, enquanto a página fazia as últimas
+  verificações, a cópia foi trancada (sessão expirada, neste separador ou noutro), apagada ou passou para outra conta.
+- O service worker passa a `basalt-v13` (a cache `basalt-v12` é apagada sozinha na primeira visita); o formato da cópia não
+  muda, não é preciso fazer nada.
+
 ### Portátil, Windows e Mac (19/10/2026)
 - O arranque (`iniciar`, `serve`, `mcp`) prova as trocas atómicas na pasta dos dados (`cas.troca_suportada`) e pára com uma mensagem
   clara se não servirem (macOS/Windows sem Linux, `/mnt/c` no WSL, pastas partilhadas) — antes só falhava na 1.ª gravação, e no

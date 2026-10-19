@@ -13,7 +13,8 @@
   cópia e não sincroniza sozinho (ver [MCP.md](MCP.md)).
 - **Contra segredos em claro.** Um só guarda (`basalt.segredos`) para todas as entradas: interface, MCP (incluindo
   `guardar_ideia`), sincronização em duas vias, `basalt.sig guarda`, importação Obsidian e anexos de texto. Recusa padrões de
-  chaves (Anthropic, OpenAI, GitHub, AWS, Telegram…) e passwords escritas à mão (`senha: …`, `password = …`). Uma data ou uma
+  chaves (Anthropic, OpenAI, GitHub, AWS, Telegram…) e passwords escritas à mão (`senha: …`, `password = …`), também
+  entre aspas ou crases, a negrito ou com uma observação a seguir (`senha: "…" (router)`). Uma data ou uma
   hora só deixa de contar como password quando a frase fala da validade da própria senha.
 - **Notas retidas não saem para a IA.** Uma nota está retida quando tem um segredo em claro — no texto ou no nome do ficheiro
   — ou está em `excluidas.txt`. Fica de fora do índice e dos embeddings, da pergunta com fontes (que olha para a nota tal como
@@ -35,10 +36,12 @@
   um separador antigo nunca grava em nome de quem entrou depois. «Terminar sessão» tira a cópia do browser. Todos os pedidos da
   página levam o dono (`X-Basalt-Dono`; as imagens dos anexos, em `?d=`): sem ele, o servidor responde 428 e não lê nem grava
   nada (só `/api/eu`, que diz o dono, fica de fora). O service worker guarda uma cópia da API por dono e só a serve a esse dono;
-  as lápides (notas que deram 404/410) também são por dono. Uma edição fica presa à conta com que a nota abriu: se o separador
+  as lápides (notas que deram 404/410) também são por dono, e nunca recuam com respostas fora de ordem (vale a mais recente). Uma edição fica presa à conta com que a nota abriu: se o separador
   passar a ser de outra conta antes de gravar, nada sobe nem entra na fila em nome da nova — a edição fica à parte, em nome da
   conta original, e sobe quando ela voltar. As leituras sem internet confirmam dono, geração e cópia na mesma transacção em que
-  lêem as notas, e uma resposta da cópia do service worker volta a ser verificada depois de lido o corpo.
+  lêem as notas. O service worker relê a nota da cópia como última leitura e só a entrega se for a mesma; a página volta a
+  verificá-la depois de lido o corpo e decide no fim, sem mais esperas, se a cópia foi entretanto trancada, apagada ou
+  passou para outra conta.
   Os agentes e scripts entram por token (`Authorization: Bearer`) e não precisam de dono; um script que use a sessão do browser
   ou o cabeçalho do proxy tem de mandar o `X-Basalt-Dono` que `GET /api/eu` lhe der. A única rota da API sem login nem dono é
   `GET /api/saude` (o healthcheck do Docker e da monitorização): responde `{"ok": true}` e mais nada — nenhum dado das notas,
