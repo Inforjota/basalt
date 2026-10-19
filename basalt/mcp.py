@@ -69,6 +69,21 @@ FERRAMENTAS = [
      "inputSchema": {"type": "object", "properties": {"texto": {"type": "string"}}, "required": ["texto"]}},
 ]
 
+# Anotações MCP (spec 2025-03-26): dizem ao cliente o que cada ferramenta faz. O ChatGPT trata uma ferramenta SEM anotações como
+# arriscada e bloqueou todas na prova real (19/10/2026) — mesmo as de leitura. Nenhuma sai do Basalt (openWorld=False).
+_LER = {"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False}
+_ESCREVER = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": False}
+_ANOTACOES = {
+    "procurar": ("Procurar notas", _LER), "ler_nota": ("Ler uma nota", _LER), "listar_notas": ("Listar notas", _LER),
+    # escrever_nota substitui o texto todo; o git guarda o anterior, mas pode estar desligado (BASALT_GIT=0) → destrutiva
+    # (o cliente pede confirmação ao utilizador, que é o que se quer numa reescrita)
+    "escrever_nota": ("Reescrever uma nota", dict(_ESCREVER, destructiveHint=True, idempotentHint=True)),
+    "acrescentar_nota": ("Acrescentar a uma nota", _ESCREVER), "criar_nota": ("Criar uma nota", _ESCREVER),
+    "guardar_ideia": ("Guardar uma ideia na Entrada", _ESCREVER),
+}
+for _f in FERRAMENTAS:
+    _f["title"], _f["annotations"] = _ANOTACOES[_f["name"]][0], dict(_ANOTACOES[_f["name"]][1])
+
 
 class ParametrosInvalidos(ValueError):
     pass

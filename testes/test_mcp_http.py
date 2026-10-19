@@ -75,3 +75,16 @@ def test_mcp_pelo_servidor_web(servidor):
     # notificação (sem id) → 202 sem corpo
     st, corpo, _ = pedir(porta, "POST", "/mcp", {"jsonrpc": "2.0", "method": "notifications/initialized"}, {"Authorization": "Bearer " + token})
     assert st == 202
+
+
+def test_ferramentas_anotadas():
+    """o ChatGPT bloqueia ferramentas sem anotações (prova real 19/10/2026): todas têm title + as 4 dicas; leitura ≠ escrita."""
+    from basalt.mcp import FERRAMENTAS
+    leitura = {"procurar", "ler_nota", "listar_notas"}
+    assert {f["name"] for f in FERRAMENTAS} >= leitura | {"guardar_ideia", "escrever_nota"}
+    for f in FERRAMENTAS:
+        a = f["annotations"]
+        assert f["title"] and set(a) == {"readOnlyHint", "destructiveHint", "idempotentHint", "openWorldHint"}
+        assert a["readOnlyHint"] is (f["name"] in leitura)
+        assert a["openWorldHint"] is False
+        assert a["destructiveHint"] is (f["name"] == "escrever_nota")
