@@ -4,7 +4,7 @@ troca [[fundida]]→[[que fica]] nas outras notas; índice MEMORY.md; apaga a fu
 Usado pela página (botão «Unir» em Arrumar) e por basalt.auto_arrumar. CLI: python -m basalt.unir --teste (sem rede, numa
 memória de rascunho).
 """
-import fcntl, json, os, re, subprocess, time
+import contextlib, fcntl, json, os, re, subprocess, time
 from pathlib import Path
 
 from . import caminhos, cas, config
@@ -185,6 +185,22 @@ def _recuar(cas, trocas, falhas):
     return avisos
 
 
+@contextlib.contextmanager
+def trinco(pasta):
+    """o trinco das fusões (o botão Unir e o auto-arrumar): `.basalt-unir.lock` ao lado da memória, aberto SEM seguir ligações
+    e sem truncar (ronda 13b: era open(…, "w"), que seguia uma ligação e esvaziava o ficheiro para onde ela apontasse).
+    Uma ligação no lugar do trinco = RuntimeError, e nada se grava."""
+    try:
+        fd = caminhos.abrir_trinco(Path(pasta) / ".basalt-unir.lock")
+    except OSError as e:
+        raise RuntimeError("o trinco da fusão (.basalt-unir.lock) não é um ficheiro normal — não o sigo nem gravo nada") from e
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)                                           # fechar liberta o flock
+
+
 def aplicar(real, manter, fundir, m, a=None, b=None):
     """grava tudo e faz commit; devolve (hash do commit, notas tocadas, commit ok). Tranca para não haver duas fusões ao
     mesmo tempo. a/b = o texto das notas que a IA juntou: se alguma mudou entretanto (as sessões escrevem na memória
@@ -193,8 +209,7 @@ def aplicar(real, manter, fundir, m, a=None, b=None):
     ou durante a graça, faz a fusão recuar inteira (o que já tinha sido trocado volta atrás) e levanta RuntimeError.
     Antes: write_text()/unlink() às cegas depois da verificação — uma gravação feita nesse instante perdia-se."""
     real = Path(real)
-    with open(real.parent / ".basalt-unir.lock", "w") as lk:
-        fcntl.flock(lk, fcntl.LOCK_EX)
+    with trinco(real.parent):
         pa, pb = real / f"{manter}.md", real / f"{fundir}.md"
         bruto_a, bruto_b = caminhos.ler(pa), caminhos.ler(pb)       # os bytes reais: é o hash DELES que o CAS confere
         if a is None:

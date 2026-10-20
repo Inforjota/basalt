@@ -14,7 +14,7 @@ botão Desfazer. Resumo: <dados>/auto-arrumar/ultimo.json (e no stdout). Pares j
 Pensado para correr de noite (cron/systemd timer), depois de `python -m basalt.sig indexar`. Precisa de uma IA ([ia] ou [ia.arrumar] fornecedor ≠ «nenhum»);
 sem IA não faz nada (e não deixa a memória a meio).
 """
-import datetime, fcntl, hashlib, json, os, re, subprocess, sys, time, uuid
+import datetime, hashlib, json, os, re, subprocess, sys, time, uuid
 from pathlib import Path
 
 from . import arrumar as arr, caminhos, cas, config, retidas, unir
@@ -114,8 +114,7 @@ def _acrescentar(n, linha, alvo):
 
 def mudar(tipo, descricao, fn):
     """fotografia git → fn() → commit; devolve o hash (ou None se nada mudou). Mesma tranca do botão Unir."""
-    with open(REAL.parent / ".basalt-unir.lock", "w") as lk:
-        fcntl.flock(lk, fcntl.LOCK_EX)
+    with unir.trinco(REAL.parent):                     # ronda 13b: sem seguir ligações nem truncar
         unir._git(REAL, "add", "-A"); unir._git(REAL, "commit", "-q", "-m", f"basalt: antes de {descricao}")
         if not fn():
             return None
