@@ -6,7 +6,9 @@ A lista e as regras são do utilizador: [categorias] do basalt.toml (`lista` = n
 [regex pelo nome da nota, categoria]). Sem isso usam-se as de origem (DEF/REGRAS, genéricas). Sem chat configurado só
 valem as regras (e «Diversos» para o resto).
 As categorias das fontes externas («fonte:ref», de [fontes_extra] ou de uma instalação anterior) não se recalculam aqui mas
-também não se perdem: ficam enquanto a fonte as tiver no índice (sem índice, ou de uma fonte que ele não conhece, ficam sempre).
+também não se perdem: ficam enquanto a fonte as tiver no índice (sem índice, ou de uma fonte que não respondeu ou ele não
+conhece, ficam sempre; de uma fonte que respondeu vazia, saem). Os itens externos novos, sem categoria, categorizam-se como
+as notas (ronda 13).
   python -m basalt.categorias            (re)categoriza o que mudou
   python -m basalt.categorias --tudo     refaz todas as notas
   python -m basalt.categorias --teste    testa as regras e a validação (sem rede)
@@ -97,9 +99,9 @@ def campo(t, nome):
     return m.group(1) if m else ""
 
 
-def _externas_no_indice():
-    """(chaves «fonte:ref» que o índice tem de fontes que não são notas, fontes que ele conhece) — None sem índice (ou vazio,
-    ou ilegível): aí não há como saber o que uma fonte externa ainda tem."""
+def _ler_indice():
+    """(pedaços das fontes externas [(fonte, ref, titulo, trecho)], fontes que responderam na última indexação) — None sem
+    índice, com ele vazio (sem pedaços nem consultas) ou ilegível: aí não há como saber o que uma fonte externa ainda tem."""
     p = Path(SEMANTICA)
     if not p.exists():
         return None
@@ -107,31 +109,98 @@ def _externas_no_indice():
         import sqlite3
         c = sqlite3.connect(p.resolve().as_uri() + "?mode=ro", uri=True)
         try:
-            if not c.execute("SELECT count(*) FROM pedaco").fetchone()[0]:
-                return None
-            linhas = c.execute("SELECT DISTINCT fonte, ref FROM pedaco WHERE fonte != 'nota'").fetchall()
+            n = c.execute("SELECT count(*) FROM pedaco").fetchone()[0]
+            linhas = c.execute("SELECT fonte, ref, titulo, trecho FROM pedaco WHERE fonte != 'nota' ORDER BY fonte, ref").fetchall()
+            try:                    # ronda 13: a tabela das consultas (o basalt.sig faz-la; um índice antigo não a tem)
+                ok = {str(f) for (f,) in c.execute("SELECT fonte FROM consulta WHERE ok=1")}
+            except sqlite3.Error:
+                ok = set()
         finally:
             c.close()
     except Exception:
         return None
-    chaves, fontes = set(), set()
-    for f, ref in linhas:
-        r = str(ref).split("#")[0]                  # «projecto:x#0» (pedaços) e «decisao-1» (um pedaço só) dão «projecto:x» e «agenda:decisao-1»
-        chaves.add(r if r.startswith(f"{f}:") else f"{f}:{r}")
-        fontes.add(str(f))
+    if not n and not ok:
+        return None
+    return [(str(f), str(r), str(t or ""), str(x or "")) for f, r, t, x in linhas], ok
+
+
+def _chave(fonte, ref):
+    """«fonte:ref» — uma ref que já traz a fonte («diario:2026-10-01») fica como está."""
+    return ref if ref.startswith(f"{fonte}:") else f"{fonte}:{ref}"
+
+
+def _itens_externos(pedacos):
+    """{chave: (titulo, [trechos])} — um item por coisa da fonte. Os pedaços «ref#N» de uma mesma ref com o MESMO título são
+    uma nota partida (como no `basalt.sig fonte`) e contam como um item só, com a chave da ref sem «#»; «repo#12» e «repo#13»
+    com títulos diferentes são coisas diferentes e ficam com a ref exacta (ronda 13)."""
+    titulos = {}
+    for f, r, t, _ in pedacos:
+        titulos.setdefault((f, r.split("#")[0]), set()).add(t)
+    itens = {}
+    for f, r, t, x in pedacos:
+        base, cardinal, suf = r.partition("#")
+        partida = cardinal and suf.isdigit() and len(titulos[(f, base)]) == 1
+        k = _chave(f, base if partida else r)
+        itens.setdefault(k, (t, []))[1].append(x)
+    return itens
+
+
+def _externas_no_indice(ind=None):
+    """(chaves «fonte:ref» que o índice tem de fontes que não são notas, fontes que se sabe como estão) — None se não se sabe.
+    Cada pedaço dá a chave da ref exacta («pedidos:repo#12») E a da ref sem «#» («projecto:x#0» → «projecto:x»): antes só ficava
+    a segunda, e a categoria de «pedidos:repo#12» perdia-se com o item ainda no índice (ronda 13). As fontes que se sabe como
+    estão são as que têm pedaços e as que responderam na última indexação, mesmo vazias (as categorias delas saem)."""
+    ind = _ler_indice() if ind is None else ind
+    if ind is None:
+        return None
+    pedacos, ok = ind
+    chaves, fontes = set(), set(ok)
+    for f, ref, _, _ in pedacos:
+        chaves.add(_chave(f, ref))
+        chaves.add(_chave(f, ref.split("#")[0]))
+        fontes.add(f)
     return chaves, fontes
 
 
-def _externas_que_ficam(antes: dict) -> dict:
+def _externas_que_ficam(antes: dict, ind=None) -> dict:
     """ronda 12: as categorias das fontes externas que se mantêm — as que a fonte ainda tem no índice; sem índice, ou de uma fonte
-    que o índice não conhece (uma instalação anterior, uma fonte desligada por agora), ficam todas. Só uma nota do espaço que já
-    não existe perde a categoria (essas não têm «:» no nome)."""
+    que não se sabe como está (uma instalação anterior, uma fonte desligada por agora, um comando que falhou), ficam todas. Só uma
+    nota do espaço que já não existe perde a categoria (essas não têm «:» no nome). Ronda 13: uma fonte que respondeu VAZIA perde-as."""
     ext = {k: v for k, v in antes.items() if ":" in k}
-    ind = _externas_no_indice()
+    ind = _externas_no_indice(ind)
     if ind is None:
         return ext
     chaves, fontes = ind
     return {k: v for k, v in ext.items() if k in chaves or k.split(":", 1)[0] not in fontes}
+
+
+# ronda 13: os itens novos das fontes externas também se categorizam (antes ficavam sem categoria para sempre). Com IA, no
+# máximo estes por corrida (uma fonte grande não prende a corrida; o resto fica para a seguinte).
+EXTERNAS_POR_CORRIDA = 200
+
+
+def _categorizar_externas(pedacos, ja: dict) -> dict:
+    """{chave: {"cats", "hash"}} dos itens externos do índice que ainda não têm categoria (nem pela chave exacta nem pela
+    da ref sem «#»), pelo mesmo método das notas: IA (se houver) + regras pelo nome. Um item com segredo no título, na ref
+    ou no texto não vai ao modelo nem ganha categoria."""
+    from .segredos import tem_segredo_texto
+    novo, pedidos = {}, 0
+    for k, (titulo, trechos) in _itens_externos(pedacos).items():
+        if k in ja or k.split("#")[0] in ja:
+            continue
+        corpo = "\n".join(trechos)
+        if tem_segredo_texto(k) or tem_segredo_texto(titulo) or tem_segredo_texto(corpo):
+            continue
+        if ia().chat_activo:
+            if pedidos >= EXTERNAS_POR_CORRIDA:
+                continue
+            pedidos += 1
+        nome = k.split(":", 1)[1]
+        m = pelo_modelo(f"Nome: {titulo or nome}\nFonte: {k.split(':', 1)[0]}\n\n{corpo[:700]}")
+        r = pelo_nome(nome, "")
+        cats = validar((m[:1] + r + m[1:]) if m else r) or ["Diversos"]
+        novo[k] = {"cats": cats, "hash": hashlib.sha1(corpo.encode()).hexdigest()}
+    return novo
 
 
 def main(tudo=False):
@@ -142,7 +211,8 @@ def main(tudo=False):
         antes_todo = {}
     antes_todo = antes_todo if isinstance(antes_todo, dict) else {}
     antes = antes_todo if not tudo else {}            # --tudo recategoriza as notas; as fontes externas ficam na mesma
-    externas = _externas_que_ficam(antes_todo)
+    ind = _ler_indice()
+    externas = _externas_que_ficam(antes_todo, ind)
     novo, feitos = {}, 0
     for p, t in retidas.notas(PASTA, ignora=("MEMORY.md", "index.md", "CONFIG.md")):   # ronda 8 (notas retidas): uma nota retida não vai ao modelo
         nome = p.stem
@@ -159,6 +229,8 @@ def main(tudo=False):
     notas = len(novo)
     for k, v in externas.items():
         novo.setdefault(k, v)
+    novas_ext = _categorizar_externas(ind[0], novo) if ind else {}
+    novo.update(novas_ext)
     saida.parent.mkdir(parents=True, exist_ok=True)
     tmp = saida.with_suffix(".tmp"); tmp.write_text(json.dumps(novo, ensure_ascii=False, indent=0)); tmp.replace(saida)
     conta = {}
@@ -167,6 +239,7 @@ def main(tudo=False):
             conta[c] = conta.get(c, 0) + 1
     print(f"{notas} notas · {feitos} (re)categorizadas · "
           + (f"{len(externas)} de fontes externas mantidas · " if externas else "")
+          + (f"{len(novas_ext)} de fontes externas novas · " if novas_ext else "")
           + ", ".join(f"{k} {v}" for k, v in sorted(conta.items(), key=lambda x: -x[1])))
 
 

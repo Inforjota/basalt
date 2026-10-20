@@ -11,7 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from conftest import FM, RAIZ
+from types import SimpleNamespace
+
+from conftest import FM, RAIZ, usar_ia
 
 
 def _por_no_indice(esp, pedacos):
@@ -89,3 +91,109 @@ def test_claude_cli_recebe_so_a_chave_que_a_tarefa_declara(tmp_path, monkeypatch
     ia.IA(geral.para("unir")).chat("ola")
     env = json.loads(saida.read_text())
     assert env.get("ANTHROPIC_API_KEY") == "chave-ficticia-da-tarefa" and "CHAVE_DA_TAREFA" not in env
+
+
+# ═════════════════════════ C — categorias das fontes externas: ref exacta, fonte vazia, itens novos ═════════════════════════
+def _cats(memoria, d):
+    memoria.esp.categorias.parent.mkdir(parents=True, exist_ok=True)
+    memoria.esp.categorias.write_text(json.dumps({k: {"cats": c, "hash": "x"} for k, c in d.items()}), encoding="utf-8")
+
+
+def _cats_lidas(memoria):
+    return json.loads(memoria.esp.categorias.read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def com_notas(memoria):
+    usar_ia(fornecedor="nenhum")                 # só as regras pelo nome: nada vai à IA
+    memoria.nota("nota_viva", FM.format(nome="nota_viva") + "\nainda cá está\n")
+    return memoria
+
+
+def test_a_categoria_de_uma_ref_com_cardinal_fica(com_notas):
+    from basalt import categorias
+    _por_no_indice(com_notas.esp, [("pedidos", "repo#12", "Pedido 12", "texto"), ("pedidos", "repo#13", "Pedido 13", "texto")])
+    _cats(com_notas, {"pedidos:repo#12": ["Trabalho"], "pedidos:repo#13": ["Finanças"]})
+    categorias.main()
+    d = _cats_lidas(com_notas)
+    assert d.get("pedidos:repo#12", {}).get("cats") == ["Trabalho"], sorted(d)
+    assert d.get("pedidos:repo#13", {}).get("cats") == ["Finanças"], sorted(d)
+
+
+@pytest.fixture
+def fonte_falsa(com_notas, tmp_path, monkeypatch):
+    """uma fonte externa a sério para o `sig indexar`: um comando que imprime o JSON do ficheiro `itens.json` (ou falha)."""
+    from basalt import sig
+    itens = tmp_path / "itens.json"
+    script = tmp_path / "fonte.py"
+    script.write_text("import sys\nt = open(sys.argv[1]).read()\nsys.exit(3) if t == 'falha' else print(t)\n", encoding="utf-8")
+    cmd = f'"{sys.executable}" "{script}" "{itens}"'
+    monkeypatch.delenv("BASALT_SIG_ISOLADO", raising=False)
+    monkeypatch.setattr(sig.config, "carregar", lambda *a, **k: SimpleNamespace(fontes_extra=[cmd]))
+
+    def responder(lista):
+        itens.write_text(lista if isinstance(lista, str) else
+                         json.dumps([{"fonte": f, "ref": r, "titulo": t, "texto": x} for f, r, t, x in lista]), encoding="utf-8")
+        sig.indexar()
+    return responder
+
+
+def test_fonte_que_respondeu_vazia_perde_as_categorias(fonte_falsa, com_notas):
+    from basalt import categorias
+    fonte_falsa([("agenda", "unica", "Reunião única", "a reunião de terça")])
+    _cats(com_notas, {"agenda:unica": ["Trabalho"]})
+    categorias.main()
+    assert "agenda:unica" in _cats_lidas(com_notas)
+    fonte_falsa([])                                  # a fonte respondeu: já não tem nada
+    categorias.main()
+    assert "agenda:unica" not in _cats_lidas(com_notas), "a fonte respondeu vazia: a categoria do item que saiu devia sair"
+
+
+def test_controlo_fonte_que_falhou_guarda_as_categorias(fonte_falsa, com_notas):
+    from basalt import categorias
+    fonte_falsa([("agenda", "unica", "Reunião única", "a reunião de terça")])
+    _cats(com_notas, {"agenda:unica": ["Trabalho"]})
+    fonte_falsa("falha")                             # a fonte não respondeu: não se sabe o que tem
+    categorias.main()
+    assert _cats_lidas(com_notas).get("agenda:unica", {}).get("cats") == ["Trabalho"]
+
+
+def test_itens_externos_novos_ganham_categoria_pelas_regras(com_notas):
+    from basalt import categorias
+    _por_no_indice(com_notas.esp, [("pedidos", "orcamento_cozinha", "Orçamento da cozinha", "valores"),
+                                   ("pedidos", "repo#12", "Pedido 12", "a"), ("pedidos", "repo#13", "Pedido 13", "b"),
+                                   ("manual", "caldeira#0", "Manual", "parte um"), ("manual", "caldeira#1", "Manual", "parte dois")])
+    categorias.main()
+    d = _cats_lidas(com_notas)
+    assert d.get("pedidos:orcamento_cozinha", {}).get("cats") == ["Finanças"], sorted(d)
+    assert {"pedidos:repo#12", "pedidos:repo#13", "manual:caldeira"} <= set(d), sorted(d)    # a ref exacta; a nota partida é uma só
+    assert "manual:caldeira#0" not in d
+
+
+def test_itens_externos_novos_ganham_categoria_pela_ia(com_notas):
+    from basalt import categorias
+    falsa = usar_ia(json.dumps({"categorias": ["Aprender"]}))
+    _por_no_indice(com_notas.esp, [("leituras", "artigo-7", "Um artigo sobre solos", "texto do artigo")])
+    _cats(com_notas, {"nota_viva": ["Trabalho"]})
+    categorias.main()
+    assert _cats_lidas(com_notas).get("leituras:artigo-7", {}).get("cats") == ["Aprender"]
+    assert any("Um artigo sobre solos" in p for p in falsa.prompts)
+
+
+def test_item_externo_com_segredo_nao_vai_a_ia(com_notas):
+    from basalt import categorias
+    falsa = usar_ia(json.dumps({"categorias": ["Aprender"]}))
+    _por_no_indice(com_notas.esp, [("leituras", "artigo-8", "Artigo", "a senha: minhapalavrasecreta (router)")])
+    _cats(com_notas, {"nota_viva": ["Trabalho"]})
+    categorias.main()
+    assert "leituras:artigo-8" not in _cats_lidas(com_notas) and not any("minhapalavrasecreta" in p for p in falsa.prompts)
+
+
+def test_controlo_item_externo_ja_categorizado_nao_muda(com_notas):
+    from basalt import categorias
+    falsa = usar_ia(json.dumps({"categorias": ["Aprender"]}))
+    _por_no_indice(com_notas.esp, [("leituras", "artigo-7#0", "Artigo", "a"), ("leituras", "artigo-7#1", "Artigo", "b")])
+    _cats(com_notas, {"nota_viva": ["Trabalho"], "leituras:artigo-7": ["Pessoal"]})
+    categorias.main()
+    assert _cats_lidas(com_notas)["leituras:artigo-7"]["cats"] == ["Pessoal"]
+    assert not any("Fonte: leituras" in p for p in falsa.prompts)            # (a nota do espaço vai, porque o hash é outro)

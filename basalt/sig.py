@@ -130,26 +130,53 @@ def _extras():
     """[(fonte, ref, titulo, trecho)] dos comandos de `[fontes_extra]` (cada um imprime JSON [{fonte, ref, titulo, texto}]).
     PORTE: aqui entravam as notas de um sistema externo, com comandos fixos no código; agora é só configuração.
     BASALT_SIG_ISOLADO=1 (testes) não corre nenhum, para a suite não ler o basalt.toml de quem a corre."""
+    _CONSULTAS.clear()
     if os.environ.get("BASALT_SIG_ISOLADO") == "1":
         return []
     itens, retidos = [], {}
     for cmd in config.carregar(validar=False).fontes_extra:
+        _CONSULTAS[cmd] = None                      # falhou (ou ainda não acabou): as fontes dele ficam como estavam
         try:
             r = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=60, check=True)
+            vistas = set()
             for d in json.loads(r.stdout or "[]"):
                 f, ref, texto = str(d.get("fonte") or ""), str(d.get("ref") or ""), str(d.get("texto") or "")
+                if f and f != "nota":
+                    vistas.add(f)
                 if f and f != "nota" and ref and texto.strip():
                     titulo = str(d.get("titulo") or ref)
                     if tem_segredo_texto(titulo) or tem_segredo_texto(ref):     # o título e a ref também vão para a procura e para as citações
                         retidos[f] = retidos.get(f, 0) + 1
                         continue
                     itens.append((f, ref, titulo, texto))
+            _CONSULTAS[cmd] = vistas                  # respondeu (mesmo que com a lista vazia)
         except Exception as e:
             print(f"  aviso: a fonte extra {cmd!r} falhou ({str(e)[:80]}) — indexo o resto", file=sys.stderr)
     for f, n in retidos.items():                # só a fonte e a contagem, nunca o conteúdo
         print(f"  aviso: {n} {'item' if n == 1 else 'itens'} da fonte {f!r} não {'entra' if n == 1 else 'entram'} (segredo no título/ref)",
               file=sys.stderr)
     return itens
+
+
+# ronda 13: o que cada comando de [fontes_extra] respondeu nesta corrida — comando → fontes que trouxe (respondeu, mesmo
+# vazio) ou None (falhou). O `indexar` guarda-o na tabela `consulta` do índice, e as categorias distinguem «a fonte respondeu e
+# já não tem nada» (as categorias dela saem) de «a fonte não respondeu» (ficam).
+_CONSULTAS: dict = {}
+
+
+def _registar_consultas(c):
+    """tabela `consulta` (fonte, comando, ok): ok=1 se o comando que a trouxe respondeu NESTA corrida. Uma fonte que o comando
+    deixou de trazer continua dele (respondeu sem ela = vazia); um comando que falhou ou saiu da configuração põe ok=0."""
+    c.execute("CREATE TABLE IF NOT EXISTS consulta (fonte TEXT PRIMARY KEY, comando TEXT, ok INTEGER, quando TEXT)")
+    c.execute("UPDATE consulta SET ok=0")
+    for cmd, vistas in _CONSULTAS.items():
+        if vistas is None:
+            continue
+        cmd = hashlib.sha256(cmd.encode("utf-8")).hexdigest()       # o comando pode levar argumentos que não interessa guardar
+        for (f,) in c.execute("SELECT fonte FROM consulta WHERE comando=?", (cmd,)).fetchall():
+            vistas = vistas | {f}
+        for f in vistas:
+            c.execute("INSERT OR REPLACE INTO consulta (fonte, comando, ok, quando) VALUES (?, ?, 1, datetime('now'))", (f, cmd))
 
 
 def fontes():
@@ -195,6 +222,7 @@ def indexar():
     apagar = [k for k in tinha if k not in vistos]
     for fonte, ref in apagar:
         c.execute("DELETE FROM pedaco WHERE fonte=? AND ref=?", (fonte, ref))
+    _registar_consultas(c)
     c.commit()
     tot = c.execute("SELECT count(*) FROM pedaco").fetchone()[0]
     print(f"índice: {tot} pedaços · {novos} (re){'embebidos' if usar else 'indexados'} · {len(apagar)} removidos" +
