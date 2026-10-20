@@ -91,6 +91,40 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 - Se voltares a uma versão anterior do Basalt depois de abrir esta: o que ficou guardado à parte não se vê na página anterior,
   e o «Apagar cópia deste aparelho» dela apaga-o. Envia ou descarrega primeiro (ver [INSTALAR.md § 7](docs/INSTALAR.md)).
 
+### Ronda 13 (página)
+- **Uma nota apagada ou uma sessão expirada já não aparece sem internet, nem com o pedido a meio:** se a página já tinha
+  a nota da cópia nas mãos (a ler o texto ou a fazer as últimas verificações) quando o servidor respondeu «apagada» (404/410) ou
+  «sessão expirada» (401) — neste separador ou noutro —, mostrava-a na mesma. Agora o service worker avisa todas as páginas
+  abertas antes de acabar de apagar ou trancar, e a página só mostra a cópia se nada mudou desde que a pediu (senão tenta outra
+  vez e, sem rede, diz que precisa de rede). O mesmo quando carregas em «Apagar cópia deste aparelho», «Terminar sessão» ou entra
+  outra conta.
+- **Os separadores abertos com a versão anterior acertam-se sozinhos:** quando esta versão entra, cada separador que ainda tem a
+  página anterior recarrega uma vez (a fila por enviar fica onde estava). Se tiveres alterações por gravar no editor, não
+  recarrega: aparece «a app foi actualizada — grava o que tens e recarrega a página.» e, até recarregares, esse separador já não
+  recebe a cópia sem internet (o que escreves continua lá).
+- **Anexos e notas novas ficam na conta com que começaste:** um ficheiro largado ou colado no editor, ou uma nota nova criada na
+  janela «Nova nota», subia em nome da conta que tivesse entrado entretanto neste browser (noutro separador). Agora não sobe e
+  diz «esta nota foi aberta com outra conta, e entretanto entrou outra neste browser — não gravei em nome da conta nova.»
+- **A nota aberta não mostra edições nem conflitos de outra conta:** se outra conta entrasse noutro separador no instante em que
+  abrias uma nota, podia aparecer a edição por enviar (ou o conflito) dela com o mesmo nome. Agora só se mostra o que é da conta
+  da nota.
+- **Uma edição gravada depois de «Apagar cópia deste aparelho» noutro separador não volta à cópia:** o editor diz «a cópia deste
+  aparelho foi apagada entretanto — não guardei esta edição nela. Copia o teu texto.»
+- **Edições de outra conta deste browser podem descarregar-se:** no Início, ao lado de «N edições de outra conta (conta)», há
+  **Descarregar**, que pergunta antes «São edições de outra conta (conta). Descarregar para este aparelho?» e guarda um `.md` (ou um
+  `.zip` com várias) feito na página, sem rede. Não as mostra, não as apaga e nunca as envia em nome de quem está.
+- **Edições de conta desconhecida: enviar pede confirmação.** Muda o aviso descrito acima: passa a ter só a contagem,
+  **Descarregar** e **Esconder aviso**. «Ver» e «Enviar em meu nome» ficam na lista («Edições guardadas à parte neste aparelho
+  (N)», no Início), e «Enviar em meu nome» mostra primeiro o título e as primeiras linhas de cada edição — só entram na tua fila
+  as que viste ao carregar em «Confirmar e enviar» (uma que chegue entretanto fica à parte).
+- **Os textos das fontes externas abrem-se sem internet:** a vista só de leitura de `[fontes_extra]` passa a ficar na cópia deste
+  aparelho, marcada «cópia de <data>», com as mesmas regras das notas (apagado na fonte → sai da cópia; sessão expirada → a cópia
+  tranca).
+- **Telemóvel:** a pesquisa da barra de cima ficava sem espaço (por baixo do 🧭) em ecrãs estreitos; passa a ter uma linha só dela
+  e, abaixo de 440 px, o logótipo fica só com a pedra.
+- O service worker passa a `basalt-v14` (a cache `basalt-v13` é apagada sozinha na primeira visita e volta a encher-se com o uso);
+  as edições por enviar e as notas guardadas pela página ficam, não é preciso fazer nada.
+
 ### Segurança: passwords, notas apagadas e cópia sem internet (19/10/2026)
 - **Passwords só de letras entre aspas, crases ou com uma observação a seguir:** `senha: "minhapalavracomplicada"`,
   `` senha: `minhaSenhaSecreta` ``, `senha: minhapalavrasecreta (router)` ou `senha: minhapalavrasecreta; utilizador: ana`
