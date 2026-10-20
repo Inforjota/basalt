@@ -143,6 +143,16 @@ ul,ol{margin:.4em 0; padding-left:1.4em}
   .tabbar-link .tab-label{display:none}
   .tabbar-link .tab-icon{font-size:1.25rem}
 }
+/* ronda 13: no telemóvel a barra de cima não cabia — a pesquisa ficava com 0 px, por baixo do 🧭. Passa a uma linha só dela;
+   abaixo de 440 px o logótipo fica só com a pedra (os botões mantêm os 44 px). */
+@media (max-width:520px){
+  .topbar-inner{flex-wrap:wrap; row-gap:8px}
+  .brand{margin-right:auto}
+  .cmd-wrap{order:1; flex:1 0 100%}
+  .view.view-grafo{height:calc(100vh - 99px - var(--topbar-h))}   /* = os 160 px de baixo com a barra de uma linha (61 px) */
+}
+@media (max-width:440px){
+  .topbar-inner{column-gap:6px}
   .brand{max-width:1.35em; overflow:hidden; white-space:nowrap}
 }
 
