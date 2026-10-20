@@ -46,3 +46,46 @@ def test_controlo_a_ref_limpa_continua_a_abrir_com_os_irmaos(memoria):
     _por_no_indice(memoria.esp, [("manual", "doc#0", "Manual", "parte um"), ("manual", "doc#1", "Manual", "parte dois")])
     d = sig.ler_fonte("manual", "doc#0")
     assert d and [p["ref"] for p in d["pedacos"]] == ["doc#0", "doc#1"]
+
+
+# ═════════════════════════ B — o `claude` do fornecedor claude-cli não herda as chaves do processo ═════════════════════════
+CHAVE_FICTICIA = "sk-ant-api03-" + "x" * 40
+
+
+def _claude_falso(tmp_path, monkeypatch):
+    """um `claude` no PATH que responde OK e guarda o ambiente que recebeu."""
+    pasta = tmp_path / "bin"
+    pasta.mkdir()
+    saida = tmp_path / "ambiente.json"
+    p = pasta / "claude"
+    p.write_text(f"#!{sys.executable}\nimport json, os, sys\nsys.stdin.read()\n"
+                 f"open({str(saida)!r}, 'w').write(json.dumps(dict(os.environ)))\n"
+                 "print(json.dumps({'result': 'OK', 'is_error': False}))\n", encoding="utf-8")
+    p.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{pasta}{os.pathsep}{os.environ.get('PATH', '')}")
+    return saida
+
+
+def test_claude_cli_nao_recebe_as_chaves_do_processo(tmp_path, monkeypatch):
+    from basalt import config, ia
+    saida = _claude_falso(tmp_path, monkeypatch)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", CHAVE_FICTICIA)
+    monkeypatch.setenv("BASALT_IA_CHAVE", CHAVE_FICTICIA)
+    monkeypatch.setenv("OPENAI_API_KEY", CHAVE_FICTICIA)
+    geral = config.IAConfig(fornecedor="anthropic", url="http://127.0.0.1:9", chave_env="ANTHROPIC_API_KEY",
+                            tarefas={"unir": {"fornecedor": "claude-cli", "modelo_chat": "sonnet"}})
+    assert ia.IA(geral.para("unir")).chat("ola") == "OK"
+    env = json.loads(saida.read_text())
+    assert CHAVE_FICTICIA not in env.values(), sorted(k for k, v in env.items() if v == CHAVE_FICTICIA)
+    assert env.get("PATH") and env.get("HOME")                       # o que o CLI precisa para correr continua lá
+
+
+def test_claude_cli_recebe_so_a_chave_que_a_tarefa_declara(tmp_path, monkeypatch):
+    from basalt import config, ia
+    saida = _claude_falso(tmp_path, monkeypatch)
+    monkeypatch.setenv("CHAVE_DA_TAREFA", "chave-ficticia-da-tarefa")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", CHAVE_FICTICIA)
+    geral = config.IAConfig(fornecedor="nenhum", tarefas={"unir": {"fornecedor": "claude-cli", "chave_env": "CHAVE_DA_TAREFA"}})
+    ia.IA(geral.para("unir")).chat("ola")
+    env = json.loads(saida.read_text())
+    assert env.get("ANTHROPIC_API_KEY") == "chave-ficticia-da-tarefa" and "CHAVE_DA_TAREFA" not in env

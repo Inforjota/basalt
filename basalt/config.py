@@ -340,6 +340,26 @@ def ambiente_filho(espaco: "Espaco | None" = None) -> dict:
     return {**os.environ, **e.ambiente(), "PYTHONPATH": str(Path(__file__).resolve().parent.parent) + (os.pathsep + pp if pp else "")}
 
 
+# ronda 13: o ambiente de um comando de FORA (o `claude` do fornecedor claude-cli, o verificador de segredos, o comando dos
+# avisos) é uma lista branca — o que um programa precisa para correr (caminhos, utilizador, língua, certificados) e nada mais.
+# Antes herdavam o ambiente todo, com as chaves de IA que lá estivessem (ANTHROPIC_API_KEY, BASALT_IA_CHAVE…).
+AMBIENTE_MINIMO = ("PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TEMP", "TMP", "TZ", "TERM", "LANG", "LANGUAGE",
+                   "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_STATE_HOME", "XDG_RUNTIME_DIR",
+                   "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS", "SYSTEMROOT", "COMSPEC", "PATHEXT", "APPDATA",
+                   "LOCALAPPDATA", "USERPROFILE")
+# os proxies também, se não levarem utilizador e password no endereço (http://utilizador:senha@proxy…)
+_PROXIES = ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "ALL_PROXY", "https_proxy", "http_proxy", "no_proxy", "all_proxy")
+
+
+def ambiente_minimo(extra: dict | None = None) -> dict:
+    """o ambiente de um comando de fora: só as variáveis de AMBIENTE_MINIMO, LC_*, e os proxies sem credenciais, mais `extra`
+    (o que quem chama declara de propósito — por exemplo a chave da própria tarefa)."""
+    env = {k: v for k, v in os.environ.items() if k in AMBIENTE_MINIMO or k.startswith("LC_")}
+    env.update({k: v for k, v in os.environ.items() if k in _PROXIES and "@" not in v})
+    env.update(extra or {})
+    return env
+
+
 _actual = threading.local()
 
 

@@ -17,7 +17,7 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-from .config import IAConfig
+from .config import IAConfig, ambiente_minimo
 from .segredos import SEGREDO_RX
 
 
@@ -242,6 +242,14 @@ class IA:
         except (KeyError, TypeError):
             raise IAIndisponivel("resposta inesperada da Anthropic")
 
+    def _ambiente_cli(self):
+        """ronda 13: o `claude` corre com o ambiente mínimo (config.ambiente_minimo) — sem as chaves que o processo tenha.
+        Usa a sessão dele (`claude` + /login, na HOME) ou, se ESTA tarefa declarar chave_env/chave_ficheiro, essa chave como
+        ANTHROPIC_API_KEY. Antes herdava tudo: `[ia.unir] fornecedor = "claude-cli"` levava a ANTHROPIC_API_KEY do processo
+        (destinada a outro endereço, em [ia]) para o CLI usar no destino dele."""
+        k = _chave(self.cfg.chave_env, self.cfg.chave_ficheiro) if (self.cfg.chave_env or self.cfg.chave_ficheiro) else ""
+        return ambiente_minimo({"ANTHROPIC_API_KEY": k} if k else None)
+
     def _claude_cli(self, prompt, sistema, json_, tempo):
         cmd = ["claude", "-p", "--setting-sources", "", "--tools", "", "--strict-mcp-config", "--output-format", "json"]
         if self.cfg.modelo_chat:
@@ -251,7 +259,8 @@ class IA:
         if json_:
             prompt += "\nResponde APENAS com JSON válido, sem ``` à volta."
         try:
-            r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=tempo, cwd="/tmp")
+            r = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=tempo, cwd="/tmp",
+                               env=self._ambiente_cli())
         except FileNotFoundError:
             raise IAIndisponivel("o comando `claude` não está instalado nesta máquina")
         except subprocess.TimeoutExpired:
