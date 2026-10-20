@@ -106,17 +106,24 @@ class trinco_toml:
 
     def __enter__(self):
         import fcntl
+        from . import caminhos
+        # ronda 13b: sem seguir ligações nem truncar (era open(…, "a"): uma ligação no lugar do trinco era seguida e o alvo criado
+        # ou tomado). Uma ligação = Recusado, um OSError: quem chama diz que não gravou
         try:
-            self.f = open(self.caminho, "a")
+            self.fd = caminhos.abrir_trinco(self.caminho)
         except PermissionError:
             # ronda 13: o trinco foi criado por outro utilizador (a CLI corrida como root deixa-o 0644 de root): o flock não precisa de
             # escrita — abre-se só para ler. Se nem isso der, a excepção (OSError) chega a quem chamou, que a explica.
-            self.f = open(self.caminho, "r")
-        fcntl.flock(self.f, fcntl.LOCK_EX)
+            self.fd = caminhos.abrir(self.caminho.parent, [self.caminho.name])
+        try:
+            fcntl.flock(self.fd, fcntl.LOCK_EX)
+        except BaseException:
+            os.close(self.fd)
+            raise
         return self
 
     def __exit__(self, *a):
-        self.f.close()
+        os.close(self.fd)
 
 
 def gravar_toml(caminho: Path, texto: str):
