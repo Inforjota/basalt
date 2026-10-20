@@ -5,7 +5,13 @@
 //   ganchoLapides  — a k-ésima operação (match, keys, put, delete) na loja das lápides fica suspensa;
 //   ganchoLeitura  — antes da N-ésima leitura de estado (caches.has, caches.match, Cache.match, Cache.keys) corre-se um
 //                    escritor completo (um 404, um 401 ou «apagar a cópia»), que não conta nem fica sem rede.
-//   node sw_corridas.js <cenario>      cenários: g2, g2b, g3, g3b, poda — escreve em JSON o que aconteceu.
+// ronda 13, mais dois:
+//   ganchoMatch    — a k-ésima caches.match(…, {cacheName: <cache da API>}) já leu a entrada mas a promessa fica por resolver
+//                    até o ensaio a soltar (a Response já está em mão);
+//   ganchoApaga    — o próximo Cache.delete na cache da API fica suspenso (a lápide já está posta, a entrada ainda lá está).
+// As páginas: self.clients.matchAll devolve as de `paginas` (cada uma regista as mensagens e responde pelo canal, se `responde`).
+//   node sw_corridas.js <cenario>      cenários: g2, g2b, g2put2, g3, g3b, poda, ultimo, lapide_depois, protocolo, aviso
+//                                      — escreve em JSON o que aconteceu.
 // BASALT_SW: ensaiar outra cópia do sw.js.
 "use strict";
 const fs = require("fs");
@@ -19,7 +25,7 @@ const GERACAO = "basaltcfg-copia-geracao";
 
 const FONTE_REAL = fs.readFileSync(process.env.BASALT_SW || path.join(__dirname, "..", "basalt", "static", "sw.js"), "utf8");
 if (FONTE_REAL.split("TRINCO_MS = 3000").length !== 2) throw new Error("o disjuntor do trinco mudou — rever este ensaio");
-const FONTE = FONTE_REAL.replace("TRINCO_MS = 3000", "TRINCO_MS = 100");
+const FONTE = FONTE_REAL.replace("TRINCO_MS = 3000", "TRINCO_MS = 100").replace("AVISO_MS = 1000", "AVISO_MS = 300");
 
 const dormir = (ms) => new Promise((r) => setTimeout(r, ms));
 async function ate(cond, ms) { for (let i = 0; i < (ms || 10000) / 5; i++) { if (cond()) return true; await dormir(5); } return !!cond(); }
@@ -62,6 +68,7 @@ function criarLocks() {
 
 // ───── estado do ensaio ─────
 let lojas, pendentes, semRede, injectando, relogio, trabalhos, sw, ganchoPut, ganchoLapides, ganchoLeitura, API, APAGADAS;
+let ganchoMatch, ganchoApaga, paginas, ouvintes;
 const ehLapides = (n) => String(n).indexOf("basaltcfg-apagadas") === 0;
 
 async function leitura(tipo, nome) {
@@ -96,6 +103,7 @@ class Cache {
   }
   async delete(req) {
     if (ehLapides(this.nome)) await opLapides("delete");
+    if (this.nome === API && ganchoApaga.armado) { ganchoApaga.armado = false; ganchoApaga.parado = true; await new Promise((r) => { ganchoApaga.solta = r; }); }
     return this.m.delete(urlDe(req));
   }
 }
@@ -106,17 +114,35 @@ const caches = {
   async keys() { return [...lojas.keys()]; },
   async match(req, o) {
     await leitura("caches.match", o && o.cacheName);
-    const c = o && o.cacheName ? lojas.get(o.cacheName) : null; const r = c ? c.m.get(urlDe(req)) : undefined; return r ? r.clone() : undefined;
+    const c = o && o.cacheName ? lojas.get(o.cacheName) : null; const r = c ? c.m.get(urlDe(req)) : undefined; const out = r ? r.clone() : undefined;
+    const g = ganchoMatch;
+    if (o && o.cacheName === API && g.armado && !injectando && ++g.n === g.em) {
+      g.armado = false; g.parado = true; g.achou = !!out; await new Promise((s) => { g.solta = s; });
+    }
+    return out;
   },
 };
 function fetchFalso() {
   if (semRede && !injectando) return Promise.reject(new TypeError("Failed to fetch"));
   return new Promise((res) => { pendentes.push(res); });
 }
-const self = { addEventListener() {}, skipWaiting() {}, clients: { claim() {} }, location: { origin: ORIGEM } };
+// ronda 13: os ouvintes do SW ficam registados (o de «message») e as páginas são as de `paginas`
+const self = {
+  addEventListener(t, f) { ouvintes[t] = f; }, skipWaiting() {}, location: { origin: ORIGEM },
+  clients: { claim() {}, async matchAll() { return paginas.map(clientePagina); } },
+};
+function clientePagina(pg) {
+  return { postMessage(msg, portas) {
+    pg.recebidas.push({ msg, t: Date.now() });
+    if (pg.responde && portas && portas[0]) setTimeout(() => { pg.respondeu.push(Date.now()); portas[0].postMessage({ ok: true }); }, pg.demora || 20);
+  } };
+}
 
 function montar() {
   lojas = new Map(); pendentes = []; semRede = false; injectando = false; relogio = { t: 5000 }; trabalhos = [];
+  ganchoMatch = { armado: false, em: 0, n: 0, parado: false, achou: false, solta: null };
+  ganchoApaga = { armado: false, parado: false, solta: null };
+  paginas = []; ouvintes = {};
   ganchoPut = { em: false, parado: false, solta: null };
   ganchoLapides = { armado: false, em: 0, n: 0, so: null, parado: false, solta: null, onde: "" };
   ganchoLeitura = { armado: false, em: 0, n: 0, filtro: null, fazer: null, disparou: false, onde: "" };
@@ -132,7 +158,8 @@ const cab = () => ({ "Content-Type": "application/json", "X-Basalt-Dono": DONO }
 const resp200 = (t) => new Response(JSON.stringify({ texto: t }), { status: 200, headers: cab() });
 const resp404 = () => new Response(JSON.stringify({ erro: "a nota já não existe" }), { status: 404, headers: cab() });
 const resp401 = () => new Response(JSON.stringify({ erro: "sessão expirada" }), { status: 401, headers: cab() });
-const pedido = (u) => new Request(u || url, { headers: { "X-Basalt-Dono": DONO } });
+// ronda 13: o pedido de uma página deste protocolo leva «X-Basalt-Protocolo: 5» (`semProtocolo` = uma página de antes)
+const pedido = (u, semProtocolo) => new Request(u || url, { headers: Object.assign({ "X-Basalt-Dono": DONO }, semProtocolo ? {} : { "X-Basalt-Protocolo": "5" }) });
 
 // devolve {p, i} (a promessa e o índice da resposta pendente) — um `return p` numa função async esperava pela rede presa
 async function pedir(u) {
@@ -158,9 +185,10 @@ async function lapideEfectiva(u) {
 }
 async function lapideUnica(u) { const c = lojas.get(APAGADAS); const r = c ? c.m.get(u || url) : undefined; return r ? Number(await r.clone().text()) : null; }
 function porInstante(u) { const c = lojas.get(APAGADAS); return c ? [...c.m.keys()].filter((k) => k.indexOf(prefixo(u || url)) !== -1).map((k) => Number(k.split("/").pop())).sort((a, b) => a - b) : []; }
-async function offline(u) {
+function comoFoi(r) { return r ? (r.status + (r.headers.get("X-Basalt-From-Cache") ? " cache" : "")) : "nada"; }
+async function offline(u, semProtocolo) {
   semRede = true;
-  try { const r = await sw.tratarApi(pedido(u)); return r ? (r.status + (r.headers.get("X-Basalt-From-Cache") ? " cache" : "")) : "nada"; }
+  try { return comoFoi(await sw.tratarApi(pedido(u, semProtocolo))); }
   catch (e) { return "recusou"; } finally { semRede = false; }
 }
 // escritores que entram A MEIO de uma leitura: um 404 e um 401 completos (o trinco está com a leitura → disjuntor) e «apagar a
@@ -213,6 +241,79 @@ async function correrG2(so, k) {
 }
 
 const CENARIOS = {
+  // ── ronda 13 (achado 5 da revisão externa do porte): o 404 de 10 suspenso na 2.ª escrita na loja das lápides ──
+  async g2put2() { return correrG2("put", 2); },
+  // ── ronda 13 (achado 1 da r10): a Response da ÚLTIMA releitura já em mão (promessa por resolver); um 404 pelo disjuntor
+  //    acaba inteiro (lápide + apagar); só então se entrega ──
+  async ultimo() {
+    const antes = await prepararNota();
+    ganchoMatch = { armado: true, em: 2, n: 0, parado: false, achou: false, solta: null };
+    semRede = true;
+    let fim = null;
+    const p = sw.tratarApi(pedido()).then(comoFoi, () => "recusou").then((x) => { fim = x; return x; });
+    const parou = await ate(() => ganchoMatch.parado || fim !== null, 5000) && ganchoMatch.parado;
+    semRede = false;
+    const estado = parou ? await injectar("404") : null;                 // completo: tirarNota acabou antes de a resposta seguir
+    const meio = { lapide: await lapideEfectiva(), guardada: await guardada(), achou: ganchoMatch.achou };
+    if (parou) ganchoMatch.solta();
+    const r = await p;
+    return { antes, parou, estado, meio, offline: r, depois: await offline() };
+  },
+  // ── ronda 13 (achado 1 da r10, variante): antes da última releitura, um 404 pelo disjuntor põe a lápide e fica suspenso no
+  //    apagar — a entrada ainda lá está; entrega-se (ou não) e só depois o apagar acaba ──
+  async lapide_depois() {
+    const antes = await prepararNota();
+    let q = null;
+    ganchoLeitura = { armado: true, em: 2, n: 0, filtro: (t, n) => t === "caches.match" && n === API, disparou: false, onde: "",
+      fazer: async () => {
+        ganchoApaga = { armado: true, parado: false, solta: null };
+        injectando = true;
+        try { relogio.t += 100; q = await pedir(); pendentes[q.i](resp404()); } finally { injectando = false; }
+        await ate(() => ganchoApaga.parado, 5000);
+      } };
+    const r = await offline();
+    const parado = ganchoApaga.parado, meio = { lapide: await lapideEfectiva(), guardada: await guardada() };
+    if (ganchoApaga.solta) ganchoApaga.solta();
+    const r404 = q ? (await q.p).status : null;
+    return { antes, disparou: ganchoLeitura.disparou, parado, meio, offline: r, r404, depois: await offline() };
+  },
+  // ── ronda 13 (achado 4 do porte / 3 da r10): só se serve a cópia a um pedido que fale o protocolo deste SW ──
+  async protocolo() {
+    const antes = await prepararNota();
+    const sem = await offline(null, true);
+    semRede = true;
+    let com = null, cab = {};
+    try { const r = await sw.tratarApi(pedido()); com = comoFoi(r); cab = { protocolo: r.headers.get("X-Basalt-Protocolo"), epoca: r.headers.get("X-Basalt-Epoca") }; }
+    catch (e) { com = "recusou"; } finally { semRede = false; }
+    return { antes, sem, com, cab };
+  },
+  // ── ronda 13: um 404, um 401 e {tipo:"revogar"} avisam as páginas e só acabam depois de elas responderem (uma que não
+  //    responde não prende para sempre) ──
+  async aviso() {
+    const out = {};
+    for (const caso of ["404", "401", "revogar"]) {
+      await prepararNota();
+      paginas = [{ recebidas: [], respondeu: [], responde: true, demora: 60 }, { recebidas: [], respondeu: [], responde: false }];
+      const t0 = Date.now(); let fim = 0, estado = null;
+      if (caso === "revogar") {
+        const canal = new MessageChannel(), resposta = new Promise((r) => { canal.port1.onmessage = (e) => { fim = Date.now(); r(e.data); canal.port1.close(); }; });
+        let espera = null;
+        if (ouvintes.message) ouvintes.message({ data: { tipo: "revogar" }, ports: [canal.port2], waitUntil(p) { espera = p; } });
+        estado = await Promise.race([resposta, dormir(3000).then(() => "sem resposta")]);
+        if (espera) await espera;
+      } else {
+        relogio.t += 100; const q = await pedir(); pendentes[q.i](caso === "404" ? resp404() : resp401());
+        estado = (await q.p).status; fim = Date.now();
+      }
+      const [a, b] = paginas;
+      const ep = lojas.get("basaltcfg-epoca"), marca = ep ? ep.m.get(ORIGEM + "/__epoca") : null;
+      out[caso] = { estado, recebeu: a.recebidas.map((x) => x.msg && x.msg.tipo), calada: b.recebidas.map((x) => x.msg && x.msg.tipo),
+        acabou_depois_da_resposta: !!(a.respondeu.length && fim >= a.respondeu[0]), demorou: fim - t0,
+        epoca: marca ? await marca.clone().text() : null };
+    }
+    paginas = [];
+    return out;
+  },
   async g2() {
     const caso = await correrG2("put", 1);
     relogio.t = 40;                                    // controlo: a nota recriada (GET de 40) guarda-se e serve-se sem rede
