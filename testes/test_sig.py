@@ -185,7 +185,7 @@ class TestPergunta:
         sig.pergunta("o que falta aos navios?", como_json=True)
         d = json.loads(capsys.readouterr().out)
         assert d["resposta"] == ollama.resposta_chat
-        assert d["fontes"][0] == {"n": 1, "titulo": "barcos", "ref": "barcos#0"}
+        assert d["fontes"][0] == {"n": 1, "titulo": "barcos", "ref": "barcos#0", "fonte": "nota"}   # ronda 12: + a fonte
         msgs = ollama.pedidos_chat[0]["messages"]
         assert "velas novas" in msgs[1]["content"] and "Não está na memória" in msgs[0]["content"]
         assert "farinha" not in msgs[1]["content"]
