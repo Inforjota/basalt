@@ -19,11 +19,15 @@ IGNORA = ("MEMORY.md",)                 # índice de memórias do Claude Code: n
 
 def lista():
     """os nomes em `excluidas.txt` (vazio se não há ficheiro)."""
-    f = Path(EXCLUIR)
     try:
-        return {l.strip() for l in f.read_text(encoding="utf-8").splitlines() if l.strip()} if f.exists() else set()
+        txt = caminhos.ler_texto(EXCLUIR)              # ronda 13: sem seguir ligações
+    except FileNotFoundError:
+        return set()
+    except caminhos.Recusado:
+        raise
     except OSError:
         return set()
+    return {l.strip() for l in txt.splitlines() if l.strip()}
 
 
 def retida(nome, texto, excl=None):

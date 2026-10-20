@@ -171,7 +171,7 @@ def trinco_copia(espera=None):
 
 def _hash_no_ledger(nome_md):
     try:
-        return json.loads(LEDGER.read_text(encoding="utf-8")).get(nome_md)
+        return json.loads(caminhos.ler_texto(LEDGER)).get(nome_md)
     except (OSError, ValueError):
         return None
 
@@ -199,11 +199,8 @@ def refazer_exclusao():
                 novo.add(p.stem)
     # ronda 13: com um [segredos] verificador, as notas que ele marca também ficam retidas — todas de uma vez, em lotes
     novo.update(n for (n, _), r in zip(lidas, retidos([t for _, t in lidas]) if lidas else []) if r)
-    EXCL.parent.mkdir(parents=True, exist_ok=True)
-    # temporário único por processo e fio: duas escritas simultâneas (pedido da página + vigia) nunca se pisam
-    tmp = EXCL.with_name(f".{EXCL.name}.{os.getpid()}-{threading.get_ident()}.tmp")
-    tmp.write_text("".join(f"{n}\n" for n in sorted(novo)), encoding="utf-8")
-    tmp.replace(EXCL)
+    # temporário único por processo e fio (duas escritas simultâneas nunca se pisam), sem seguir ligações (ronda 13)
+    caminhos.escrever_atomico(EXCL, "".join(f"{n}\n" for n in sorted(novo)).encode("utf-8"))
     with _estado_g:
         _excls[config.actual().nome] = novo
 
@@ -369,11 +366,12 @@ def toque(acao, nomes):
         nomes = [n for n in nomes if n and n not in ex][:6]
         if not nomes:
             return
-        if TOQUES.exists() and TOQUES.stat().st_size > 2_000_000:
-            TOQUES.replace(TOQUES.with_suffix(".1.jsonl"))
-        with open(TOQUES, "a", encoding="utf-8") as fh:
-            for n in nomes:
-                fh.write(json.dumps({"ts": time.time(), "acao": acao, "no": n}, ensure_ascii=False) + "\n")
+        t = Path(TOQUES)
+        caminhos.pasta_contida(t.parent)              # ronda 13: nada de rodar nem escrever através de uma ligação
+        if caminhos.regular(t) and t.stat().st_size > 2_000_000:
+            t.replace(t.with_suffix(".1.jsonl"))
+        caminhos.acrescentar(t, "".join(json.dumps({"ts": time.time(), "acao": acao, "no": n}, ensure_ascii=False) + "\n"
+                                        for n in nomes).encode("utf-8"))
     except Exception:
         pass
 
@@ -513,8 +511,8 @@ def entrada_apagar(t):
     alvo = _entrada_mudar(t, lambda x: None)
     if not alvo:
         return 404, {"erro": "Essa ideia já não está na Entrada."}
-    with open(APAGADAS, "a", encoding="utf-8") as f:
-        f.write(json.dumps(dict(alvo, apagado_em=time.strftime("%Y-%m-%dT%H:%M:%S")), ensure_ascii=False) + "\n")
+    caminhos.acrescentar(APAGADAS, (json.dumps(dict(alvo, apagado_em=time.strftime("%Y-%m-%dT%H:%M:%S")), ensure_ascii=False)
+                                    + "\n").encode("utf-8"))
     return 200, {"ok": True, "mensagem": "Eliminada."}
 
 
@@ -585,7 +583,7 @@ def pode_auto(autor):
     """ideias de outras origens ficam SEMPRE na Entrada primeiro, a não ser que tenham permissão para entrarem sozinhas nas
     notas. Lista em entrada-permissoes.json {"auto": [...]} — por omissão só o «dono» (as fontes de confiança)."""
     try:
-        return autor in json.loads(PERMISSOES_ENTRADA.read_text()).get("auto", [])
+        return autor in json.loads(caminhos.ler_texto(PERMISSOES_ENTRADA)).get("auto", [])
     except (OSError, ValueError):
         return autor == "dono"
 
@@ -679,7 +677,7 @@ def arrumar():
     # as «notas muito parecidas» não são escolha manual: `python -m basalt auto-arrumar` (cron/timer) une/liga/arquiva sozinho;
     # a página mostra só o resumo da última execução (Desfazer continua nas «últimas fusões»).
     try:
-        d["auto"] = json.loads((config.actual().auto_arrumar / "ultimo.json").read_text())
+        d["auto"] = json.loads(caminhos.ler_texto(config.actual().auto_arrumar / "ultimo.json"))
     except (OSError, ValueError):
         d["auto"] = None
     return d
@@ -703,7 +701,7 @@ def grafo():
 
 def cats_de():
     try:
-        d = json.loads(CATEGORIAS.read_text())
+        d = json.loads(caminhos.ler_texto(CATEGORIAS))
         ex = excl()
         return {n: v.get("cats", []) for n, v in d.items() if n not in ex}
     except Exception:
@@ -719,19 +717,29 @@ def categorias():
 
 
 # ───────────────────────── fusão de notas (botão «Unir») ─────────────────────────
+# ronda 13: os trabalhos do «Unir» lêem-se, gravam-se e listam-se sem seguir ligações simbólicas (basalt.caminhos)
 def _job_grava(j):
-    JOBS.mkdir(parents=True, exist_ok=True)
-    tmp = JOBS / f".{j['id']}.tmp"; tmp.write_text(json.dumps(j, ensure_ascii=False)); tmp.replace(JOBS / f"{j['id']}.json")
+    caminhos.escrever_atomico(Path(JOBS) / f"{j['id']}.json", json.dumps(j, ensure_ascii=False).encode("utf-8"))
 
 
 def _job_le(jid):
-    p = JOBS / f"{jid}.json"
-    return json.loads(p.read_text()) if re.match(r"^[0-9a-f-]{8,40}$", jid or "") and p.exists() else None
+    if not re.match(r"^[0-9a-f-]{8,40}$", jid or ""):
+        return None
+    try:
+        return json.loads(caminhos.ler_texto(Path(JOBS) / f"{jid}.json"))
+    except FileNotFoundError:
+        return None
 
 
 def jobs_recentes(n=10):
-    fs = sorted(JOBS.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:n] if JOBS.exists() else []
-    return [json.loads(p.read_text()) for p in fs]
+    fs = [(st.st_mtime, nome) for nome, tipo, st in caminhos.listar_dir(JOBS) if tipo == "f" and nome.endswith(".json")]
+    out = []
+    for _m, nome in sorted(fs, reverse=True)[:n]:
+        try:
+            out.append(json.loads(caminhos.ler_texto(Path(JOBS) / nome)))
+        except FileNotFoundError:                      # apagado entre a listagem e a leitura
+            continue
+    return out
 
 
 def _reindexar(esp=None):
@@ -1019,13 +1027,12 @@ def _texto_hash(p):
 
 def _guardar_versao_offline(nome, texto):
     """a versão escrita sem internet nunca se perde — uma cópia por CONTEÚDO (o mesmo pedido repetido não acumula ficheiros)."""
-    VERSOES_OFFLINE.mkdir(parents=True, exist_ok=True)
     h = sha(texto.encode("utf-8"))[:10]
-    ja = sorted(VERSOES_OFFLINE.glob(f"{nome}.*.{h}.md"))
+    ja = [p.name for p in caminhos.notas(VERSOES_OFFLINE, f"{nome}.*.{h}.md")]    # ronda 13: sem seguir ligações
     if ja:
-        return ja[-1].name
-    copia = VERSOES_OFFLINE / f"{nome}.{time.strftime('%Y%m%d-%H%M%S')}.{h}.md"
-    copia.write_text(texto, encoding="utf-8")
+        return ja[-1]
+    copia = Path(VERSOES_OFFLINE) / f"{nome}.{time.strftime('%Y%m%d-%H%M%S')}.{h}.md"
+    caminhos.escrever_atomico(copia, texto.encode("utf-8"))
     return copia.name
 
 

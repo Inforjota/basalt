@@ -11,15 +11,18 @@ Cada ideia tem um `t` único (carimbo ISO aos segundos; se o segundo já estiver
 emitido fica em `.entrada.ultimo` (ao lado da Entrada, gravado sob o mesmo trinco) e o seguinte é sempre maior que ele e que
 todos os presentes — apagar uma ideia não liberta o seu carimbo. Uma linha ilegível (um processo morto a meio do append) é
 saltada na leitura e não derruba a Entrada; o append seguinte começa sempre numa linha nova.
+
+Ronda 13: a Entrada, o trinco e o `.entrada.ultimo` abrem-se sem seguir ligações simbólicas (basalt.caminhos) — antes
+`A/dados/entrada.jsonl` → a Entrada de B fazia a página de A mostrar e mexer na de B. Uma ligação no caminho é recusada.
 """
 from __future__ import annotations
 
 import contextlib
 import datetime
-import fcntl
 import json
 from pathlib import Path
 
+from . import caminhos
 from .config import Via
 
 INBOX = Via("inbox")
@@ -33,19 +36,19 @@ def caminho() -> Path:
 def trinco():
     """o trinco comum a todas as escritas (e às leituras que precisam de uma fotografia coerente)."""
     p = caminho()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    with open(p.with_name(".entrada.lock"), "w") as lk:
-        fcntl.flock(lk, fcntl.LOCK_EX)
+    with caminhos.trinco(p.with_name(".entrada.lock")):
         yield p
 
 
 def ler(p: Path | None = None) -> list[dict]:
     """todos os registos (arquivados incluídos), pela ordem do ficheiro; linhas ilegíveis são saltadas."""
     p = p or caminho()
-    if not p.exists():
+    try:
+        txt = caminhos.ler_texto(p)                     # uma ligação simbólica é recusada (Recusado), não seguida
+    except FileNotFoundError:
         return []
     out = []
-    for l in p.read_text(encoding="utf-8", errors="replace").splitlines():
+    for l in txt.splitlines():
         if not l.strip():
             continue
         try:
@@ -62,9 +65,7 @@ def pendentes() -> list[dict]:
 
 
 def _escrever(p: Path, regs) -> None:
-    tmp = p.with_name(".entrada.jsonl.tmp")
-    tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in regs), encoding="utf-8")
-    tmp.replace(p)
+    caminhos.escrever_atomico(p, "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in regs).encode("utf-8"))
 
 
 def _agora() -> str:
@@ -86,17 +87,18 @@ def _ficheiro_ultimo(p: Path) -> Path:
 
 def _ler_ultimo(p: Path) -> str:
     try:
-        return _ficheiro_ultimo(p).read_text(encoding="utf-8").strip()
+        return caminhos.ler_texto(_ficheiro_ultimo(p)).strip()
+    except FileNotFoundError:
+        return ""
+    except caminhos.Recusado:
+        raise
     except OSError:
         return ""
 
 
 def _gravar_ultimo(p: Path, t: str) -> None:
     """ronda 9 (carimbos nunca repetidos): o último carimbo emitido fica ao lado da Entrada (atómico: temporário + replace)."""
-    f = _ficheiro_ultimo(p)
-    tmp = f.with_name(f.name + ".tmp")
-    tmp.write_text(t + "\n", encoding="utf-8")
-    tmp.replace(f)
+    caminhos.escrever_atomico(_ficheiro_ultimo(p), (t + "\n").encode("utf-8"))
 
 
 def novo_t(ocupados, ultimo: str = "") -> str:
@@ -118,13 +120,7 @@ def acrescentar(texto: str, de: str, **extra) -> dict:
     with trinco() as p:
         reg = {"t": novo_t({r.get("t") for r in ler(p)}, _ler_ultimo(p)), "de": de, **extra, "texto": texto.strip(), "arquivado": False}
         _gravar_ultimo(p, reg["t"])                     # primeiro o carimbo, depois a ideia: se falhar a meio, sobra um carimbo por usar, nunca um repetido
-        with open(p, "a+b") as f:
-            f.seek(0, 2)
-            if f.tell():
-                f.seek(-1, 2)
-                if f.read(1) != b"\n":          # um append interrompido deixou a última linha sem fim
-                    f.write(b"\n")
-            f.write((json.dumps(reg, ensure_ascii=False) + "\n").encode("utf-8"))
+        caminhos.acrescentar(p, (json.dumps(reg, ensure_ascii=False) + "\n").encode("utf-8"))   # começa numa linha nova se a última ficou sem fim
     return reg
 
 

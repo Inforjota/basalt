@@ -100,8 +100,7 @@ def _hash(n):
 def _job(tipo, manter, fundir, commit, msg):
     j = {"id": uuid.uuid4().hex, "manter": manter, "fundir": fundir, "estado": "feita", "commit": commit, "passo": "",
          "mensagem": msg, "origem": "auto-arrumar", "tipo": tipo, "criado": datetime.datetime.now().isoformat(timespec="seconds")}
-    JOBS.mkdir(parents=True, exist_ok=True)
-    tmp = JOBS / f".{j['id']}.tmp"; tmp.write_text(json.dumps(j, ensure_ascii=False)); tmp.replace(JOBS / f"{j['id']}.json")
+    caminhos.escrever_atomico(Path(JOBS) / f"{j['id']}.json", json.dumps(j, ensure_ascii=False).encode("utf-8"))   # ronda 13: sem ligações
     return j["id"]
 
 
@@ -176,9 +175,11 @@ def main(argv=None):
 
 
 def _correr():
-    ESTADO.mkdir(parents=True, exist_ok=True)
-    dec_f = ESTADO / "decididos.json"
-    decididos = json.loads(dec_f.read_text()) if dec_f.exists() else {}
+    dec_f = Path(ESTADO) / "decididos.json"
+    try:
+        decididos = json.loads(caminhos.ler_texto(dec_f))       # ronda 13: sem seguir ligações
+    except FileNotFoundError:
+        decididos = {}
     agora = time.time()
     ret = retidas.nomes_retidos(REAL)
     pares = [(s, a, b) for s, a, b in arr.duplicados() if ":" not in a and ":" not in b and a not in ret and b not in ret
@@ -239,8 +240,9 @@ def _correr():
         feitos.append({"acao": acao, "notas": [manter, outra], "motivo": motivo, "commit": commit, "job": job})
     if SIMULAR:
         return
-    dec_f.write_text(json.dumps(decididos, ensure_ascii=False, indent=1))
-    (ESTADO / "ultimo.json").write_text(json.dumps({"data": HOJE, "feitos": feitos, "duvidas": duvidas}, ensure_ascii=False, indent=1))
+    caminhos.escrever_atomico(dec_f, json.dumps(decididos, ensure_ascii=False, indent=1).encode("utf-8"))
+    caminhos.escrever_atomico(Path(ESTADO) / "ultimo.json",
+                              json.dumps({"data": HOJE, "feitos": feitos, "duvidas": duvidas}, ensure_ascii=False, indent=1).encode("utf-8"))
     if any(f.get("commit") for f in feitos):       # reindexar: tirar do índice o que se uniu/arquivou
         subprocess.run([sys.executable, "-m", "basalt.sig", "indexar"], capture_output=True, timeout=1800, cwd="/tmp",
                        env=config.ambiente_filho())

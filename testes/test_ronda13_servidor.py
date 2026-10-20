@@ -1,4 +1,4 @@
-"""Ronda 13 — servidor: refs com segredo, categorias das fontes externas, ambiente do Claude CLI, verificador e avisos.
+"""Ronda 13 — servidor: refs com segredo, categorias das fontes externas, ambiente do Claude CLI, verificador, avisos e ficheiros de dados sem ligações.
 
 Cada grupo diz o defeito que a revisão externa encontrou; os «controlo» são o comportamento que já estava certo e tem de ficar.
 """
@@ -519,3 +519,125 @@ def test_controlo_o_relatorio_da_importacao_continua_a_dizer_porque(tmp_path):
     r = subprocess.run([sys.executable, "-m", "basalt", "importar", "--simular", str(cofre)], cwd=RAIZ, capture_output=True,
                        text=True, timeout=60, env=dict(env, BASALT_CONFIG=str(toml), HOME=str(tmp_path)))
     assert "atalho.md: é uma ligação simbólica" in r.stdout, r.stdout + r.stderr
+
+
+# ═════════════════════════ G — os ficheiros de dados do espaço não seguem ligações simbólicas ═════════════════════════
+# A Entrada, o trinco dela, os trabalhos do «Unir» e as categorias liam-se e escreviam-se por caminho: `A/dados/entrada.jsonl`
+# → a Entrada de B fazia a página de A mostrar (e escrever) a Entrada de B.
+ANA, BEA = "ana@exemplo.pt", "bea@exemplo.pt"
+IDEIA_B, TRABALHO_B = "IDEIA_PRIVADA_DA_BEA", "TRABALHO_PRIVADO_DA_BEA"
+
+
+@pytest.fixture
+def dois(servidor_local):
+    s = servidor_local(modo="cabecalho", utilizadores=[{"email": ANA, "espaco": "a"}, {"email": BEA, "espaco": "b"}])
+    return s, s.espaco("a").criar(), s.espaco("b").criar()
+
+
+def _ideia(esp, texto):
+    from basalt import config, entrada
+    with config.dentro(esp):
+        return entrada.acrescentar(texto, "dono")
+
+
+def _trabalho(esp, msg):
+    import uuid
+    jid = uuid.uuid4().hex
+    esp.jobs_unir.mkdir(parents=True, exist_ok=True)
+    (esp.jobs_unir / f"{jid}.json").write_text(json.dumps({"id": jid, "estado": "feita", "mensagem": msg}), encoding="utf-8")
+    return jid
+
+
+def _trocar_por_ligacao(caminho, alvo):
+    import shutil
+    if caminho.is_dir() and not caminho.is_symlink():
+        shutil.rmtree(caminho)
+    elif caminho.exists() or caminho.is_symlink():
+        caminho.unlink()
+    caminho.symlink_to(alvo, target_is_directory=alvo.is_dir())
+
+
+@pytest.mark.parametrize("onde", ["ficheiro", "pasta-dados"])
+def test_entrada_por_ligacao_nao_mostra_a_de_outra_conta(dois, onde):
+    s, a, b = dois
+    _ideia(b, IDEIA_B)
+    if onde == "ficheiro":
+        _trocar_por_ligacao(a.inbox, b.inbox)                    # A/dados/entrada.jsonl → a Entrada de B
+    else:
+        _trocar_por_ligacao(a.dados, b.dados)                    # A/dados → B/dados
+    r = s.get("/api/entrada", email=ANA)
+    assert IDEIA_B.encode() not in r.corpo, f"a página de A mostrou a Entrada de B ({r.codigo})"
+
+
+def test_entrada_por_ligacao_nao_escreve_na_de_outra_conta(dois):
+    from basalt import config, entrada
+    s, a, b = dois
+    _ideia(b, IDEIA_B)
+    antes = b.inbox.read_bytes()
+    _trocar_por_ligacao(a.inbox, b.inbox)
+    with config.dentro(a):
+        with pytest.raises(OSError):
+            entrada.acrescentar("ideia escrita pela ana", "dono")
+    assert b.inbox.read_bytes() == antes, "a ideia de A foi parar à Entrada de B"
+
+
+def test_trinco_da_entrada_por_ligacao_nao_estraga_o_alvo(dois, tmp_path):
+    from basalt import config, entrada
+    s, a, b = dois
+    alvo = tmp_path / "ficheiro-de-fora.txt"
+    alvo.write_text("conteúdo que não é do Basalt\n", encoding="utf-8")
+    a.dados.mkdir(parents=True, exist_ok=True)
+    (a.dados / ".entrada.lock").symlink_to(alvo)
+    with config.dentro(a):
+        with pytest.raises(OSError):
+            with entrada.trinco():
+                pass
+    assert alvo.read_text(encoding="utf-8") == "conteúdo que não é do Basalt\n", "o trinco esvaziou o ficheiro de fora"
+
+
+def test_reescrita_da_entrada_nao_passa_pelo_temporario_plantado(dois):
+    from basalt import config, entrada
+    s, a, b = dois
+    _ideia(b, IDEIA_B)
+    _ideia(a, "ideia da ana para arrumar")
+    antes = b.inbox.read_bytes()
+    (a.dados / ".entrada.jsonl.tmp").symlink_to(b.inbox)          # o temporário fixo de antes, apontado à Entrada de B
+    with config.dentro(a):
+        entrada.arquivar_n(1)
+    assert b.inbox.read_bytes() == antes, "a reescrita da Entrada de A escreveu na de B"
+    with config.dentro(a):
+        assert entrada.ler()[0]["arquivado"] is True
+
+
+@pytest.mark.parametrize("onde", ["ficheiro", "pasta"])
+def test_trabalhos_do_unir_por_ligacao_nao_mostram_os_de_outra_conta(dois, onde):
+    s, a, b = dois
+    jid = _trabalho(b, TRABALHO_B)
+    if onde == "ficheiro":
+        a.jobs_unir.mkdir(parents=True, exist_ok=True)
+        (a.jobs_unir / f"{jid}.json").symlink_to(b.jobs_unir / f"{jid}.json")
+    else:
+        _trocar_por_ligacao(a.jobs_unir, b.jobs_unir)
+    for caminho in ("/api/unir", f"/api/unir?job={jid}"):
+        r = s.get(caminho, email=ANA)
+        assert TRABALHO_B.encode() not in r.corpo, f"GET {caminho} de A mostrou o trabalho de B ({r.codigo})"
+
+
+def test_categorias_por_ligacao_nao_mostram_as_de_outra_conta(dois):
+    from basalt import config, web
+    s, a, b = dois
+    b.categorias.write_text(json.dumps({"nota-privada-da-bea": {"cats": ["Saúde"]}}), encoding="utf-8")
+    _trocar_por_ligacao(a.categorias, b.categorias)
+    with config.dentro(a):
+        assert "nota-privada-da-bea" not in web.cats_de()
+
+
+def test_controlo_a_entrada_e_os_trabalhos_da_propria_conta_continuam(dois):
+    s, a, b = dois
+    _ideia(a, "ideia normal da ana")
+    jid = _trabalho(a, "trabalho normal da ana")
+    r = s.get("/api/entrada", email=ANA)
+    assert r.codigo == 200 and "ideia normal da ana" in r.corpo.decode()
+    assert "trabalho normal da ana" in s.get("/api/unir", email=ANA).corpo.decode()
+    assert s.get(f"/api/unir?job={jid}", email=ANA).json["mensagem"] == "trabalho normal da ana"
+    assert IDEIA_B.encode() not in r.corpo

@@ -233,10 +233,11 @@ def indexar():
 def _excluidas():
     """notas que NÃO podem sair (ex.: têm segredo em claro) — o ficheiro `excluir` do espaço, um nome por linha. O que está
     aqui nunca aparece na pesquisa nem chega ao modelo da pergunta."""
-    f = Path(EXCLUIR)
-    if not f.exists():
+    try:
+        txt = caminhos.ler_texto(EXCLUIR)              # ronda 13: uma ligação simbólica é recusada, não seguida
+    except FileNotFoundError:
         return set()
-    return {l.strip() for l in f.read_text(encoding="utf-8").splitlines() if l.strip()}
+    return {l.strip() for l in txt.splitlines() if l.strip()}
 
 
 _RETIDA_AGORA: dict = {}        # sha256 do conteúdo → retida? — a decisão segue o CONTEÚDO, não a marca do ficheiro

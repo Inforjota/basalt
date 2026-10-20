@@ -4,9 +4,12 @@ Os nomes já são filtrados (NOME_RX nas notas, nome_ok nos anexos), por isso pe
 chega por outra via — um cofre Obsidian importado com ligações, um anexo posto à mão na pasta, uma nota simbólica na memória
 real — e que as listagens por glob e as leituras seguiam sem perguntar, copiando ou servindo ficheiros de fora do espaço.
 """
+import contextlib
 import errno
+import fcntl
 import os
 import stat
+import threading
 from pathlib import Path
 
 
@@ -275,3 +278,57 @@ def percorrer(raiz, ignorar=None):
         yield from desce(fd, "")
     finally:
         os.close(fd)
+
+
+# ───────────────────────── ronda 13: os ficheiros de dados do espaço (Entrada, trabalhos…) também sem ligações ─────────────────────────
+# A Entrada, o trinco dela, os trabalhos do «Unir», as categorias… liam-se e escreviam-se por caminho: `A/dados/entrada.jsonl` →
+# a Entrada de B fazia a página de A mostrar (e escrever) a de B. Estas três operações abrem a partir da âncora, como as de cima.
+
+def escrever_atomico(p, dados: bytes, modo: int = 0o644) -> None:
+    """grava `p` de uma vez (temporário único na mesma pasta + replace), sem seguir ligações nas pastas acima até à âncora.
+    Se o próprio `p` for uma ligação, é a ligação que é substituída — o ficheiro para onde apontava fica intacto."""
+    p = Path(p)
+    dfd = abrir_pasta(p.parent, criar=True)
+    try:
+        tmp = f".{p.name}.{os.getpid()}-{threading.get_ident()}.tmp"
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp, dir_fd=dfd)                         # sobra de um processo morto com o mesmo pid
+        fd = abrir_ficheiro(dfd, tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, modo)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(dados)
+            os.replace(tmp, _nome_simples(p.name), src_dir_fd=dfd, dst_dir_fd=dfd)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp, dir_fd=dfd)
+            raise
+    finally:
+        os.close(dfd)
+
+
+def acrescentar(p, dados: bytes, modo: int = 0o644) -> None:
+    """acrescenta `dados` ao fim de `p` (cria-o se faltar), sem seguir ligações; se a última linha ficou sem fim (um append
+    interrompido), começa numa linha nova."""
+    p = Path(p)
+    fd = abrir(p.parent, [p.name], os.O_RDWR | os.O_CREAT | os.O_APPEND, modo)
+    try:
+        tam = os.fstat(fd).st_size
+        if tam and os.pread(fd, 1, tam - 1) != b"\n":
+            dados = b"\n" + dados
+        vista = memoryview(dados)
+        while vista:
+            vista = vista[os.write(fd, vista):]
+    finally:
+        os.close(fd)
+
+
+@contextlib.contextmanager
+def trinco(p):
+    """flock exclusivo no ficheiro `p` (criado se faltar), aberto sem seguir ligações."""
+    p = Path(p)
+    fd = abrir(p.parent, [p.name], os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        os.close(fd)                                           # fechar liberta o flock

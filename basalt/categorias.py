@@ -16,7 +16,7 @@ as notas (ronda 13).
 import hashlib, json, re, sys
 from pathlib import Path
 
-from . import config, retidas
+from . import caminhos, config, retidas
 from .config import Via
 from .ia import IAIndisponivel, actual as ia
 
@@ -206,7 +206,9 @@ def _categorizar_externas(pedacos, ja: dict) -> dict:
 def main(tudo=False):
     saida = Path(SAIDA)
     try:
-        antes_todo = json.loads(saida.read_text()) if saida.exists() else {}
+        antes_todo = json.loads(caminhos.ler_texto(saida))          # ronda 13: sem seguir ligações
+    except FileNotFoundError:
+        antes_todo = {}
     except ValueError:
         antes_todo = {}
     antes_todo = antes_todo if isinstance(antes_todo, dict) else {}
@@ -231,8 +233,7 @@ def main(tudo=False):
         novo.setdefault(k, v)
     novas_ext = _categorizar_externas(ind[0], novo) if ind else {}
     novo.update(novas_ext)
-    saida.parent.mkdir(parents=True, exist_ok=True)
-    tmp = saida.with_suffix(".tmp"); tmp.write_text(json.dumps(novo, ensure_ascii=False, indent=0)); tmp.replace(saida)
+    caminhos.escrever_atomico(saida, json.dumps(novo, ensure_ascii=False, indent=0).encode("utf-8"))
     conta = {}
     for v in novo.values():
         for c in v.get("cats", []):
