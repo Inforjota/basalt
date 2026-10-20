@@ -4,6 +4,27 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Correcções da ronda 13 (20/10/2026)
+- **Mudar a senha só diz que correu bem com o corte das IAs já gravado:** na página e com `basalt utilizador senha`/`novo`,
+  as ligações e os tokens pessoais da conta revogam-se na base antes da resposta (a CLI fá-lo antes de mexer no `basalt.toml`;
+  se não conseguir, não mexe). Reiniciar e repor o `basalt.toml` antigo já não faz voltar a valer os acessos antigos.
+- **Criar um token pessoal ou carregar «Permitir» confere a conta no momento de gravar:** se foi apagada ou mudou entretanto,
+  nada se cria, e um token assim nunca passa a valer quando a conta é recriada.
+- **Os trincos já não seguem ligações simbólicas:** o da fusão (`.basalt-unir.lock`, botão Unir e auto-arrumar) e o do
+  `basalt.toml` abrem-se sem seguir ligações nem truncar; uma ligação no lugar deles faz a operação recusar sem tocar no
+  ficheiro para onde aponta (antes, a fusão esvaziava-o).
+- **A nota que resulta de uma fusão passa pelo guarda comum de segredos** (passwords em claro e o `[segredos] verificador`);
+  verificador falhado = não grava. As notas de entrada também passam pelo guarda antes de irem à IA.
+- **Um `[segredos] verificador` lento ou partido já não prende o servidor:** em cada ciclo de sincronização há no máximo uma
+  chamada falhada e um ALERTA; as outras notas ficam para o ciclo seguinte. O servidor atende logo no arranque, com a 1.ª
+  sincronização em segundo plano.
+- **A página já não mostra dados da conta anterior:** as respostas da rede passam pela mesma verificação final que as da cópia
+  (conta, «Sair», tranca, geração, época), e a nota, o início, o índice, a entrada e «Unir» voltam a verificar depois de cada
+  espera, antes de desenhar. As caches em memória (embeds, pré-visualizações, grafo, salto rápido) e a árvore das notas deixam
+  de passar de uma conta para outra.
+- **Categorias das fontes externas:** uma ref com `#` (p. ex. `repo#12`) fica sempre com a chave exacta, mesmo sozinha; uma
+  chave antiga sem `#` deixa de impedir que os itens novos ganhem categoria.
+
 ### «Mudar a senha» na interface (20/10/2026)
 - Na página **🔌 Ligar a tua IA**, secção «A tua senha» (só no modo `senha`): senha actual + nova (pelo menos 8 caracteres)
   + repetir. O hash novo grava-se no `basalt.toml` de uma vez (temporário 0600, só substitui se carregar) e, ao mudar, **as outras
