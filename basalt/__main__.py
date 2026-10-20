@@ -58,15 +58,19 @@ def _escrever_toml(caminho: Path, texto: str):
         _falha(f"o basalt.toml ficaria inválido ({e}) — não mexi em {caminho}")
 
 
-def _editar_toml(caminho: Path, editar):
+def _editar_toml(caminho: Path, editar, cortadas=()):
     """ronda 13: ler → editar → gravar com o trinco tomado (ver auth.editar_toml). Antes lia-se o texto no início do comando e, se a
-    página mudasse uma senha enquanto o terminal esperava pela nossa, a gravação do texto velho desfazia-a."""
+    página mudasse uma senha enquanto o terminal esperava pela nossa, a gravação do texto velho desfazia-a.
+    ronda 13c: `cortadas` = os e-mails cujas ligações das IAs o `editar` já revogou na base (ronda 13b: antes de o toml mudar). Se a
+    gravação falhar depois disso, o corte fica (é a direcção segura) e o aviso di-lo — antes dizia só «não mexi no basalt.toml»."""
     try:
         editar_toml(caminho, editar)
     except KeyError as e:
         _falha(f"utilizador desconhecido: {e.args[0] if e.args else ''}")
     except (config.ConfigInvalida, ValueError, OSError) as e:   # ValueError = toml mal formado
-        _falha(f"o basalt.toml ficaria inválido ({e}) — não mexi em {caminho}")
+        corte = (f"; atenção: as ligações das IAs de {', '.join(cortadas)} já ficaram cortadas na base (isso fica — voltam a "
+                 "pedir «Permitir»), o resto não mudou — repete o comando" if cortadas else "")
+        _falha(f"o basalt.toml ficaria inválido ({e}) — não mexi em {caminho}{corte}")
 
 
 def _revogar_ligacoes(dados, email: str) -> int:
@@ -235,13 +239,15 @@ def cmd_utilizador(a):
         h = auth.hash_senha(_senha(a)) if cfg.auth.modo == "senha" else ""
         esp = _espaco_para(cfg, email, a.espaco)
         bloco = bloco_utilizador(email, esp, a.nome or email.split("@")[0], bool(a.admin), h)
+        cortadas = []
 
         def novo(t):
             if _bloco_de(t, email):           # apareceu entretanto
                 _falha(f"{email} já existe (usa `utilizador senha`)")
             _revogar_ligacoes(cfg.dados, email)   # ronda 13b: ligações de uma conta antiga com este e-mail não passam para a nova
+            cortadas.append(email)
             return acrescentar_utilizador(t, bloco)
-        _editar_toml(caminho, novo)
+        _editar_toml(caminho, novo, cortadas)
         cfg = config.carregar(caminho)
         e = cfg.espaco_de(cfg.utilizador(email)).criar()
         if cfg.git:
@@ -257,11 +263,14 @@ def cmd_utilizador(a):
         except (config.ConfigInvalida, ValueError, OSError) as e:
             _falha(f"o basalt.toml não carrega ({e}) — não mexi em {caminho}")
 
+        cortadas = []
+
         def senha(t):
             novo = definir_chave_utilizador(t, email, "senha_hash", h)
             _revogar_ligacoes(dados, email)   # ronda 13b: gravado antes de o toml mudar (o servidor pode reiniciar antes de o reler)
+            cortadas.append(email)
             return novo
-        _editar_toml(caminho, senha)
+        _editar_toml(caminho, senha, cortadas)
         print(f"✓ senha de {email} guardada")
     elif a.sub == "mcp-token":
         token, h = auth.gerar_token()
