@@ -244,11 +244,18 @@ def test_abrir_o_conflito_com_rede_nao_escreve_por_cima_de_um_conflito_mais_novo
     pronta(page)
     por_conflito(page, quando=1, actual="S velho", hash_actual="H1")   # o servidor já tem «S novo»/H2 → vai actualizar
     # entre a leitura do conflito (A, quando=1) e a escrita do texto fresco, outro separador regista B (quando=2)
-    page.evaluate("""() => { var orig = window.__t.idbGet; window.__feito = false;
+    # (ronda 13: a vista lê a fila e o conflito numa transacção — filaEConflitoDaCopia(); antes eram idbGet() soltos)
+    page.evaluate("""() => { window.__feito = false;
+      var B = {nome:'n1', actual:'S novo', teu:'B NOVO', hash_actual:'H2', copia:null,
+               proposta:null, proposta_hash:null, proposta_tipo:null, resumo:'', quando:2};
+      if(window.__t.setFilaEConflito){ var origF = window.__t.filaEConflitoDaCopia;
+        window.__t.setFilaEConflito(async function(nome, dono, g){ var r = await origF(nome, dono, g);
+          if(nome === 'n1' && !window.__feito){ window.__feito = true; await window.__t.idbPut('conflitos', B); }
+          return r; }); return; }
+      var orig = window.__t.idbGet;
       window.__t.setIdbGet(async function(loja, chave){ var r = await orig(loja, chave);
         if(loja === 'conflitos' && chave === 'n1' && !window.__feito){ window.__feito = true;
-          await window.__t.idbPut('conflitos', {nome:'n1', actual:'S novo', teu:'B NOVO', hash_actual:'H2', copia:null,
-            proposta:null, proposta_hash:null, proposta_tipo:null, resumo:'', quando:2}); }
+          await window.__t.idbPut('conflitos', B); }
         return r; }); }""")
     achou = abrir_nota_e_esperar(page, "conf-mao")
     page.wait_for_timeout(800)

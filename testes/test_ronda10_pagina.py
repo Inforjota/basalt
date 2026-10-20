@@ -117,7 +117,7 @@ def test_g5_resposta_da_copia_do_sw_nao_se_entrega_se_a_copia_foi_apagada_a_ler_
     page = _aberta(contexto, base)
     page.route("**/api/nota?nome=n2", lambda route: route.fulfill(
         status=200, body=json.dumps(dict(NOTA, nome="n2", texto="COPIA_APAGADA", hash="HC")),
-        headers={"Content-Type": "application/json", "X-Basalt-From-Cache": "1", "X-Basalt-Dono": "d-ana"}))
+        headers={"Content-Type": "application/json", "X-Basalt-From-Cache": "1", "X-Basalt-Protocolo": "5", "X-Basalt-Dono": "d-ana"}))
     apagar = APAGAR_NESTE if onde == "neste-separador" else APAGAR_NOUTRO
     page.evaluate("""() => { var orig = Response.prototype.json; window.__apagou = false;
       Response.prototype.json = async function(){
@@ -132,5 +132,5 @@ def test_g5_controlo_sem_apagar_a_copia_do_sw_entrega_se(base, contexto):
     page = _aberta(contexto, base)
     page.route("**/api/nota?nome=n2", lambda route: route.fulfill(
         status=200, body=json.dumps(dict(NOTA, nome="n2", texto="DA CACHE", hash="HC")),
-        headers={"Content-Type": "application/json", "X-Basalt-From-Cache": "1", "X-Basalt-Dono": "d-ana"}))
+        headers={"Content-Type": "application/json", "X-Basalt-From-Cache": "1", "X-Basalt-Protocolo": "5", "X-Basalt-Dono": "d-ana"}))
     assert page.evaluate("window.__t.apiGet('/api/nota?nome=n2').then(d => d && d.texto, e => 'ERRO ' + (e && e.message))") == "DA CACHE"

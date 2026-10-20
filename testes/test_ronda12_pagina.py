@@ -33,6 +33,17 @@ FILA = "window.__t.idbGetAll('fila').then(l => l.map(x => x.texto))"
 GUARDAR = "([t, g]) => window.__t.guardarEdicaoOffline('n1', 'S novo', t, g).then(() => 'guardou', e => 'recusou: ' + e.message)"
 
 
+def _enviar_em_meu_nome(page):
+    """«Enviar em meu nome». Ronda 13 (c): já não está no aviso — abre-se a lista no Início, «Enviar em meu nome» mostra o início
+    de cada edição e só «Confirmar e enviar» as põe na fila. (Na página da ronda 12 o botão estava no aviso e enviava logo.)"""
+    if page.query_selector("#pendentes-aviso [data-pendentes=enviar]"):
+        page.click("#pendentes-aviso [data-pendentes=enviar]")
+        return
+    page.click("#pendentes-link")
+    page.click(".pendentes-modal [data-pendentes=enviar]")
+    page.click(".pendentes-modal [data-pendentes=confirmar-enviar]")
+
+
 def _confirmado(page, dono, ms=8000):
     return esperar(page, f"window.__t.donoOk() === null || (window.__t.donoOk() === true && window.__t.dono() === '{dono}')", ms)
 
@@ -82,9 +93,11 @@ def test_a_edicao_da_pagina_antiga_tem_aviso_e_ve_se_sem_enviar_nada(base, conte
     assert visto, f"a edição deixada pela página anterior ficou INVISÍVEL: à parte {guardado}, nenhum aviso na página"
     texto = page.evaluate(AVISO_TEXTO)
     assert "Há 1 edição guardada neste aparelho que não chegou a ser enviada" in texto, texto
-    for botao in ("Ver", "Enviar em meu nome", "Descarregar", "Esconder aviso"):
+    # ronda 13 (c): o aviso tem só a contagem + Descarregar + Esconder aviso; «Ver» (e «Enviar em meu nome») estão na lista do Início
+    for botao in ("Descarregar", "Esconder aviso"):
         assert botao in texto, f"falta «{botao}» no aviso: {texto!r}"
-    page.click("#pendentes-aviso [data-pendentes=ver]")
+    assert "Enviar em meu nome" not in texto, f"o aviso ainda envia sem confirmação: {texto!r}"
+    page.click("#pendentes-link")
     assert esperar(page, "!!document.querySelector('.pendentes-modal')"), "«Ver» não abriu a lista"
     lista = page.inner_text(".pendentes-modal")
     assert "n1" in lista and ANTIGA in lista, f"a lista não mostra a nota e o texto: {lista!r}"
@@ -129,7 +142,7 @@ def test_descarregar_varias_da_um_zip_com_cada_nota(base, contexto):
 def test_enviar_em_meu_nome_sobe_com_a_mesma_base_e_sai_do_que_estava_a_parte(base, contexto):
     page = _pagina_antiga_deixou(contexto(locale="pt-PT"), base, fila=[_item(ANTIGA)])
     assert esperar(page, AVISO_VISIVEL, 5000), "sem aviso: não há como enviar"
-    page.click("#pendentes-aviso [data-pendentes=enviar]")
+    _enviar_em_meu_nome(page)
     assert esperar_py(page, lambda: ESTADO["sinc"], 8000), "«Enviar em meu nome» não enviou nada"
     assert ESTADO["sinc"] == [(ANTIGA, "d-ana")], f"enviou outra coisa, ou noutro nome: {ESTADO['sinc']}"
     assert ESTADO["sinc_base"] == ["S novo"], f"não subiu com a base de versão que a página antiga guardou: {ESTADO['sinc_base']}"
@@ -144,7 +157,7 @@ def test_enviar_em_meu_nome_com_conflito_fica_conflito_nunca_por_cima(base, cont
     ESTADO["sinc_409"] = {"estado": "conflito", "erro": "Os agentes mudaram a nota.", "actual": "TEXTO DOS AGENTES",
                           "hash_actual": "H9", "copia": "n1.20261020-100000.abcdef0123.md"}
     assert esperar(page, AVISO_VISIVEL, 5000), "sem aviso: não há como enviar"
-    page.click("#pendentes-aviso [data-pendentes=enviar]")
+    _enviar_em_meu_nome(page)
     assert esperar_py(page, lambda: ESTADO["sinc"], 8000), "não enviou"
     assert esperar(page, "window.__t.idbGet('conflitos', 'n1').then(c => !!c)"), "o conflito não ficou registado"
     c = conflito(page)
@@ -324,7 +337,7 @@ def test_real_enviar_em_meu_nome_chega_a_nota(real, navegador):
                                                       "quando": int(time.time() * 1000), "rev": "antiga-1"})
     try:
         assert esperar(page, AVISO_VISIVEL, 8000), "a edição da página antiga ficou invisível (sem aviso)"
-        page.click("#pendentes-aviso [data-pendentes=enviar]")
+        _enviar_em_meu_nome(page)
         assert esperar_py(page, lambda: (esp.copia / "barcos.md").read_text(encoding="utf-8") == nova, 15000), \
             "a edição não chegou à nota"
         assert esperar(page, "window.__t.idbGetAll('fila').then(l => l.length === 0)"), "ficou na fila"
@@ -342,7 +355,7 @@ def test_real_conflito_deixa_a_nota_igual_e_guarda_a_versao(real, navegador):
                                                       "quando": int(time.time() * 1000), "rev": "antiga-2"})
     try:
         assert esperar(page, AVISO_VISIVEL, 8000), "a edição da página antiga ficou invisível (sem aviso)"
-        page.click("#pendentes-aviso [data-pendentes=enviar]")
+        _enviar_em_meu_nome(page)
         assert esperar(page, "window.__t.idbGet('conflitos', 'ilhas').then(c => !!c)", 15000), "o conflito não ficou registado"
         c = page.evaluate("window.__t.idbGet('conflitos', 'ilhas')")
         assert c["teu"] == minha and c["actual"] == actual, c

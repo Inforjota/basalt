@@ -62,7 +62,7 @@ def _ler_da_copia(contexto, base, onde=None, accao=None):
     assert esperar(page, "window.__t.donoOk() === true"), "a página não confirmou o dono da cópia"
     page.route("**/api/nota?nome=n2", lambda route: route.fulfill(
         status=200, body=json.dumps(dict(NOTA, nome="n2", texto="DA_COPIA", hash="HC")),
-        headers={"Content-Type": "application/json", "X-Basalt-From-Cache": "1", "X-Basalt-Dono": "d-ana"}))
+        headers={"Content-Type": "application/json", "X-Basalt-From-Cache": "1", "X-Basalt-Protocolo": "5", "X-Basalt-Dono": "d-ana"}))
     page.evaluate(PREPARAR, [onde or "", accao or ""])
     r = page.evaluate(LER)
     est = page.evaluate("({feito: window.__feito, depois: window.__depois, desligada: window.__t.desligada(), "

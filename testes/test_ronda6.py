@@ -248,15 +248,19 @@ async ([fonte, api]) => {
   function resp410(){ return new Response(JSON.stringify({erro: "apagada"}), {status: 410, headers: {"Content-Type": "application/json", "X-Basalt-Dono": "d-ana"}}); }
   // devolve {p: promessa} e não a promessa: um `return p` numa função async fazia o `await pedir()` esperar pela resposta
   // da rede que o teste ainda não soltou (bloqueio mútuo).
-  async function pedir(){ var n = pendentes.length; var p = sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}}));
+  async function pedir(){ var n = pendentes.length; var p = sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana", "X-Basalt-Protocolo": "5"}}));
     for(var i = 0; i < 200 && pendentes.length === n; i++) await dormir(5); return {p: p}; }
   async function guardada(){ var c = lojas.get(api); var g = c ? await c.match(url) : undefined; if(!g) return null;
     return {inicio: g.headers.get("X-Basalt-Inicio"), texto: (await g.json()).texto}; }
   function trancasN(){ var c = lojas.get("basaltcfg-copia-trancada"); return c ? c.m.size : 0; }
-  async function lapide(){ var c = lojas.get("basaltcfg-apagadas-d-ana"); var r = c ? await c.match(url) : undefined; return r ? await r.text() : null; }
+  async function lapide(){ var c = lojas.get("basaltcfg-apagadas-d-ana"); if(!c) return null; var r = await c.match(url); if(r) return await r.text();
+    // ronda 13: só se escrevem as entradas por instante («/__lapide/<URL codificado>/<hora>»); vale a maior
+    var pre = new URL("/__lapide/" + encodeURIComponent(url) + "/", location.origin).href, h = null;
+    c.m.forEach(function(v, k){ if(k.indexOf(pre) === 0){ var x = Number(k.slice(pre.length)); if(h === null || x > h) h = x; } });
+    return h === null ? null : String(h); }
   async function porTranca(id, hora){ var c = await caches.open("basaltcfg-copia-trancada"); await c.put("/__tranca/" + id, new Response(String(hora))); }
   async function offline(){ semRede = true;
-    try { var r = await sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}})); return r ? (r.status + (r.headers.get("X-Basalt-From-Cache") ? " cache" : "")) : "nada"; }
+    try { var r = await sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana", "X-Basalt-Protocolo": "5"}})); return r ? (r.status + (r.headers.get("X-Basalt-From-Cache") ? " cache" : "")) : "nada"; }
     catch(e){ return "recusou"; } finally { semRede = false; } }
 """
 

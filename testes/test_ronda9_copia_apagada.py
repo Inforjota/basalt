@@ -117,7 +117,7 @@ class TestPagina:
         página, corre `window.__aMeio` (o «apagar a cópia» que o service worker não viu)."""
         page.route("**/api/nota?nome=n2", lambda route: route.fulfill(
             status=200, body=json.dumps(dict(NOTA_PAGINA, nome="n2", texto="APAGADO", hash="HC")),
-            headers={"Content-Type": "application/json", "X-Basalt-From-Cache": "1", "X-Basalt-Dono": "d-ana"}))
+            headers={"Content-Type": "application/json", "X-Basalt-From-Cache": "1", "X-Basalt-Protocolo": "5", "X-Basalt-Dono": "d-ana"}))
         page.evaluate("""() => { window.__f = window.fetch; window.__aMeio = null;
             window.fetch = async function(p, o){ var r = await window.__f(p, o);
                 if(String(p).indexOf('nome=n2') !== -1 && window.__aMeio){ var f = window.__aMeio; window.__aMeio = null; await f(); }

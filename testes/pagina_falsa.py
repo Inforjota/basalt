@@ -56,7 +56,18 @@ GANCHO = ('window.__t = {guardarEdicaoOffline: guardarEdicaoOffline, sincronizar
           'guardarPacoteLocal: typeof guardarPacoteLocal === "function" ? guardarPacoteLocal : null, '
           # ronda 12 (A): o aviso das edições guardadas à parte (lido de novo depois de o teste mexer na cópia)
           'atualizarAvisoPendentes: typeof atualizarAvisoPendentes === "function" ? atualizarAvisoPendentes : null, '
-          'protocolo: function(){ return typeof PROTOCOLO_COPIA === "undefined" ? null : PROTOCOLO_COPIA; }};\n  iniciarOffline();')
+          'protocolo: function(){ return typeof PROTOCOLO_COPIA === "undefined" ? null : PROTOCOLO_COPIA; }, '
+          # ronda 13: a fila e o conflito da vista da nota (numa transacção), a época da cópia e as edições guardadas à parte
+          'filaEConflitoDaCopia: typeof filaEConflitoDaCopia === "function" ? filaEConflitoDaCopia : null, '
+          'setFilaEConflito: typeof filaEConflitoDaCopia === "function" ? function(f){ filaEConflitoDaCopia = f; } : null, '
+          'lerEpocaCopia: typeof lerEpocaCopia === "function" ? lerEpocaCopia : null, '
+          'geracaoActual: typeof geracaoActual === "function" ? geracaoActual : null, '
+          'setGeracaoActual: typeof geracaoActual === "function" ? function(f){ geracaoActual = f; } : null, '
+          'guardarEdicaoDeOutraConta: typeof guardarEdicaoDeOutraConta === "function" ? guardarEdicaoDeOutraConta : null, '
+          'enviarPendentesEmMeuNome: typeof enviarPendentesEmMeuNome === "function" ? enviarPendentesEmMeuNome : null, '
+          'accaoPendentes: typeof accaoPendentes === "function" ? accaoPendentes : null, '
+          'setApiGet: function(f){ apiGet = f; }, '
+          'openNovaNotaModal: typeof openNovaNotaModal === "function" ? openNovaNotaModal : null};\n  iniciarOffline();')
 
 NOTA = {"nome": "n1", "titulo": "n1", "desc": "nota de teste", "tipo": "project", "mtime": 1758900000, "projeto": "demo",
         "editavel": True, "categorias": []}
@@ -66,7 +77,8 @@ ESTADO = {}
 def reset(**k):
     ESTADO.update(modo="ok", pacote=[], put=[], sinc_pedidos=0, nota_texto="S novo", nota_hash="H2", put_solta=None,
                   sinc_409=None, sinc_503=False, pacote_solta=None, pacote_pedidos=0, nota_solta=None, put_falha_rede=False,
-                  nota_status=200, idioma="pt", pacote_uma=None, dono="d-ana", modo_auth="cabecalho", donos=[], sinc=[], sinc_base=[], sair=0, anexos=[])
+                  nota_status=200, idioma="pt", pacote_uma=None, dono="d-ana", modo_auth="cabecalho", donos=[], sinc=[], sinc_base=[], sair=0, anexos=[],
+                  fonte_texto="TEXTO DA FONTE", fonte_status=200)
     ESTADO["sinc_solta"] = threading.Event()
     ESTADO.update(k)
 
@@ -138,6 +150,10 @@ class Servidor(BaseHTTPRequestHandler):
             return {"categorias": [], "notas": {}}
         if c == "/api/grafo":
             return {"nodes": [], "links": []}
+        if c == "/api/fonte":                                 # ronda 13 (pendente b): um texto de uma fonte externa, só leitura
+            ref = q.get("ref", ["a.md"])[0]
+            return {"fonte": q.get("fonte", ["docs"])[0], "ref": ref, "titulo": ref, "omitidos": 0,
+                    "pedacos": [{"ref": ref, "texto": ESTADO["fonte_texto"]}]}
         if c == "/api/arrumar":
             return {"duplicados": [], "tarefas_paradas": [], "pendentes": [], "commits_hoje": [], "tarefas_hoje": []}
         return {}
@@ -218,6 +234,8 @@ class Servidor(BaseHTTPRequestHandler):
             return self._envia(200, {"gerado": 1, "notas": notas})
         if u.path == "/api/nota" and ESTADO["nota_solta"] is not None:
             ESTADO["nota_solta"].wait(20)                     # GET à nota «suspenso» até o teste o soltar (antes do nota_status)
+        if u.path == "/api/fonte" and ESTADO["fonte_status"] != 200:   # ronda 13 (pendente b): o texto saiu da fonte (404) ou a sessão caiu (401)
+            return self._envia(ESTADO["fonte_status"], {"erro": "texto não encontrado"})
         if u.path == "/api/nota" and ESTADO["nota_status"] != 200:
             return self._envia(ESTADO["nota_status"], {"erro": "a nota já não existe"})
         return self._envia(200, self._api_ok(u, q))
@@ -265,9 +283,10 @@ def conta_notas(page):
 
 
 def buscar(page, caminho, dono="d-ana"):
-    """um fetch da página (passa pelo service worker); ronda 9: com o dono da cópia, como a página ("" = sem)."""
+    """um fetch da página (passa pelo service worker); ronda 9: com o dono da cópia, como a página ("" = sem); ronda 13: e o
+    protocolo (o service worker só serve a cópia a quem o diz)."""
     return page.evaluate("""async ([c, d]) => {
-        try { const r = await fetch(c, {credentials: 'same-origin', headers: d ? {'X-Basalt-Dono': d} : {}});
+        try { const r = await fetch(c, {credentials: 'same-origin', headers: Object.assign({'X-Basalt-Protocolo': '5'}, d ? {'X-Basalt-Dono': d} : {})});
               return {status: r.status, cache: r.headers.get('X-Basalt-From-Cache'), texto: await r.text()}; }
         catch (e) { return {status: 0, erro: String(e)}; } }""", [caminho, dono])
 
@@ -352,7 +371,7 @@ async ([fonte, marca]) => {
   // ronda 9: o SW devolve a resposta logo e guarda/destranca a seguir (o que no fetch vai para o waitUntil) — o ensaio
   // recolhe esse trabalho e espera por ele antes de olhar.
   var trabalhos = [];
-  var r = await sw.tratarApi(new Request(location.origin + "/api/nota?nome=n1", {headers: {"X-Basalt-Dono": "d-ana"}}), function(p){ trabalhos.push(p); });   // 200 → destranca a antiga
+  var r = await sw.tratarApi(new Request(location.origin + "/api/nota?nome=n1", {headers: {"X-Basalt-Dono": "d-ana", "X-Basalt-Protocolo": "5"}}), function(p){ trabalhos.push(p); });   // 200 → destranca a antiga
   await Promise.all(trabalhos);
   return {estado: r.status, injectada: injectada, trancada: await sw.copiaTrancada()};
 }
@@ -384,9 +403,9 @@ async ([fonte, api]) => {
   var sw = new Function("self", "caches", "fetch", fonte + "\nreturn {tratarApi: tratarApi};")(self, caches, fetchFalso);
   var dormir = function(ms){ return new Promise(function(r){ setTimeout(r, ms); }); };
   var url = location.origin + "/api/nota?nome=n1";
-  var p1 = sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}}));           // GET antigo: fica pendurado na rede
+  var p1 = sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana", "X-Basalt-Protocolo": "5"}}));           // GET antigo: fica pendurado na rede
   await dormir(30);
-  var p2 = sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana"}}));           // GET novo
+  var p2 = sw.tratarApi(new Request(url, {headers: {"X-Basalt-Dono": "d-ana", "X-Basalt-Protocolo": "5"}}));           // GET novo
   await dormir(30);
   pendentes[1](new Response(JSON.stringify({erro: "apagada"}), {status: 410, headers: {"Content-Type": "application/json", "X-Basalt-Dono": "d-ana"}}));
   var r2 = await p2;                                 // a nota foi apagada de vez

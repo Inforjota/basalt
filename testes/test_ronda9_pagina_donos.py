@@ -61,7 +61,7 @@ def test_copia_do_service_worker_de_outra_conta_nao_e_aceite(base, contexto):
     def servir(dono):
         def f(route):
             route.fulfill(status=200, body=json.dumps(dict(NOTA, nome="n2", texto="DA CACHE de " + dono, hash="HC")),
-                          headers={"Content-Type": "application/json", "X-Basalt-From-Cache": "1", "X-Basalt-Dono": dono})
+                          headers={"Content-Type": "application/json", "X-Basalt-From-Cache": "1", "X-Basalt-Protocolo": "5", "X-Basalt-Dono": dono})
         return f
 
     ler = "window.__t.apiGet('/api/nota?nome=n2').then(d => d && d.texto, e => 'ERRO ' + (e && e.message))"
