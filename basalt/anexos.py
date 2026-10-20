@@ -14,7 +14,7 @@ import secrets
 from pathlib import Path
 
 from . import caminhos
-from .segredos import SEGREDO_RX, SegredoEmClaro, tem_segredo_texto
+from .segredos import SEGREDO_RX, SegredoEmClaro, tem_segredo_nota, tem_segredo_texto
 
 NOME_RX = re.compile(r"[A-Za-z0-9\u00C0-\u024F][A-Za-z0-9\u00C0-\u024F._ \-]{0,118}[A-Za-z0-9]")
 SUFIXOS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf", ".mp3", ".m4a", ".wav", ".ogg", ".mp4", ".webm",
@@ -91,7 +91,8 @@ def _validar(nome: str, dados: bytes) -> str:
     if len(dados) > TAMANHO_MAX:
         raise ValueError("anexo demasiado grande (máximo %d MB)" % (TAMANHO_MAX // 1024 // 1024))
     txt = dados.decode("utf-8", errors="replace")
-    if SEGREDO_RX.search(txt) or (Path(nome).suffix.lower() in TEXTO and tem_segredo_texto(txt)):
+    # ronda 13: um anexo de texto é lido como uma nota → também passa pelo [segredos] verificador (VerificacaoFalhou se falhar)
+    if SEGREDO_RX.search(txt) or (Path(nome).suffix.lower() in TEXTO and tem_segredo_nota(txt)):
         raise SegredoEmClaro()
     return nome
 

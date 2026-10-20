@@ -22,7 +22,8 @@ from . import ia as ia_mod
 from . import unir
 from .config import Via
 from .segredos import (MOTIVO as MOTIVO_SEGREDO, PASSWORD_RX, SEGREDO_RX, _DATA_HORA_RX, _VALIDADE_RX,  # noqa: F401
-                       _password_em_claro, tem_segredo_ficheiro, tem_segredo_texto)
+                       MOTIVO_VERIFICACAO, VerificacaoFalhou, _password_em_claro, mascarar, retidos, tem_segredo_ficheiro, tem_segredo_nota, tem_segredo_texto,
+                       verificador_ligado)
 
 STATIC = Path(__file__).resolve().parent / "static"
 
@@ -40,14 +41,13 @@ def _erro(e, tipo=True) -> str:
         return f"{type(e).__name__}: o motor não respondeu em {e.timeout} s"
     if isinstance(e, subprocess.CalledProcessError):
         return f"{type(e).__name__}: o motor saiu com código {e.returncode}"
-    m = SEGREDO_RX.sub("•••", (f"{type(e).__name__}: " if tipo else "") + str(e))
-    return "(mensagem omitida: tinha o que parece uma password ou chave)" if tem_segredo_texto(m) else m
+    # ronda 13: as chaves E os valores das passwords tapados (antes só as chaves; o resto, se ainda parecesse um segredo, ia inteiro)
+    return mascarar((f"{type(e).__name__}: " if tipo else "") + str(e), "(mensagem omitida: tinha o que parece uma password ou chave)")
 def caminho_para_registo(caminho: str) -> str:
     """ronda 10 (achado G7 da r3): o caminho de um pedido como vai para o registo — sem a query, descodificado e com o que pareça
     uma chave tapado; se ainda assim parecer ter uma password, nem vai."""
     p = urllib.parse.unquote((caminho or "").split("?")[0])
-    m = SEGREDO_RX.sub("•••", p)
-    return "(caminho omitido: parecia ter uma chave ou password)" if tem_segredo_texto(m) else m
+    return mascarar(p, "(caminho omitido: parecia ter uma chave ou password)")
 
 
 # PORTE: antes caminhos fixos (+ variáveis); agora as pastas do espaço do utilizador do pedido (config.Via segue o espaço activo do fio)
@@ -184,11 +184,21 @@ def _hash_no_ledger(nome_md):
 def refazer_exclusao():
     """nota da memória real que não está na cópia = retida pelo guarda de segredos do 2vias. Escreve excluidas.txt
     (usado também pelo basalt.sig). PORTE: sem outras memórias de projectos (só este espaço)."""
-    novo = set()
+    novo, verificador = set(), verificador_ligado()
     copia = {p.name for p in caminhos.notas(COPIA)}
+    lidas = []
     for p in caminhos.notas(REAL):
-        if p.name not in IGNORA and ".bak" not in p.name and p.name not in copia:
+        if p.name in IGNORA or ".bak" in p.name:
+            continue
+        if p.name not in copia:
             novo.add(p.stem)
+        elif verificador:
+            try:
+                lidas.append((p.stem, caminhos.ler_texto(p)))
+            except (OSError, ValueError):
+                novo.add(p.stem)
+    # ronda 13: com um [segredos] verificador, as notas que ele marca também ficam retidas — todas de uma vez, em lotes
+    novo.update(n for (n, _), r in zip(lidas, retidos([t for _, t in lidas]) if lidas else []) if r)
     EXCL.parent.mkdir(parents=True, exist_ok=True)
     # temporário único por processo e fio: duas escritas simultâneas (pedido da página + vigia) nunca se pisam
     tmp = EXCL.with_name(f".{EXCL.name}.{os.getpid()}-{threading.get_ident()}.tmp")
@@ -477,7 +487,7 @@ def entrada_juntar(t, nome, auto=None):
         loc = localizar(nome)
         if not loc or not loc[1]:
             return 400, {"erro": "Escolhe uma nota desta memória."}
-        if tem_segredo_texto(reg["texto"]):
+        if tem_segredo_nota(reg["texto"]):            # ronda 13: e o verificador configurado (falha → VerificacaoFalhou → 503)
             return 400, {"erro": "A ideia tem o que parece uma password ou chave — guarda-a num gestor de palavras-passe, não numa nota."}
         b = caminhos.ler(loc[0]); atual = b.decode("utf-8", "replace")
         data = time.strftime("%d/%m/%Y", time.strptime(reg["t"][:10], "%Y-%m-%d")) if re.match(r"\d{4}-\d{2}-\d{2}", reg.get("t", "")) else time.strftime("%d/%m/%Y")
@@ -585,7 +595,11 @@ def processar_entrada():
     for r in entrada_mod.pendentes():       # fotografia; cada decisão volta a ler sob o trinco em _entrada_mudar
         if r.get("arquivado") or r.get("auto") or r.get("auto_bloqueado"):
             continue
-        if tem_segredo_texto(r.get("texto", "")):          # ronda 8 (notas retidas): uma ideia com segredo em claro fica na Entrada, sem ir à IA
+        try:
+            com_segredo = tem_segredo_nota(r.get("texto", ""))
+        except VerificacaoFalhou:
+            continue                                        # ronda 13: o verificador falhou — fica para a volta seguinte (já houve ALERTA)
+        if com_segredo:                                     # ronda 8 (notas retidas): uma ideia com segredo em claro fica na Entrada, sem ir à IA
             _entrada_mudar(r["t"], lambda x: dict(x, auto={"acao": "duvida", "nota": None, "confianca": 0, "autor": autor_de(x),
                                                             "quando": time.strftime("%Y-%m-%dT%H:%M:%S"), "motivo": MOTIVO_SEGREDO}))
             feitos += 1; continue
@@ -759,7 +773,7 @@ def iniciar_fusao(manter, fundir):
     for n in (manter, fundir):
         if not NOME_RX.match(n or "") or ":" in n or n in excl() or not (REAL / f"{n}.md").exists():
             return 400, {"erro": f"«{n}» não é uma nota desta memória que se possa unir."}
-        if tem_segredo_ficheiro(REAL / f"{n}.md"):            # ronda 8 (notas retidas): retida pelo conteúdo (a lista pode ainda não a ter)
+        if tem_segredo_nota(caminhos.ler_texto(REAL / f"{n}.md")):   # ronda 8 (notas retidas): retida pelo conteúdo (a lista pode ainda não a ter)
             return 400, {"erro": f"«{n}» tem o que parece uma password ou chave em claro — não a mando à IA."}
     if manter == fundir:
         return 400, {"erro": "Escolhe duas notas diferentes."}
@@ -850,7 +864,7 @@ def gravar(nome, texto, base_hash):
     p, editavel = loc
     if not editavel:
         return 403, {"erro": "Esta nota só se pode ler."}
-    if tem_segredo_texto(texto):
+    if tem_segredo_nota(texto):
         return 400, {"erro": "O texto tem o que parece uma password ou chave em claro — não gravei. Guarda-a num gestor de palavras-passe."}
     try:
         with trinco_copia():
@@ -883,7 +897,7 @@ def criar(nome, texto):
         return 400, {"erro": "Nome inválido: usa só letras minúsculas, números e _ (ex.: ideia_barcos)."}
     if f"{nome}.md".lower() in {n.lower() for n in IGNORA}:     # «index» criava uma nota invisível
         return 400, {"erro": f"«{nome}» é um nome reservado; escolhe outro."}
-    if tem_segredo_texto(texto or ""):
+    if tem_segredo_nota(texto or ""):
         return 400, {"erro": "O texto tem o que parece uma password ou chave em claro — não gravei."}
     p = COPIA / f"{nome}.md"
     try:
@@ -968,7 +982,7 @@ def ia(acao, texto, contexto=""):
         return 400, {"erro": "Selecciona primeiro o texto."}
     if len(texto) > maximo:          # cortar em silêncio fazia o «Substituir» apagar o fim da selecção
         return 400, {"erro": f"A selecção tem {len(texto)} caracteres; a IA só trabalha com até {maximo} de cada vez. Selecciona menos."}
-    if tem_segredo_texto(texto + "\n" + contexto):
+    if tem_segredo_nota(texto + "\n" + contexto):
         return 400, {"erro": "O texto tem o que parece uma password ou chave — não o mando à IA."}
     if not _limite_horario(_ia_usos, cfg_ia.cfg.pedidos_por_hora):
         return 429, {"erro": f"Já foram {cfg_ia.cfg.pedidos_por_hora} pedidos à IA na última hora; espera um bocado."}
@@ -1108,7 +1122,7 @@ def _validar_juncao(base, teu, actual, final):
     Devolve '' se está bem, senão o motivo."""
     if len(final.strip()) < 20:
         return "a junção veio vazia"
-    if tem_segredo_texto(final):
+    if tem_segredo_nota(final):
         return "o resultado tem o que parece um segredo"
     (fB, cB), (fT, cT), (fA, cA), (fF, cF) = (_partes(t) for t in (base, teu, actual, final))
     if fF is None and (fA is not None or fT is not None):
@@ -1192,7 +1206,7 @@ def reconciliar(nome, base_texto, texto):
     if not loc[1]:
         return 403, {"erro": "Esta nota só se pode ler."}
     p = loc[0]
-    if tem_segredo_texto(texto):
+    if tem_segredo_nota(texto):
         return 400, {"erro": "O texto tem o que parece uma password ou chave em claro — não gravei. Guarda-a num gestor de palavras-passe."}
     actual, h_actual = _texto_hash(p)
     if actual == base_texto or actual == texto:                # ninguém mexeu (ou já está igual) → gravação normal
@@ -1408,6 +1422,14 @@ class H(BaseHTTPRequestHandler):
             self.send_header(k, v)
         self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
 
+    def _responder_erro(self, code, mensagem):
+        """a resposta de erro depois de uma excepção: se a ligação já caiu (BrokenPipeError…), não há a quem responder — e não
+        sobe outra excepção para o registo do socketserver."""
+        try:
+            self._json(code, {"erro": mensagem})
+        except OSError:
+            pass
+
     def _corpo(self):
         n = int(self.headers.get("Content-Length") or 0)
         if n < 0 or n > 2_000_000:                   # negativo fazia rfile.read(-1) e prendia o fio
@@ -1458,7 +1480,7 @@ class H(BaseHTTPRequestHandler):
         try:
             f(self)
         except Exception as e:
-            print("erro", metodo, self.path.split("?")[0], _erro(e)[:200], flush=True)
+            print("erro", metodo, caminho_para_registo(self.path), _erro(e)[:200], flush=True)   # ronda 13: o caminho mascarado
             try:
                 self._json(500, {"erro": "Erro interno."})
             except OSError:
@@ -1536,9 +1558,13 @@ class H(BaseHTTPRequestHandler):
                 if u.path == "/api/arrumar": return self._json(200, arrumar())
                 if u.path == "/api/recentes": return self._json(200, recentes(int(g("n", "20") or 20)))
                 return self._json(404, {"erro": "Rota desconhecida."})
+        except VerificacaoFalhou:
+            return self._responder_erro(503, MOTIVO_VERIFICACAO)
         except Exception as e:
-            print("erro GET", u.path, _erro(e)[:200], flush=True)
-            return self._json(500, {"erro": "Erro interno."})
+            # ronda 13: o caminho ia em claro para o registo — um anexo com uma chave no nome e a ligação cortada a meio da resposta
+            # (BrokenPipeError) deixavam a chave no registo
+            print("erro GET", caminho_para_registo(u.path), _erro(e)[:200], flush=True)
+            return self._responder_erro(500, "Erro interno.")
 
     # ── escritas ──
     def _escrita(self, user):
@@ -1587,6 +1613,8 @@ class H(BaseHTTPRequestHandler):
         try:
             with self._dentro(user):
                 final = anexos.guardar(config.actual(), nome, dados)
+        except VerificacaoFalhou:
+            return self._json(503, {"erro": MOTIVO_VERIFICACAO})
         except ValueError as e:
             return self._json(400, {"erro": _erro(e, tipo=False)})
         return self._json(201, {"nome": final, "bytes": len(dados)})
@@ -1613,8 +1641,10 @@ class H(BaseHTTPRequestHandler):
                         toque("escrever", [(q.get("nome") or [""])[0]])
                     return self._json(cod, r)
                 return self._json(404, {"erro": "Rota desconhecida."})
+        except VerificacaoFalhou:
+            return self._responder_erro(503, MOTIVO_VERIFICACAO)
         except Exception as e:
-            print("erro PUT", _erro(e)[:200], flush=True); return self._json(400, {"erro": "Pedido inválido."})
+            print("erro PUT", caminho_para_registo(u.path), _erro(e)[:200], flush=True); return self._responder_erro(400, "Pedido inválido.")
 
     def _entrar(self):
         """POST /api/entrar {email, senha} (modo senha): cookie de sessão HttpOnly/SameSite=Strict."""
@@ -1686,7 +1716,7 @@ class H(BaseHTTPRequestHandler):
                     t = str(c.get("texto", "")).strip()[:4000]
                     if not t:
                         return self._json(400, {"erro": "Nada para guardar."})
-                    if tem_segredo_texto(t):
+                    if tem_segredo_nota(t):
                         return self._json(400, {"erro": "Parece uma password ou chave — não guardei. Usa um gestor de palavras-passe."})
                     r = motor(["guarda", t, "--de", "web"])
                     return self._json(200, {"ok": r.returncode == 0, "mensagem": r.stdout.strip() or "guardado"})
@@ -1706,8 +1736,10 @@ class H(BaseHTTPRequestHandler):
                     r = motor(["arquivar", str(int(c.get("n", 0)))])
                     return self._json(200 if r.returncode == 0 else 400, {"ok": r.returncode == 0, "mensagem": (r.stdout or r.stderr).strip()})
                 return self._json(404, {"erro": "Rota desconhecida."})
+        except VerificacaoFalhou:
+            return self._responder_erro(503, MOTIVO_VERIFICACAO)
         except Exception as e:
-            print("erro POST", _erro(e)[:200], flush=True); return self._json(400, {"erro": "Pedido inválido."})
+            print("erro POST", caminho_para_registo(u.path), _erro(e)[:200], flush=True); return self._responder_erro(400, "Pedido inválido.")
 
 
 # ───────────────────────── arranque ─────────────────────────
@@ -1754,7 +1786,17 @@ def indexar_se_vazio(cfg):
             print("indexação inicial:", _erro(e)[:200], flush=True)
 
 
-class ServidorV6(ThreadingHTTPServer):
+class Servidor(ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        """ronda 13: o socketserver escrevia o traceback inteiro no stderr — com a mensagem de cada excepção encadeada, que pode
+        levar o nome de um ficheiro ou o caminho do pedido. Agora uma linha, mascarada; a ligação cortada pelo outro lado nem conta."""
+        e = sys.exc_info()[1]
+        if isinstance(e, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
+            return
+        print("erro no pedido:", _erro(e)[:200], flush=True)
+
+
+class ServidorV6(Servidor):
     """ronda 9 (achado M7 da ronda 2): o ThreadingHTTPServer escuta em IPv4; com `escutar = "::1"` (ou «::») é preciso a família IPv6."""
     address_family = socket.AF_INET6
 
@@ -1778,7 +1820,7 @@ def criar_servidor(cfg, host=None, porta=None):
     classe.aut.oauth = classe.oauth
     oauth.registar(ROTAS_EXTRA)
     onde = host if host is not None else cfg.escutar
-    srv = (ServidorV6 if ":" in onde else ThreadingHTTPServer)((onde, cfg.porta if porta is None else porta), classe)   # «:» → um endereço IPv6
+    srv = (ServidorV6 if ":" in onde else Servidor)((onde, cfg.porta if porta is None else porta), classe)   # «:» → um endereço IPv6
     srv.daemon_threads = True
     return srv
 

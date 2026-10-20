@@ -24,11 +24,12 @@ from pathlib import Path, PurePosixPath
 from . import anexos as anexos_mod
 from . import caminhos, cas, config
 from .mcp import com_frontmatter
-from .segredos import SegredoEmClaro, tem_segredo_texto
+from .segredos import SegredoEmClaro, VerificacaoFalhou, tem_segredo_texto, verificar
 
 LIGACAO_RX = re.compile(r"(!?)\[\[([^\]|#]+)(#[^\]|]*)?(\|[^\]]*)?\]\]")
 IGNORAR = {".obsidian", ".trash", ".git", ".smart-env"}
 ANEXOS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".pdf", ".mp3", ".m4a", ".wav", ".mp4", ".webm", ".csv", ".json", ".txt"}
+NAO_VERIFICADO = "não consegui verificar com o [segredos] verificador configurado — não importei (tenta outra vez)"
 
 
 def slug(titulo: str) -> str:
@@ -210,6 +211,9 @@ def importar(origem, esp=None, simular: bool = False) -> dict:
             continue
         try:
             guardado = anexos_mod.prever(esp, nome, dados, virtual) if simular else anexos_mod.guardar(esp, nome, dados)
+        except VerificacaoFalhou:
+            avisos.append((rel, NAO_VERIFICADO))
+            continue
         except SegredoEmClaro:
             avisos.append((rel, "tem o que parece uma password ou chave em claro"))
             continue
@@ -221,10 +225,18 @@ def importar(origem, esp=None, simular: bool = False) -> dict:
             r["anexos"].append(guardado)
     r["saltadas"].extend(sorted(avisos))
     # 4) as notas, com o nome final dos anexos; o que se valida é o que se vai gravar
-    for rel, n, texto, pasta_nota in preparadas:
+    finais = [final(n, texto, pasta_nota, guardados) for _, n, texto, pasta_nota in preparadas]
+    try:
+        com_segredo = verificar(finais)                    # ronda 13: o guarda + o [segredos] verificador, todas em lote
+    except VerificacaoFalhou:
+        com_segredo = None                                 # não se sabe → nenhuma entra (falha fechada)
+    for i, (rel, n, texto, pasta_nota) in enumerate(preparadas):
         destino = esp.real / f"{n}.md"
-        texto_final = final(n, texto, pasta_nota, guardados)
-        if tem_segredo_texto(texto_final):                 # ronda 9: validar DEPOIS da última transformação, não antes
+        texto_final = finais[i]
+        if com_segredo is None:
+            r["saltadas"].append((rel, NAO_VERIFICADO))
+            continue
+        if com_segredo[i]:                                 # ronda 9: validar DEPOIS da última transformação, não antes
             r["saltadas"].append((rel, "tem o que parece uma password ou chave em claro (no texto já reescrito)"))
             continue
         if not simular:

@@ -29,7 +29,7 @@ from . import entrada as entrada_mod      # «entrada» aqui é o comando do CLI
 from .config import Via
 from .ia import IA, IAIndisponivel, actual as ia, definir as definir_ia   # noqa: F401  (IA, definir_ia: para quem importa o sig)
 from .lexical import IndiceLexical
-from .segredos import SegredoEmClaro, tem_segredo_texto
+from .segredos import SegredoEmClaro, retidos, tem_segredo_nota, tem_segredo_texto
 
 PASTA = Via("real")                     # PORTE: antes BASALT_DIR/caminhos fixos; agora as pastas do espaço activo
 DB = Via("semantica")
@@ -242,27 +242,43 @@ def _excluidas():
 _RETIDA_AGORA: dict = {}        # sha256 do conteúdo → retida? — a decisão segue o CONTEÚDO, não a marca do ficheiro
 
 
-def _retida_agora(nome, excl):
+def _retidas_agora(nomes, excl) -> dict:
     """ronda 9 (achado G6 da ronda 2): a nota TAL COMO ESTÁ AGORA. Um índice feito antes de ela ganhar um segredo ainda tem os
     pedaços antigos — limpos um a um — e a lista `excluir` pode não estar em dia; olhar só para cada pedaço deixava-os ir para a
     pergunta. Retida = na lista, segredo no nome, segredo no texto actual, ou a nota já não existe (ou não é um ficheiro normal).
     ronda 10 (achado G6 da r3): a decisão guardada era por (mtime, tamanho) — trocar a nota por outra do mesmo tamanho e com o
     mesmo mtime (ou por outro inode) reutilizava a decisão antiga. Agora lê-se SEMPRE o conteúdo actual (pelo descritor verificado,
-    sem ligações) e só a detecção de segredos fica guardada, pelo sha256 desse conteúdo."""
-    if nome in excl or tem_segredo_texto(nome):
-        return True
-    try:
-        b = caminhos.ler(Path(PASTA) / f"{nome}.md")
-    except (OSError, ValueError):
-        return True                                   # não existe, é uma ligação, não é um ficheiro normal → retida
-    chave = hashlib.sha256(b).hexdigest()
-    r = _RETIDA_AGORA.get(chave)
-    if r is None:
-        r = tem_segredo_texto(b.decode("utf-8", errors="replace"))
-        if len(_RETIDA_AGORA) > 20000:
-            _RETIDA_AGORA.clear()
-        _RETIDA_AGORA[chave] = r
-    return r
+    sem ligações) e só a detecção de segredos fica guardada, pelo sha256 desse conteúdo.
+    ronda 13: as que o guarda deixa passar vão ao verificador configurado ([segredos] verificador) — todas de uma vez, em lotes;
+    se ele falhar, ficam retidas (e não se guarda essa decisão: na próxima tentativa volta a perguntar-se)."""
+    out, falta = {}, []
+    for nome in nomes:
+        if nome in excl or tem_segredo_texto(nome):
+            out[nome] = True
+            continue
+        try:
+            b = caminhos.ler(Path(PASTA) / f"{nome}.md")
+        except (OSError, ValueError):
+            out[nome] = True                           # não existe, é uma ligação, não é um ficheiro normal → retida
+            continue
+        chave = hashlib.sha256(b).hexdigest()
+        r = _RETIDA_AGORA.get(chave)
+        texto = b.decode("utf-8", errors="replace")
+        if r is None:
+            r = tem_segredo_texto(texto)
+            if len(_RETIDA_AGORA) > 20000:
+                _RETIDA_AGORA.clear()
+            _RETIDA_AGORA[chave] = r
+        out[nome] = r
+        if not r:
+            falta.append((nome, texto))
+    for (nome, _), r in zip(falta, retidos([t for _, t in falta]) if falta else []):
+        out[nome] = r
+    return out
+
+
+def _retida_agora(nome, excl):
+    return _retidas_agora([nome], excl)[nome]
 
 
 def carregar(c, onde="", args=()):
@@ -270,15 +286,12 @@ def carregar(c, onde="", args=()):
     pedaços com segredo em claro (um índice feito antes de a nota ficar retida ainda os pode ter: saem na próxima indexação, mas
     entretanto também não chegam ao modelo). `onde`/`args`: um filtro SQL a mais (ronda 12: `ler_fonte` lê só uma ref) — o
     filtro das exclusões é este, o MESMO da procura e da pergunta."""
-    excl, retida = _excluidas(), {}
+    linhas = c.execute("SELECT fonte,ref,titulo,trecho,vec FROM pedaco" + onde, args).fetchall()
+    retida = _retidas_agora({r.split("#")[0] for f, r, *_ in linhas if f == "nota"}, _excluidas())   # ronda 13: em lote
     out = []
-    for f, r, t, tr, v in c.execute("SELECT fonte,ref,titulo,trecho,vec FROM pedaco" + onde, args):
-        if f == "nota":
-            nome = r.split("#")[0]
-            if nome not in retida:
-                retida[nome] = _retida_agora(nome, excl)
-            if retida[nome]:
-                continue
+    for f, r, t, tr, v in linhas:
+        if f == "nota" and retida[r.split("#")[0]]:
+            continue
         # ronda 12: um índice feito antes de o título/ref serem verificados ainda pode tê-los (as notas já são tratadas acima)
         if f != "nota" and (tem_segredo_texto(t or "") or tem_segredo_texto(r or "")):
             continue
@@ -520,7 +533,7 @@ def pergunta(termo, como_json=False):
 # ───────────────────────────── caixa de entrada ─────────────────────────────
 def guardar(texto, de="terminal"):
     """Captura rápida de qualquer lado → caixa de entrada (uma linha JSON). Arruma-se depois (basalt.auto_arrumar ou à mão)."""
-    if tem_segredo_texto(texto):
+    if tem_segredo_nota(texto):           # ronda 13: e o verificador configurado (se falhar, VerificacaoFalhou: também não fica)
         raise SegredoEmClaro()            # o mesmo guarda da web/MCP: a ideia NÃO fica na entrada
     entrada_mod.acrescentar(texto, de)           # pelo trinco comum da Entrada (a web/MCP/arrumação reescrevem o mesmo ficheiro)
     # sugere a nota mais parecida (não decide nada), se houver índice

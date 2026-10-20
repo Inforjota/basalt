@@ -164,3 +164,158 @@ def mascarar(txt: str, omitido: str = OMITIDO) -> str:
     for rx in (PASSWORD_RX, SO_LETRAS_RX):
         t = rx.sub(lambda m: m.group(0)[:m.start(1) - m.start()] + "•••" + m.group(0)[m.end(1) - m.start():], t)
     return omitido if tem_segredo_texto(t) else t
+
+
+# ───────────────────────────── o verificador de segredos teu (ronda 13) ─────────────────────────────
+# Com `[segredos] verificador = ["comando", "arg"]`, as NOTAS (página, MCP, Entrada, importação, anexos de texto, duas vias,
+# notas retidas e índice) passam também por ele, além do guarda de cima: corre `comando arg FICHEIRO…`, com o texto de cada uma num
+# ficheiro temporário (0600, numa pasta privada, apagada logo a seguir) — o texto nunca vai na linha de comandos. Saída 0 = limpo,
+# 1 = há segredo (num lote, procura-se qual partindo-o ao meio), outra coisa, tempo esgotado ou comando inexistente = NÃO SE SABE:
+# a falha é fechada (não grava, não sai para a IA, a duas vias adia) e há um ALERTA. Desligado por omissão.
+MOTIVO_VERIFICACAO = ("Não foi possível verificar o texto com o verificador de segredos configurado ([segredos] verificador) — "
+                      "não gravei. Tenta outra vez; se continuar, vê o registo do servidor.")
+LOTE = 50                               # ficheiros por chamada ao verificador
+
+
+class VerificacaoFalhou(SegredoEmClaro):
+    """o verificador de segredos não respondeu 0 nem 1: não se sabe se o texto tem segredo, por isso não passa."""
+    def __init__(self, porque: str = ""):
+        super().__init__(MOTIVO_VERIFICACAO)
+        self.porque = porque
+
+
+_VERIFICADOS: dict = {}                 # (comando, sha256 do texto) → tem segredo? — só as respostas certas (0 ou 1), nunca as falhas
+_ULTIMO_ALERTA = [0.0]
+
+
+def _verificador() -> tuple:
+    """(comando, tempo limite) do [segredos] verificador, ou ((), 0) se está desligado. Uma configuração que não se lê ou um
+    verificador mal escrito é uma falha (fechada), não «desligado»."""
+    from . import config
+    try:
+        s = getattr(config.carregar(validar=False), "segredos", None)
+    except Exception as e:
+        raise VerificacaoFalhou(f"não li a configuração ({type(e).__name__})")
+    cmd, tl = getattr(s, "verificador", ()), getattr(s, "tempo_limite", 30)
+    if not cmd:
+        return (), 0
+    if not config.comando_ok(cmd) or isinstance(tl, bool) or not isinstance(tl, int) or tl <= 0:
+        raise VerificacaoFalhou("[segredos] mal configurado")
+    return tuple(cmd), tl
+
+
+def _alertar(porque: str) -> None:
+    """um ALERTA por falha do verificador — no máximo um a cada 10 minutos por processo (o vigia corre de 5 em 5)."""
+    import time
+    if time.time() - _ULTIMO_ALERTA[0] < 600:
+        return
+    _ULTIMO_ALERTA[0] = time.time()
+    from . import avisos
+    avisos.alerta(f"o verificador de segredos falhou ({porque}): as notas por verificar ficaram retidas")
+
+
+def _correr(cmd: tuple, tempo: int, textos: list) -> int:
+    """0/1 do verificador para estes textos; VerificacaoFalhou em tudo o resto."""
+    import os, shutil, subprocess, tempfile
+    from .config import ambiente_minimo
+    pasta = tempfile.mkdtemp(prefix="basalt-verificar-")          # 0700
+    try:
+        ficheiros = []
+        for i, t in enumerate(textos):
+            f = os.path.join(pasta, f"{i}.md")
+            fd = os.open(f, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as h:
+                h.write(t)
+            ficheiros.append(f)
+        try:
+            r = subprocess.run([*cmd, *ficheiros], env=ambiente_minimo(), cwd=pasta, stdin=subprocess.DEVNULL,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=tempo)
+        except subprocess.TimeoutExpired:
+            raise VerificacaoFalhou(f"não respondeu em {tempo} s")
+        except OSError as e:
+            raise VerificacaoFalhou(f"não correu: {type(e).__name__}")
+    finally:
+        shutil.rmtree(pasta, ignore_errors=True)
+    if r.returncode not in (0, 1):
+        raise VerificacaoFalhou(f"saiu com código {r.returncode}")
+    return r.returncode
+
+
+def _com_segredo(cmd, tempo, textos) -> list:
+    """[bool] — um lote que sai 1 parte-se ao meio até se saber qual (ou quais) dos textos tem segredo."""
+    if _correr(cmd, tempo, textos) == 0:
+        return [False] * len(textos)
+    if len(textos) == 1:
+        return [True]
+    meio = len(textos) // 2
+    return _com_segredo(cmd, tempo, textos[:meio]) + _com_segredo(cmd, tempo, textos[meio:])
+
+
+def verificar(textos) -> list:
+    """[bool] por texto: True se tem segredo (o guarda de cima OU o verificador configurado). Só os que o guarda deixa passar vão
+    ao verificador, em lotes de LOTE, e as respostas ficam guardadas pelo sha256 do texto. VerificacaoFalhou se o verificador
+    falhou para algum (e um ALERTA)."""
+    import hashlib
+    textos = [str(t or "") for t in textos]
+    out = [tem_segredo_texto(t) for t in textos]
+    if all(out):
+        return out
+    cmd, tempo = _verificador()
+    if not cmd:
+        return out
+    falta = {}
+    for i, t in enumerate(textos):
+        if not out[i]:
+            k = (cmd, hashlib.sha256(t.encode("utf-8", "surrogatepass")).hexdigest())
+            if k in _VERIFICADOS:
+                out[i] = _VERIFICADOS[k]
+            else:
+                falta.setdefault(k, (t, []))[1].append(i)
+    pend = list(falta.items())
+    try:
+        for a in range(0, len(pend), LOTE):
+            lote = pend[a:a + LOTE]
+            for (k, (_, idx)), r in zip(lote, _com_segredo(cmd, tempo, [t for _, (t, _) in lote])):
+                if len(_VERIFICADOS) > 20000:
+                    _VERIFICADOS.clear()
+                _VERIFICADOS[k] = r
+                for i in idx:
+                    out[i] = r
+    except VerificacaoFalhou as e:
+        _alertar(e.porque)
+        raise
+    return out
+
+
+def tem_segredo_nota(texto: str) -> bool:
+    """o guarda das NOTAS (o que se grava, se importa, sai para a IA ou para a cópia): o de cima mais o verificador configurado.
+    VerificacaoFalhou (um SegredoEmClaro com MOTIVO_VERIFICACAO) se o verificador falhou — quem chama não grava."""
+    return verificar([texto])[0]
+
+
+def verificador_ligado() -> bool:
+    """há um [segredos] verificador configurado? (uma configuração que não se lê conta como ligado: falha fechada)"""
+    try:
+        return bool(_verificador()[0])
+    except VerificacaoFalhou:
+        return True
+
+
+def retidos(textos) -> list:
+    """como verificar(), mas com a falha já fechada (para as listas): se o verificador falhar, o que ele já tinha visto fica com
+    a resposta que deu e o resto conta como retido — uma falha passageira não esconde de repente as notas já verificadas."""
+    import hashlib
+    textos = [str(t or "") for t in textos]
+    try:
+        return verificar(textos)
+    except VerificacaoFalhou:
+        pass
+    try:
+        cmd = _verificador()[0]
+    except VerificacaoFalhou:
+        cmd = None
+    out = []
+    for t in textos:
+        k = (cmd, hashlib.sha256(t.encode("utf-8", "surrogatepass")).hexdigest())
+        out.append(tem_segredo_texto(t) or (_VERIFICADOS.get(k, True) if cmd else True))
+    return out

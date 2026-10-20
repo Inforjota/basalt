@@ -21,7 +21,7 @@ from pathlib import Path
 
 from . import avisos, caminhos, cas, config
 from .config import Via
-from .segredos import SEGREDO_RX, mascarar, tem_segredo_texto  # noqa: F401  (SEGREDO_RX: basalt.unir importa daqui)
+from .segredos import SEGREDO_RX, VerificacaoFalhou, mascarar, tem_segredo_nota, tem_segredo_texto  # noqa: F401  (SEGREDO_RX: basalt.unir importa daqui)
 
 REAL = Via("real")          # PORTE: antes caminhos fixos + variáveis; agora a pasta do espaço (config.Espaco; as variáveis antigas ainda mandam)
 COPIA = Via("copia")
@@ -79,8 +79,9 @@ def notas_de(d: Path):
 
 def tem_segredo(p: Path):
     """True se a nota tiver um segredo em claro — o mesmo critério das outras entradas (basalt.segredos: chaves, tokens,
-    chaves privadas E passwords escritas à mão). PORTE: antes consultava também um cofre de passwords externo."""
-    return tem_segredo_texto(caminhos.ler_texto(p))
+    chaves privadas E passwords escritas à mão). PORTE: antes consultava também um cofre de passwords externo.
+    ronda 13: e o [segredos] verificador, se configurado (VerificacaoFalhou se ele falhar: o ciclo adia a nota)."""
+    return tem_segredo_nota(caminhos.ler_texto(p))
 
 
 def tem_segredo_bytes(b, nome):
@@ -134,57 +135,61 @@ def _ciclo():
             trocas.append((t, nome, valor_led, lista))
 
     for nome in sorted(nomes):
-        pr, pc = REAL / nome, COPIA / nome
-        br, bc = ler(pr), ler(pc)
-        rh, ch, lh = hb(br), hb(bc), led.get(nome)
+        # ronda 13: se o verificador de segredos falhar, a nota fica para o ciclo seguinte (nada muda, o registo não avança)
+        try:
+            pr, pc = REAL / nome, COPIA / nome
+            br, bc = ler(pr), ler(pc)
+            rh, ch, lh = hb(br), hb(bc), led.get(nome)
 
-        # nota nova/alterada na CÓPIA e a REAL não mudou desde a última vez → empurrar
-        if ch and ch != lh and (rh == lh or (rh is None and lh is None)):
-            if tem_segredo_bytes(bc, nome):
-                retidos.append(nome); continue
-            if not fez_foto:
-                git_foto(f"basalt duasvias: antes de aceitar edições da cópia ({time.strftime('%F %H:%M')})"); fez_foto = True
-            trocar(pr, bc, rh, nome, ch, empurrados); continue
+            # nota nova/alterada na CÓPIA e a REAL não mudou desde a última vez → empurrar
+            if ch and ch != lh and (rh == lh or (rh is None and lh is None)):
+                if tem_segredo_bytes(bc, nome):
+                    retidos.append(nome); continue
+                if not fez_foto:
+                    git_foto(f"basalt duasvias: antes de aceitar edições da cópia ({time.strftime('%F %H:%M')})"); fez_foto = True
+                trocar(pr, bc, rh, nome, ch, empurrados); continue
 
-        # a REAL mudou e a cópia não → puxar (comportamento normal), MAS uma nota real com segredo em claro nunca vai
-        # para a cópia (o editor está na web); se já lá estava, é removida. O original na memória fica intacto.
-        if rh and rh != lh and ch == lh:
-            if tem_segredo_bytes(br, nome):
-                if ch is None:
-                    led[nome] = rh; retidos.append(nome)
-                else:
-                    trocar(pc, None, ch, nome, rh, retidos)
-                continue
-            trocar(pc, br, ch, nome, rh, puxados); continue
+            # a REAL mudou e a cópia não → puxar (comportamento normal), MAS uma nota real com segredo em claro nunca vai
+            # para a cópia (o editor está na web); se já lá estava, é removida. O original na memória fica intacto.
+            if rh and rh != lh and ch == lh:
+                if tem_segredo_bytes(br, nome):
+                    if ch is None:
+                        led[nome] = rh; retidos.append(nome)
+                    else:
+                        trocar(pc, None, ch, nome, rh, retidos)
+                    continue
+                trocar(pc, br, ch, nome, rh, puxados); continue
 
-        # apagada só na CÓPIA → volta (a regra de ouro: apagar pela cópia não apaga). Antes ficava de fora para
-        # sempre e a web passava a escondê-la como se tivesse segredo. Uma nota real com segredo continua fora da cópia.
-        if rh and ch is None:
-            if tem_segredo_bytes(br, nome):
-                led[nome] = rh; retidos.append(nome); continue
-            trocar(pc, br, None, nome, rh, puxados); continue      # CAS: só se a cópia continuar a não existir
+            # apagada só na CÓPIA → volta (a regra de ouro: apagar pela cópia não apaga). Antes ficava de fora para
+            # sempre e a web passava a escondê-la como se tivesse segredo. Uma nota real com segredo continua fora da cópia.
+            if rh and ch is None:
+                if tem_segredo_bytes(br, nome):
+                    led[nome] = rh; retidos.append(nome); continue
+                trocar(pc, br, None, nome, rh, puxados); continue      # CAS: só se a cópia continuar a não existir
 
-        # apagada na REAL (e a cópia não a alterou) → apagar na cópia
-        if rh is None and ch is not None and ch == lh:
-            trocar(pc, None, ch, nome, None, apagados); continue
+            # apagada na REAL (e a cópia não a alterou) → apagar na cópia
+            if rh is None and ch is not None and ch == lh:
+                trocar(pc, None, ch, nome, None, apagados); continue
 
-        # CONFLITO: mudou dos dois lados e ficaram diferentes → guardar a versão da cópia à parte, não perder nada
-        if rh and ch and rh != ch and rh != lh and ch != lh:
-            if tem_segredo_bytes(bc, nome):
-                retidos.append(nome); continue
-            seg_r = tem_segredo_bytes(br, nome)
-            if not fez_foto:
-                git_foto(f"basalt duasvias: antes de guardar conflito ({time.strftime('%F %H:%M')})"); fez_foto = True
-            alvo = REAL / f"{nome[:-3]}.CONFLITO-{time.strftime('%Y%m%d-%H%M%S')}.md"
-            if cas.escrever(alvo, bc, None, "2v"):          # nome único; se já existe (2 no mesmo segundo) fica p/ depois
-                adiados.append(nome); continue
-            # a cópia passa a mostrar a real (a versão da cópia já está a salvo no .CONFLITO). Antes a cópia ficava
-            # diferente e o ciclo seguinte EMPURRAVA-A por cima da real — perdia-se a mudança do agente.
-            trocar(pc, None if seg_r else br, ch, nome, rh, conflitos); continue
+            # CONFLITO: mudou dos dois lados e ficaram diferentes → guardar a versão da cópia à parte, não perder nada
+            if rh and ch and rh != ch and rh != lh and ch != lh:
+                if tem_segredo_bytes(bc, nome):
+                    retidos.append(nome); continue
+                seg_r = tem_segredo_bytes(br, nome)
+                if not fez_foto:
+                    git_foto(f"basalt duasvias: antes de guardar conflito ({time.strftime('%F %H:%M')})"); fez_foto = True
+                alvo = REAL / f"{nome[:-3]}.CONFLITO-{time.strftime('%Y%m%d-%H%M%S')}.md"
+                if cas.escrever(alvo, bc, None, "2v"):          # nome único; se já existe (2 no mesmo segundo) fica p/ depois
+                    adiados.append(nome); continue
+                # a cópia passa a mostrar a real (a versão da cópia já está a salvo no .CONFLITO). Antes a cópia ficava
+                # diferente e o ciclo seguinte EMPURRAVA-A por cima da real — perdia-se a mudança do agente.
+                trocar(pc, None if seg_r else br, ch, nome, rh, conflitos); continue
 
-        # sem mudança relevante: alinhar o ledger com o estado actual (quando os dois lados já estão iguais)
-        if rh and rh == ch:
-            led[nome] = rh
+            # sem mudança relevante: alinhar o ledger com o estado actual (quando os dois lados já estão iguais)
+            if rh and rh == ch:
+                led[nome] = rh
+        except VerificacaoFalhou:
+            adiados.append(nome)
 
     # confirmar as trocas. A que falhar (alguém escreveu nesse instante) fica com a escrita dessa pessoa e o
     # registo NÃO avança → o ciclo seguinte vê as duas mudanças e trata-as (empurrar, puxar ou conflito), sem perder nada.

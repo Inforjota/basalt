@@ -286,3 +286,208 @@ def test_controlo_sem_avisos_nem_verificador_a_configuracao_e_a_de_sempre(tmp_pa
     toml.write_text(toml_de(0, tmp_path / "raiz"), encoding="utf-8")
     c = config.carregar(toml)
     assert not getattr(getattr(c, "avisos", None), "comando", ()) and not getattr(getattr(c, "segredos", None), "verificador", ())
+
+
+# ═════════════════════════ E — [segredos] verificador: um comando teu decide também, em todos os caminhos ═════════════════════════
+# o verificador falso: sai 1 se algum ficheiro tem MARCA-SECRETA, 2 se tem MARCA-FALHA, dorme com MARCA-DORME; regista o que viu
+VERIFICADOR = '''import json, os, sys, time
+registo, fich = sys.argv[1], sys.argv[2:]
+textos = [open(f, encoding="utf-8").read() for f in fich]
+with open(registo, "a", encoding="utf-8") as h:
+    h.write(json.dumps({"argv": fich, "modos": [os.stat(f).st_mode & 0o777 for f in fich], "textos": textos}) + "\\n")
+if any("MARCA-DORME" in t for t in textos):
+    time.sleep(30)
+if any("MARCA-FALHA" in t for t in textos):
+    sys.exit(2)
+sys.exit(1 if any("MARCA-SECRETA" in t for t in textos) else 0)
+'''
+LIMPA_V = FM.format(nome="limpa") + "\nO barco para o Pico sai às 8h.\n"
+MARCADA = FM.format(nome="marcada") + "\nO código do cacifo é MARCA-SECRETA.\n"
+PARTIDA = FM.format(nome="partida") + "\nEsta faz o verificador falhar: MARCA-FALHA.\n"
+
+
+@pytest.fixture
+def verificador(tmp_path, monkeypatch):
+    """`extra` para o basalt.toml e `ligar(toml)` para o processo o ler; `chamadas()` = o que o verificador falso viu."""
+    from basalt import segredos
+    script, registo = tmp_path / "verificar.py", tmp_path / "verificador.jsonl"
+    script.write_text(VERIFICADOR, encoding="utf-8")
+    monkeypatch.setattr(segredos, "_VERIFICADOS", {}, raising=False)
+    monkeypatch.setattr(segredos, "_ULTIMO_ALERTA", [0.0], raising=False)
+
+    def extra(tempo=10):
+        return f"[segredos]\nverificador = {json.dumps([sys.executable, str(script), str(registo)])}\ntempo_limite = {tempo}\n"
+
+    def ligar(toml=None, tempo=10):
+        if toml is None:
+            toml = tmp_path / "basalt-verificador.toml"
+            toml.write_text(toml_de(0, tmp_path / "raiz", extra=extra(tempo)), encoding="utf-8")
+        monkeypatch.setenv("BASALT_CONFIG", str(toml))
+
+    def chamadas():
+        return [json.loads(l) for l in registo.read_text(encoding="utf-8").splitlines()] if registo.exists() else []
+    return SimpleNamespace(extra=extra, ligar=ligar, chamadas=chamadas)
+
+
+def test_verificador_recusa_ao_criar_pela_pagina(servidor_local, verificador):
+    s = servidor_local(extra=verificador.extra())
+    verificador.ligar(s.toml)
+    r = s.pedido("POST", "/api/nota", {"nome": "v_secreta", "texto": "o código é MARCA-SECRETA"})
+    assert r.codigo == 400, r.corpo
+    r = s.pedido("POST", "/api/nota", {"nome": "v_partida", "texto": "isto faz falhar: MARCA-FALHA"})
+    assert r.codigo == 503 and "[segredos] verificador" in r.json["erro"], r.corpo
+    assert s.pedido("POST", "/api/nota", {"nome": "v_limpa", "texto": "o barco sai às 8h"}).codigo == 201
+    copia = s.espaco().copia                              # a página cria na cópia editável
+    assert not (copia / "v_secreta.md").exists() and not (copia / "v_partida.md").exists() and (copia / "v_limpa.md").exists()
+
+
+def test_o_verificador_recebe_ficheiros_privados_que_depois_sao_apagados(memoria, verificador):
+    from basalt import sig
+    verificador.ligar()
+    sig.guardar("lembrar de comprar velas novas", "terminal")
+    chamadas = verificador.chamadas()
+    assert len(chamadas) == 1, "o texto não foi ao verificador"
+    ch = chamadas[0]
+    assert ch["textos"] == ["lembrar de comprar velas novas"]
+    assert all("velas" not in a for a in ch["argv"]), "o texto foi por argumento"
+    assert ch["modos"] == [0o600] and not any(Path(a).exists() for a in ch["argv"])
+    assert not Path(ch["argv"][0]).parent.exists(), "a pasta temporária ficou"
+
+
+def test_verificador_que_falha_ou_demora_nao_deixa_gravar_na_entrada(memoria, verificador):
+    import time
+    from basalt import entrada, segredos, sig
+    verificador.ligar(tempo=1)
+    for texto in ("o código é MARCA-SECRETA", "faz falhar: MARCA-FALHA", "demora: MARCA-DORME"):
+        t = time.time()
+        with pytest.raises(segredos.SegredoEmClaro):
+            sig.guardar(texto, "terminal")
+        assert time.time() - t < 10
+    assert entrada.ler() == []
+
+
+def test_verificador_no_mcp(memoria, verificador):
+    from basalt import mcp
+    from basalt.config import AuthConfig, Config, Utilizador
+    verificador.ligar()
+    u = Utilizador(email="ana@exemplo.pt", espaco="t", nome="Ana")
+    cfg = Config(dados=memoria.base / "raiz", escutar="127.0.0.1", auth=AuthConfig(modo="aberto"), utilizadores=[u])
+    srv = mcp.ServidorMCP(cfg, web=__import__("basalt.web", fromlist=["web"]))
+    with __import__("basalt.config", fromlist=["config"]).dentro(memoria.esp):
+        r1 = srv._t_guardar_ideia({"texto": "o código é MARCA-SECRETA"}, u)
+        r2 = srv._t_guardar_ideia({"texto": "faz falhar: MARCA-FALHA"}, u)
+    assert r1[1] is True and "password" in r1[0]["erro"]
+    assert r2[1] is True and "[segredos] verificador" in r2[0]["erro"]
+
+
+def test_verificador_nas_notas_retidas_em_lote(memoria, verificador):
+    from basalt import retidas
+    verificador.ligar()
+    for i in range(120):
+        (memoria.real / f"n{i:03d}.md").write_text(LIMPA_V.replace("limpa", f"n{i:03d}"), encoding="utf-8")
+    (memoria.real / "marcada.md").write_text(MARCADA, encoding="utf-8")
+    assert retidas.nomes_retidos(memoria.real) == {"marcada"}
+    ch = verificador.chamadas()
+    # 121 notas → 3 lotes de até 50, mais a procura da marcada dentro do lote dela (partido ao meio) — não 121 chamadas
+    assert [len(c["argv"]) for c in ch[:1]] == [50] and len(ch) <= 3 + 2 * 6, [len(c["argv"]) for c in ch]
+    assert len({t for c in ch for t in c["textos"]}) == 121
+    assert "marcada" not in {p.stem for p, _ in retidas.notas(memoria.real)}
+
+
+def test_verificador_que_falha_retem_so_o_que_ainda_nao_viu(memoria, verificador):
+    from basalt import retidas
+    verificador.ligar()
+    (memoria.real / "limpa.md").write_text(LIMPA_V, encoding="utf-8")
+    assert retidas.nomes_retidos(memoria.real) == set()
+    (memoria.real / "partida.md").write_text(PARTIDA, encoding="utf-8")
+    assert retidas.nomes_retidos(memoria.real) == {"partida"}
+
+
+def test_verificador_na_pergunta_com_indice_antigo(memoria, verificador):
+    from basalt import sig
+    verificador.ligar()
+    (memoria.real / "marcada.md").write_text(MARCADA, encoding="utf-8")
+    (memoria.real / "limpa.md").write_text(LIMPA_V, encoding="utf-8")
+    _por_no_indice(memoria.esp, [("nota", "marcada#0", "marcada", "o cacifo"), ("nota", "limpa#0", "limpa", "o barco")])
+    from basalt import config
+    with config.dentro(memoria.esp):
+        refs = [r for _, r, *_ in sig.carregar(sig.db())]
+    assert refs == ["limpa#0"]
+
+
+def test_verificador_na_lista_de_exclusao_da_pagina(memoria, verificador):
+    from basalt import web
+    verificador.ligar()
+    for d in (memoria.real, memoria.copia):
+        (d / "marcada.md").write_text(MARCADA, encoding="utf-8")
+        (d / "limpa.md").write_text(LIMPA_V, encoding="utf-8")
+    web.refazer_exclusao()
+    assert web.excl() == {"marcada"}
+    assert memoria.excluir.read_text(encoding="utf-8").split() == ["marcada"]
+
+
+def test_verificador_na_sincronizacao_adia_ou_retem(memoria, verificador, monkeypatch):
+    from basalt import duasvias
+    monkeypatch.setattr(duasvias, "GIT", False)
+    monkeypatch.setattr(duasvias, "ALERTAS", False)
+    verificador.ligar()
+    (memoria.copia / "partida.md").write_text(PARTIDA, encoding="utf-8")
+    (memoria.copia / "marcada.md").write_text(MARCADA, encoding="utf-8")
+    r = duasvias.ciclo()
+    assert "partida.md" in r["adiados"] and "marcada.md" in r["retidos"], r
+    assert not (memoria.real / "partida.md").exists() and not (memoria.real / "marcada.md").exists()
+    assert "partida.md" not in json.loads(memoria.ledger.read_text() or "{}")
+
+
+def test_verificador_na_importacao_e_nos_anexos_de_texto(memoria, verificador, tmp_path):
+    from basalt import anexos, obsidian, segredos
+    verificador.ligar()
+    cofre = tmp_path / "cofre"
+    cofre.mkdir()
+    (cofre / "limpa.md").write_text("O barco sai às 8h.\n", encoding="utf-8")
+    (cofre / "marcada.md").write_text("O código é MARCA-SECRETA.\n", encoding="utf-8")
+    r = obsidian.importar(cofre, memoria.esp)
+    assert r["importadas"] == ["limpa"] and [f for f, _ in r["saltadas"]] == ["marcada.md"], r
+    with pytest.raises(segredos.SegredoEmClaro):
+        anexos.guardar(memoria.esp, "lista.txt", "código: MARCA-SECRETA\n".encode())
+
+
+def test_controlo_sem_verificador_nada_muda(memoria, monkeypatch, tmp_path):
+    from basalt import entrada, retidas, sig, web
+    toml = tmp_path / "basalt-sem.toml"
+    toml.write_text(toml_de(0, tmp_path / "raiz"), encoding="utf-8")
+    monkeypatch.setenv("BASALT_CONFIG", str(toml))
+    for d in (memoria.real, memoria.copia):
+        (d / "marcada.md").write_text(MARCADA, encoding="utf-8")
+    sig.guardar("o código é MARCA-SECRETA", "terminal")
+    assert [e["texto"] for e in entrada.ler()] == ["o código é MARCA-SECRETA"]
+    assert retidas.nomes_retidos(memoria.real) == set()
+    web.refazer_exclusao()
+    assert web.excl() == set()
+
+
+# ═════════════════════════ F — o registo do servidor e o relatório da importação não mostram chaves nem passwords ═════════════════════════
+def test_erro_a_meio_de_um_pedido_nao_poe_a_chave_do_caminho_no_registo(servidor_local, monkeypatch, capfd):
+    from basalt import web
+
+    def corta(self, nome, user):
+        raise BrokenPipeError(32, "Broken pipe")                # a ligação cortada a meio da resposta
+    monkeypatch.setattr(web.H, "_anexo", corta)
+    s = servidor_local()
+    s.pedido("GET", f"/anexos/{CHAVE_FICTICIA}.png")
+    import time
+    time.sleep(0.2)
+    saida = capfd.readouterr()
+    assert CHAVE_FICTICIA not in saida.out + saida.err, saida
+    assert "erro GET" in saida.out                              # o erro continua registado, só sem a chave
+
+
+def test_o_traceback_do_servidor_nao_leva_a_chave_da_mensagem(capfd):
+    from basalt import web
+    classe = getattr(web, "Servidor", web.ThreadingHTTPServer)
+    try:
+        raise RuntimeError(f"falhou ao abrir /anexos/{CHAVE_FICTICIA}.png")
+    except RuntimeError:
+        classe.handle_error(None, None, ("127.0.0.1", 1))
+    saida = capfd.readouterr()
+    assert CHAVE_FICTICIA not in saida.out + saida.err and "falhou ao abrir" in saida.out + saida.err, saida

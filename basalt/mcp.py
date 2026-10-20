@@ -21,7 +21,7 @@ import urllib.parse
 from . import __version__, caminhos, config, entrada
 from .config import Config, Utilizador
 from .lexical import IndiceLexical, tokens
-from .segredos import MOTIVO as MOTIVO_SEGREDO, SEGREDO_RX, tem_segredo_texto
+from .segredos import MOTIVO as MOTIVO_SEGREDO, SEGREDO_RX, VerificacaoFalhou, tem_segredo_nota, tem_segredo_texto
 
 VERSOES = ("2025-06-18", "2025-03-26", "2024-11-05")   # a primeira é a nossa; aceitam-se as outras se o cliente as pedir
 CORPO_MAX = 1024 * 1024
@@ -327,8 +327,11 @@ class ServidorMCP:
         texto = _str(a, "texto", True, 20_000).strip()
         if not texto:
             return {"erro": "falta «texto»"}, True
-        if tem_segredo_texto(texto):
-            return {"erro": MOTIVO_SEGREDO}, True
+        try:
+            if tem_segredo_nota(texto):              # ronda 13: e o verificador configurado
+                return {"erro": MOTIVO_SEGREDO}, True
+        except VerificacaoFalhou as e:
+            return {"erro": str(e)}, True
         reg = entrada.acrescentar(texto, "mcp", autor=u.email)    # pelo trinco comum da Entrada (ronda 8, trinco da Entrada) e com t único (ronda 8, carimbos únicos)
         return {"ok": True, "guardada_em": "entrada", "quando": reg["t"]}, False
 

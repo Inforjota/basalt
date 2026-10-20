@@ -11,7 +11,7 @@ from pathlib import Path
 from . import caminhos
 
 from .config import Via
-from .segredos import tem_segredo_texto
+from .segredos import retidos, tem_segredo_texto
 
 EXCLUIR = Via("excluir")
 IGNORA = ("MEMORY.md",)                 # índice de memórias do Claude Code: não é uma nota
@@ -29,14 +29,15 @@ def lista():
 def retida(nome, texto, excl=None):
     """True se a nota `nome` com este `texto` não pode sair (está na lista ou tem segredo em claro — no texto OU no nome: ronda 9,
     achado G6 da ronda 2 — uma chave no nome do ficheiro ia para o índice, os embeddings e as categorias com o nome)."""
-    return nome in (lista() if excl is None else excl) or tem_segredo_texto(nome) or tem_segredo_texto(texto)
+    # ronda 13: o texto passa também pelo verificador configurado ([segredos] verificador); se ele falhar, fica retida
+    return nome in (lista() if excl is None else excl) or tem_segredo_texto(nome) or retidos([texto])[0]
 
 
 def notas(pasta, ignora=IGNORA):
     """[(Path, texto)] das notas de `pasta` que PODEM sair — por ordem de nome; sem `ignora`, cópias `.bak`/`.CONFLITO-`,
     nem retidas. Quem manda texto de notas para a IA ou para o índice lê-as DAQUI."""
     excl = lista()
-    out = []
+    lidas = []
     for p in caminhos.notas(pasta):             # ronda 8 (ligações simbólicas)
         if p.name in ignora or ".bak" in p.name or ".CONFLITO-" in p.name:
             continue
@@ -44,16 +45,18 @@ def notas(pasta, ignora=IGNORA):
             t = caminhos.ler_texto(p)
         except OSError:
             continue
-        if retida(p.stem, t, excl):
+        if p.stem in excl or tem_segredo_texto(p.stem):
             continue
-        out.append((p, t))
-    return out
+        lidas.append((p, t))
+    # ronda 13: o verificador configurado vê-as todas de uma vez (em lotes), não uma chamada por nota
+    return [pt for pt, r in zip(lidas, retidos([t for _, t in lidas])) if not r]
 
 
 def nomes_retidos(pasta):
     """os nomes (sem .md) das notas de `pasta` que NÃO podem sair — para filtrar o que já vem do índice ou de pares."""
     excl = lista()
     out = set(excl)
+    lidas = []
     for p in caminhos.notas(pasta):
         if p.stem in out or p.name in IGNORA:
             continue
@@ -61,8 +64,8 @@ def nomes_retidos(pasta):
             out.add(p.stem)
             continue
         try:
-            if tem_segredo_texto(caminhos.ler_texto(p)):
-                out.add(p.stem)
+            lidas.append((p.stem, caminhos.ler_texto(p)))
         except OSError:
             continue
+    out.update(n for (n, _), r in zip(lidas, retidos([t for _, t in lidas])) if r)     # ronda 13: em lote, com o verificador
     return out
