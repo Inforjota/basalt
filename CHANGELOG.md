@@ -7,8 +7,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 ### Correcções da ronda 13c (20/10/2026)
 - **Uma nota em que o `[segredos] verificador` falha sempre já não trava a sincronização das outras:** com «no máximo uma
   chamada falhada por ciclo» (ronda 13) e a ordem das notas sempre igual, as que vinham a seguir a ela ficavam adiadas em
-  todos os ciclos e nunca chegavam à memória. Agora a nota que fez o verificador falhar vai para o fim do ciclo seguinte e as
-  outras verificam-se primeiro (continua a ser uma chamada falhada por ciclo, com o seu ALERTA).
+  todos os ciclos e nunca chegavam à memória. Agora as notas que fizeram o verificador falhar vão para o fim do ciclo até
+  passarem (entre elas, a que falhou há mais tempo primeiro) e as outras verificam-se antes (continua a ser uma chamada falhada
+  por ciclo, com o seu ALERTA). Com duas notas assim, as outras também já não ficam presas.
 - **Categorias das fontes externas:** uma ref sem `#` (a página `repo`, com o seu título) que chega depois da `repo#12` da
   mesma base ganha categoria — ficava sem ela para sempre, tomada por uma nota partida já feita.
 - **`basalt utilizador senha`/`novo` dizem quando o corte das IAs ficou e a gravação não:** se o `basalt.toml` não se

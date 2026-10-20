@@ -86,13 +86,13 @@ def tem_segredo(p: Path):
     return tem_segredo_nota(caminhos.ler_texto(p))
 
 
-_CULPADAS: dict = {}     # ronda 13c: por cópia, as notas em que o verificador de segredos FALHOU no último ciclo (ver _ciclo)
+_CULPADAS: dict = {}     # ronda 13c: por cópia, {nota: quando o verificador de segredos falhou nela} — só as que ainda não passaram
 
 
 def culpadas() -> set:
-    """as notas desta cópia em que o [segredos] verificador falhou no último ciclo — vão para o FIM do ciclo seguinte, para
-    uma nota em que ele falha sempre não adiar em todos os ciclos as que vêm depois dela."""
-    return _CULPADAS.get(str(COPIA), set())
+    """as notas desta cópia em que o [segredos] verificador falhou e que ainda não passaram — vão para o FIM do ciclo, para uma
+    nota em que ele falha sempre não adiar em todos os ciclos as que vêm depois dela."""
+    return set(_CULPADAS.get(str(COPIA), {}))
 
 
 def tem_segredo_bytes(b, nome):
@@ -150,10 +150,12 @@ def _ciclo():
 
     # ronda 13c: a nota em que o verificador falhou no ciclo anterior vai para o FIM. Com «uma chamada falhada por ciclo» (13b)
     # e a ordem sempre igual, uma nota em que ele falha sempre (tempo esgotado só com ela, um erro só com ela) adiava em TODOS os
-    # ciclos as notas a seguir a ela — essas nunca chegavam a sincronizar.
-    copia_actual, atras = str(COPIA), culpadas()
-    _CULPADAS[copia_actual] = set()
-    for nome in sorted(nomes - atras) + sorted(nomes & atras):
+    # ciclos as notas a seguir a ela — essas nunca chegavam a sincronizar. Ficam atrás enquanto não passarem (com duas que falham
+    # sempre, se só a do último ciclo fosse para o fim, revezavam-se à frente das outras) e, entre elas, a que falhou há mais tempo
+    # vai primeiro (uma que falhou só uma vez não fica presa atrás de uma que falha sempre).
+    copia_actual = str(COPIA)
+    atras, novas = dict(_CULPADAS.get(copia_actual, {})), {}
+    for nome in sorted(nomes - atras.keys()) + sorted(nomes & atras.keys(), key=lambda n: (atras[n], n)):
         # ronda 13: se o verificador de segredos falhar, a nota fica para o ciclo seguinte (nada muda, o registo não avança)
         try:
             pr, pc = REAL / nome, COPIA / nome
@@ -210,7 +212,9 @@ def _ciclo():
         except VerificacaoFalhou as e:
             adiados.append(nome)
             if not e.adiada:                       # ronda 13c: foi ESTA que fez o verificador falhar — no próximo ciclo vai para o fim
-                _CULPADAS[copia_actual].add(nome)
+                novas[nome] = time.monotonic()
+    ainda = set(adiados) & nomes                   # ronda 13c: uma culpada sai da lista quando passa (não ficou adiada)
+    _CULPADAS[copia_actual] = {n: novas.get(n, atras.get(n)) for n in (novas.keys() | atras.keys()) & ainda}
 
     # confirmar as trocas. A que falhar (alguém escreveu nesse instante) fica com a escrita dessa pessoa e o
     # registo NÃO avança → o ciclo seguinte vê as duas mudanças e trata-as (empurrar, puxar ou conflito), sem perder nada.

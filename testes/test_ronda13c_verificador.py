@@ -71,3 +71,36 @@ def test_controlo_sem_falhas_a_ordem_e_a_de_sempre_e_uma_chamada_por_nota(sincro
     r = duasvias.ciclo()
     assert r["empurrados"] == ["a_limpa.md", "b_limpa.md", "c_limpa.md"] and not r["adiados"], r
     assert len(verificador.chamadas()) == 3 and not m.alertas and not duasvias.culpadas()
+
+
+def test_duas_notas_que_fazem_o_verificador_falhar_nao_adiam_as_outras_para_sempre(sincronizacao, verificador):
+    """com DUAS notas em que o verificador falha sempre, as culpadas não podem revezar-se à frente das outras: se só a do último
+    ciclo fosse para o fim, a outra voltava ao seu lugar, falhava lá e as notas depois das duas ficavam adiadas para sempre."""
+    from basalt import duasvias
+    m = sincronizacao
+    _na_copia(m, "b_partida", "Esta faz o verificador falhar: MARCA-FALHA.")
+    _na_copia(m, "d_partida", "Esta também: MARCA-FALHA.")
+    _na_copia(m, "e_limpa", "A reunião é às 10h.")
+    vistos = []
+    for _ in range(5):
+        vistos += duasvias.ciclo()["empurrados"]
+    assert "e_limpa.md" in vistos and (m.real / "e_limpa.md").exists(), vistos
+    assert not (m.real / "b_partida.md").exists() and not (m.real / "d_partida.md").exists()
+    assert duasvias.culpadas() == {"b_partida.md", "d_partida.md"}
+
+
+def test_culpada_de_passagem_nao_fica_para_sempre_atras_de_uma_que_falha_sempre(sincronizacao, verificador):
+    """uma nota que fez o verificador falhar UMA vez (corrigida depois) não pode ficar presa atrás de outra que falha sempre: entre
+    as culpadas, a que falhou há mais tempo vai primeiro."""
+    from basalt import duasvias
+    m = sincronizacao
+    _na_copia(m, "b_partida", "Esta faz o verificador falhar: MARCA-FALHA.")
+    _na_copia(m, "d_partida", "Esta também: MARCA-FALHA.")
+    duasvias.ciclo()                                                         # b falha; d adiada
+    duasvias.ciclo()                                                         # d falha (b foi para o fim e ficou adiada)
+    _na_copia(m, "b_partida", "Já não faz falhar nada.")                     # b corrigida; d continua a falhar sempre
+    vistos = []
+    for _ in range(3):
+        vistos += duasvias.ciclo()["empurrados"]
+    assert "b_partida.md" in vistos, vistos
+    assert duasvias.culpadas() == {"d_partida.md"}
