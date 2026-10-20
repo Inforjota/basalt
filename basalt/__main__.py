@@ -69,6 +69,18 @@ def _editar_toml(caminho: Path, editar):
         _falha(f"o basalt.toml ficaria inválido ({e}) — não mexi em {caminho}")
 
 
+def _revogar_ligacoes(dados, email: str) -> int:
+    """ronda 13b: dentro do trinco do basalt.toml, ANTES de ele mudar — as ligações das IAs desta conta (OAuth e tokens pessoais)
+    ficam revogadas já na base do servidor. Se não der, o toml não muda (o comando falha e diz porquê)."""
+    import sqlite3
+    from . import oauth
+    try:
+        return oauth.revogar_na_base(dados, email)
+    except (oauth.Ocupado, sqlite3.Error, OSError) as e:
+        _falha(f"não consegui revogar as ligações das IAs de {email} na base ({e}) — não mexi no basalt.toml "
+               "(tenta outra vez, com o utilizador do serviço)")
+
+
 def _cfg(a):
     """a configuração de --config/BASALT_CONFIG, ACTIVADA para todo o processo (ambiente dos filhos + IA de [ia]). Ronda 8 (--config para tudo): cada
     subcomando lia as notas de --config mas a IA, o sig e as fontes_extra reliam a configuração pelo ambiente — podia ser outra."""
@@ -227,6 +239,7 @@ def cmd_utilizador(a):
         def novo(t):
             if _bloco_de(t, email):           # apareceu entretanto
                 _falha(f"{email} já existe (usa `utilizador senha`)")
+            _revogar_ligacoes(cfg.dados, email)   # ronda 13b: ligações de uma conta antiga com este e-mail não passam para a nova
             return acrescentar_utilizador(t, bloco)
         _editar_toml(caminho, novo)
         cfg = config.carregar(caminho)
@@ -239,7 +252,16 @@ def cmd_utilizador(a):
         _falha(f"utilizador desconhecido: {email}")
     if a.sub == "senha":
         h = auth.hash_senha(_senha(a))
-        _editar_toml(caminho, lambda t: definir_chave_utilizador(t, email, "senha_hash", h))
+        try:
+            dados = config.carregar(caminho).dados
+        except (config.ConfigInvalida, ValueError, OSError) as e:
+            _falha(f"o basalt.toml não carrega ({e}) — não mexi em {caminho}")
+
+        def senha(t):
+            novo = definir_chave_utilizador(t, email, "senha_hash", h)
+            _revogar_ligacoes(dados, email)   # ronda 13b: gravado antes de o toml mudar (o servidor pode reiniciar antes de o reler)
+            return novo
+        _editar_toml(caminho, senha)
         print(f"✓ senha de {email} guardada")
     elif a.sub == "mcp-token":
         token, h = auth.gerar_token()

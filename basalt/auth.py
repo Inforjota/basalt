@@ -421,6 +421,10 @@ class Autenticador:
             u = self.cfg.utilizador(email)
             if not (u and hmac.compare_digest(u.senha_hash or "", h)):
                 return False, "A senha foi gravada, mas o servidor ainda não a leu: entra outra vez com a senha nova."
+            # ronda 13b: só se diz que correu bem com o corte das IAs GRAVADO na base (em memória perdia-se num reinício)
+            if getattr(self, "oauth", None) is not None and self.oauth.revogacoes_pendentes():
+                return False, ("A senha mudou, mas o corte das IAs ligadas ainda não ficou gravado (base ocupada; até lá ficam "
+                               "recusadas): entra outra vez com a senha nova.")
             token = secrets.token_urlsafe(32)
             agora = time.time()
             self._sessoes[hash_token(token)] = Sessao(email=u.email, expira=agora + self.cfg.auth.sessao_horas * 3600, criada=agora,

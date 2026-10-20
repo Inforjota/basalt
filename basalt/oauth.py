@@ -103,6 +103,10 @@ class Ocupado(Exception):
     """a base ficou bloqueada mais de ESPERA_S s (ou chegou ao tecto): nada mudou; responder 503."""
 
 
+class ContaMudou(Exception):
+    """ronda 13b: a conta do pedido foi apagada ou mudou depois de ele se autenticar: nada se criou; responder como sem acesso."""
+
+
 _ESQUEMA = """
 CREATE TABLE IF NOT EXISTS meta (chave TEXT PRIMARY KEY, valor TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS clientes (
@@ -433,6 +437,10 @@ class OAuth:
         self._a_revogar: list[tuple[str, float]] = []
         self._rever_tudo = True                            # no arranque: a configuração pode ter mudado com o servidor parado
         self._rever_lock = threading.Lock()
+        # ronda 13b: cada releitura com contas mudadas sobe a geração; cada e-mail guarda a da sua última mudança. Quem cria uma
+        # ligação confere que a conta não mudou desde que o pedido se autenticou (nem apagada e recriada igual, a meio do pedido)
+        self._geracao = 0
+        self._mudou: dict[str, int] = {}
 
     # ── base ──
     def _ligar(self) -> sqlite3.Connection:
@@ -553,16 +561,48 @@ class OAuth:
         return {u.email.lower(): (u.espaco, self._cred(u)) for u in self.cfg.utilizadores}
 
     def contas_mudaram(self) -> None:
-        """ronda 13: o Autenticador chama isto (dentro do trinco dele, só memória) quando o basalt.toml relido trouxe outros
-        utilizadores. As contas que desapareceram, ou mudaram de espaço ou de senha, ficam marcadas; a revogação grava-se na base
-        antes do próximo uso dela (`_rever`). Assim um token antigo não volta a valer se a conta reaparecer igual."""
+        """ronda 13: o Autenticador chama isto (dentro do trinco dele) quando o basalt.toml relido trouxe outros utilizadores. As
+        contas que desapareceram, ou mudaram de espaço ou de senha, ficam marcadas e as ligações delas revogadas na base. Assim um
+        token antigo não volta a valer se a conta reaparecer igual.
+        ronda 13b: a revogação grava-se JÁ, aqui — antes ficava em memória até ao próximo uso da base, e um reinício nesse intervalo
+        perdia-a (com o basalt.toml antigo reposto, os tokens voltavam a valer). Se a base não deixar, fica pendente: até se gravar,
+        nenhum token daqui passa (o `_bd` volta a tentar e dá Ocupado) e o «Mudar a senha» não diz que correu bem."""
         nova = self._fotografia()
         t = agora()
         with self._lock:
+            self._geracao += 1
             for email, antes in self._contas.items():
                 if nova.get(email) != antes:
                     self._a_revogar.append((email, t))
+                    self._mudou[email] = self._geracao
             self._contas = nova
+            marcadas = bool(self._a_revogar)
+        if marcadas:
+            try:
+                with self._bd():                           # o _bd aplica as pendentes (_rever) numa transacção
+                    pass
+            except (Ocupado, sqlite3.Error, OSError) as e:
+                _avisar("revogacao_pendente", erro=e.__class__.__name__)      # sem a mensagem: pode trazer o caminho
+
+    def revogacoes_pendentes(self) -> bool:
+        """ronda 13b: há contas mudadas cujas ligações ainda não ficaram revogadas na base?"""
+        with self._lock:
+            return bool(self._a_revogar)
+
+    def geracao(self) -> int:
+        """ronda 13b: lê-se depois de reler o basalt.toml e ANTES de autenticar o pedido que vai criar uma ligação (ver
+        `_mesma_conta`)."""
+        with self._lock:
+            return self._geracao
+
+    def _mesma_conta(self, u, desde: int) -> bool:
+        """ronda 13b: dentro da Transacao que cria uma ligação (já com as revogações pendentes gravadas): a conta autenticada no
+        início do pedido ainda existe igual (espaço, senha) e não mudou desde a geração `desde` — apagada e recriada igual a meio
+        do pedido também conta como mudada. Antes criava-se com o Utilizador do início, que podia já não existir."""
+        if self._familia_viva(u.email.lower(), u.espaco, self._cred(u)) is None:
+            return False
+        with self._lock:
+            return self._mudou.get(u.email.lower(), 0) <= desde
 
     def _rever(self, conn) -> None:
         """ronda 13: as revogações pendentes — as famílias das contas marcadas (nascidas até à mudança) e, no arranque, todas as que
@@ -879,6 +919,7 @@ class OAuth:
         if not RE_PEDIDO.match(pid) or decisao not in ("permitir", "recusar", "sair"):
             return self._erro_pagina(h, "e_pedido")
         h.aut.reler_se_mudou()
+        desde = self.geracao()                      # ronda 13b: depois de reler e ANTES de autenticar (ver _mesma_conta)
         if getattr(h.aut, "_fechado", ""):
             return self._erro_pagina(h, "e_fechado", 503)
         user = self._utilizador_browser(h)
@@ -918,6 +959,9 @@ class OAuth:
                         # ronda 13: o endereço saiu da lista depois do pedido — o pedido gasta-se e NUNCA se volta para lá
                         conn.execute("UPDATE pedidos SET usado=? WHERE id=?", (t, pid))
                         erro = ("e_pedido", 400)
+                    elif decisao == "permitir" and not self._mesma_conta(user, desde):
+                        # ronda 13b: a conta foi apagada ou mudou depois de este pedido se autenticar — nada se cria para ela
+                        erro = ("e_csrf", 403)
                     elif decisao == "permitir":
                         # ronda 13: tecto de ligações por conta (o pedido não se gasta: pode desligar alguma e voltar a carregar)
                         self._limpar(conn, t)
@@ -1162,12 +1206,15 @@ class OAuth:
             _avisar("familia_revogada", motivo="pagina", familia=f[:8])
         return len(ids)
 
-    def token_pessoal(self, u, nome: str):
-        """(token, id) ou (None, motivo). O token mostra-se UMA vez; só o sha256 fica guardado. Só vale no /mcp."""
+    def token_pessoal(self, u, nome: str, desde: int):
+        """(token, id) ou (None, motivo). O token mostra-se UMA vez; só o sha256 fica guardado. Só vale no /mcp.
+        ronda 13b: `desde` = geracao() lida antes de autenticar `u`; se a conta mudou entretanto, ContaMudou e nada se cria."""
         nome = _RE_CONTROLO.sub("", nome or "").strip()[:60] or "Codex"
         with self._bd() as conn:
             with Transacao(conn):
                 t = agora()
+                if not self._mesma_conta(u, desde):
+                    raise ContaMudou(u.email)
                 self._limpar(conn, t)
                 # ronda 13: só contam os da senha actual — depois de a mudar, os antigos já não valem nem aparecem na lista
                 n = _uma(conn, "SELECT COUNT(*) FROM familias WHERE email=? AND espaco=? AND tipo='pessoal' AND revogada IS NULL AND cred=?",
@@ -1182,6 +1229,35 @@ class OAuth:
                              (_h(token), familia, t))
         _avisar("token_pessoal_criado", familia=familia[:8])
         return token, familia
+
+
+def revogar_na_base(dados, email: str) -> int:
+    """ronda 13b: para a CLI (`utilizador senha`/`novo`, noutro processo, com o trinco do basalt.toml tomado): revoga JÁ na base as
+    ligações desta conta, antes de o toml mudar — esperar que o servidor o relesse não chegava (parado ou reiniciado antes disso,
+    com o toml antigo reposto, os tokens voltavam a valer). Uma base que não existe não tem nada a revogar e nunca se cria aqui.
+    Devolve quantas; um erro sobe (Ocupado, sqlite3.Error, OSError) e quem chama não mexe no toml."""
+    caminho = Path(dados).expanduser() / "oauth.sqlite"
+    if os.path.islink(caminho):
+        raise Ocupado("a base OAuth é uma ligação simbólica — recusado")
+    if not caminho.exists():
+        return 0
+    conn = sqlite3.connect("file:" + urllib.parse.quote(str(caminho)) + "?mode=rw", uri=True, timeout=ESPERA_S,
+                           isolation_level=None)
+    try:
+        conn.execute(f"PRAGMA busy_timeout = {ESPERA_S * 1000}")
+        conn.execute("PRAGMA synchronous = FULL")
+        if not _uma(conn, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='familias'"):
+            return 0
+        t = agora()
+        with Transacao(conn):
+            ids = [r[0] for r in conn.execute("SELECT id FROM familias WHERE email=? AND revogada IS NULL", (email.lower(),)).fetchall()]
+            for f in ids:
+                OAuth._revogar_familia(conn, f, t)
+    except sqlite3.OperationalError as e:
+        raise (_erro_sqlite(e) or e)
+    finally:
+        conn.close()
+    return len(ids)
 
 
 # ───────────────────────────── rotas (web.ROTAS_EXTRA) ─────────────────────────────
@@ -1306,6 +1382,8 @@ def _rota_revogar(h):
 
 def _rota_token_pessoal(h):
     o = _o(h)
+    h.aut.reler_se_mudou()
+    desde = o.geracao()                         # ronda 13b: antes de autenticar — a criação confere que a conta não mudou desde aqui
     u = _api_conta(h, escrita=True)
     if u is None:
         return
@@ -1316,9 +1394,11 @@ def _rota_token_pessoal(h):
     if not isinstance(c, dict):
         return h._json(400, {"erro": "Pedido inválido."})
     try:
-        tok, ref = o.token_pessoal(u, str(c.get("nome") or ""))
+        tok, ref = o.token_pessoal(u, str(c.get("nome") or ""), desde)
     except Ocupado:
         return h._json(503, {"erro": "Ocupado; tenta outra vez daqui a pouco."})
+    except ContaMudou:                          # a conta saiu (ou mudou) enquanto o pedido chegava: como se já não tivesse acesso
+        return h._sem_acesso(urllib.parse.urlsplit(h.path).path)
     if tok is None:
         return h._json(429, {"erro": ref})
     h._json(201, {"token": tok, "id": ref})
