@@ -693,3 +693,20 @@ def test_indice_por_ligacao_nao_abre_o_de_outra_conta(dois):
         except OSError:
             trechos = []
     assert "TRECHO_PRIVADO_DA_BEA" not in trechos, "o índice de A abriu o de B"
+
+
+# ═════════════════════════ H — a documentação das rotas sem login diz todas as que existem ═════════════════════════
+def test_seguranca_md_lista_todas_as_rotas_da_api_sem_login(servidor_local):
+    """o SEGURANCA.md dizia que /api/saude era a única rota sem login nem dono; /api/entrar e /api/sair também o são."""
+    s = servidor_local(modo="senha", utilizadores=[{"email": "ana@exemplo.pt", "espaco": "a"}])
+    x = {"X-Basalt": "1"}
+    # controlo: as três são atendidas sem sessão nem dono (o próprio pedido responde, não o «entra primeiro»)
+    assert s.pedido("GET", "/api/saude", email=None, dono=False).json == {"ok": True}
+    r = s.pedido("POST", "/api/entrar", {"email": "ana@exemplo.pt", "senha": "errada"}, email=None, dono=False, cabecalhos=x)
+    assert r.codigo == 401 and "senha errados" in r.json["erro"]
+    assert s.pedido("POST", "/api/sair", {}, email=None, dono=False, cabecalhos=x).codigo == 200
+    atendidas = {"/api/saude", "/api/entrar", "/api/sair"}
+    doc = (RAIZ / "docs" / "SEGURANCA.md").read_text(encoding="utf-8")
+    assert "única rota da API sem login" not in doc
+    for c in sorted(atendidas):
+        assert c in doc, f"{c} é atendida sem login e o SEGURANCA.md não a menciona"
