@@ -695,6 +695,28 @@ def test_indice_por_ligacao_nao_abre_o_de_outra_conta(dois):
     assert "TRECHO_PRIVADO_DA_BEA" not in trechos, "o índice de A abriu o de B"
 
 
+
+def test_permissoes_da_entrada_por_ligacao_nao_deixam_entrar_sozinha_na_linha_de_comandos(dois):
+    """`basalt entrada` (o __main__) lia `entrada-permissoes.json` por caminho: `A/dados/entrada-permissoes.json` → o de B punha
+    as fontes de B a entrar sozinhas nas notas de A. A página (web.pode_auto) já o lia sem seguir ligações."""
+    from basalt.__main__ import _pode_entrar_sozinha
+    s, a, b = dois
+    b.permissoes_entrada.parent.mkdir(parents=True, exist_ok=True)
+    b.permissoes_entrada.write_text(json.dumps({"auto": ["desconhecido:fonte-da-bea"]}), encoding="utf-8")
+    a.permissoes_entrada.parent.mkdir(parents=True, exist_ok=True)
+    _trocar_por_ligacao(a.permissoes_entrada, b.permissoes_entrada)
+    assert not _pode_entrar_sozinha(a, "desconhecido:fonte-da-bea"), "as permissões de B valeram para A"
+
+
+def test_controlo_as_permissoes_da_propria_conta_continuam_a_valer_na_linha_de_comandos(dois):
+    from basalt.__main__ import _pode_entrar_sozinha
+    s, a, b = dois
+    a.permissoes_entrada.parent.mkdir(parents=True, exist_ok=True)
+    a.permissoes_entrada.write_text(json.dumps({"auto": ["desconhecido:fonte-da-ana"]}), encoding="utf-8")
+    assert _pode_entrar_sozinha(a, "desconhecido:fonte-da-ana")
+    assert not _pode_entrar_sozinha(a, "desconhecido:outra")
+
+
 # ═════════════════════════ H — a documentação das rotas sem login diz todas as que existem ═════════════════════════
 def test_seguranca_md_lista_todas_as_rotas_da_api_sem_login(servidor_local):
     """o SEGURANCA.md dizia que /api/saude era a única rota sem login nem dono; /api/entrar e /api/sair também o são."""

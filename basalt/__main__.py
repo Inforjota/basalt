@@ -409,10 +409,11 @@ def cmd_entrada(a):
 
 
 def _pode_entrar_sozinha(esp, autor):
-    """a mesma regra da página (web.pode_auto) sem carregar a página: entrada-permissoes.json {"auto": [...]}."""
+    """a mesma regra da página (web.pode_auto) sem carregar a página: entrada-permissoes.json {"auto": [...]}, lido sem seguir
+    ligações (como a página) — uma ligação para as permissões de outra conta não deixa entrar ninguém sozinho."""
     import json
     try:
-        return autor in json.loads(Path(esp.permissoes_entrada).read_text(encoding="utf-8")).get("auto", [])
+        return autor in json.loads(caminhos.ler_texto(esp.permissoes_entrada)).get("auto", [])
     except (OSError, ValueError, AttributeError):
         return False
 
