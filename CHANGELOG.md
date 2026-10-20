@@ -24,6 +24,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   de passar de uma conta para outra.
 - **Categorias das fontes externas:** uma ref com `#` (p. ex. `repo#12`) fica sempre com a chave exacta, mesmo sozinha; uma
   chave antiga sem `#` deixa de impedir que os itens novos ganhem categoria.
+- **Service worker `basalt-v15`:** a cópia sem rede deixa de servir a página antiga (o protocolo continua 5).
 
 ### «Mudar a senha» na interface (20/10/2026)
 - Na página **🔌 Ligar a tua IA**, secção «A tua senha» (só no modo `senha`): senha actual + nova (pelo menos 8 caracteres)

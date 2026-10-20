@@ -35,8 +35,8 @@ def corrida(cenario):
     return json.loads(r.stdout)
 
 
-def test_versao_da_cache_e_v14_e_o_activate_tira_as_da_v13_mas_guarda_as_marcas_e_a_epoca():
-    assert VER == "basalt-v14", VER
+def test_versao_da_cache_subiu_e_o_activate_tira_as_da_v13_mas_guarda_as_marcas_e_a_epoca():
+    assert int(VER.rsplit("v", 1)[1]) >= 14, VER                 # correcções da ronda 13: v15 (o test_ronda13b_sw.py confere a versão exacta)
     r = sw([], evento="activate", caches={"basalt-v13-app": ["/"], "basalt-v13-vendor": ["/static/vendor/x.js"],
                                           "basalt-v13-api-d-a": ["/api/notas"], "basaltcfg-epoca": ["/__epoca"],
                                           "basaltcfg-apagadas-d-a": ["/api/nota?nome=x"]})
