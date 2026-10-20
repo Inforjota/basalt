@@ -849,7 +849,7 @@ def estado():
     ped = 0
     try:
         import sqlite3
-        ped = sqlite3.connect(SEMANTICA).execute("SELECT count(*) FROM pedaco").fetchone()[0]
+        ped = sqlite3.connect(caminhos.sem_ligacao(SEMANTICA)).execute("SELECT count(*) FROM pedaco").fetchone()[0]
     except Exception:
         pass
     ult = recentes(1)

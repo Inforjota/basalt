@@ -322,6 +322,25 @@ def acrescentar(p, dados: bytes, modo: int = 0o644) -> None:
         os.close(fd)
 
 
+def sem_ligacao(p) -> Path:
+    """devolve `p` se se chega lá sem ligações simbólicas abaixo da âncora e ele próprio for um ficheiro normal (ou ainda não
+    existir); senão recusa (Recusado). Para o que só abre por caminho — o SQLite do índice."""
+    p = Path(p)
+    try:
+        dfd = abrir_pasta(p.parent)
+    except FileNotFoundError:
+        return p
+    try:
+        st = os.stat(_nome_simples(p.name), dir_fd=dfd, follow_symlinks=False)
+    except FileNotFoundError:
+        return p
+    finally:
+        os.close(dfd)
+    if not stat.S_ISREG(st.st_mode):
+        raise Recusado(errno.ELOOP, f"«{p.name}» é uma ligação simbólica (ou não é um ficheiro normal) — não a sigo", p.name)
+    return p
+
+
 def abrir_trinco(p) -> int:
     """o descritor do ficheiro de trinco `p` (criado, com as pastas, se faltar), aberto sem seguir ligações; quem chama faz o
     flock e fecha."""

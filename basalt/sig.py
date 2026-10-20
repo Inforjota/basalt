@@ -99,7 +99,7 @@ def sem_acentos(s):
 
 def db():
     DB.parent.mkdir(parents=True, exist_ok=True)
-    c = sqlite3.connect(DB)
+    c = sqlite3.connect(caminhos.sem_ligacao(DB))       # ronda 13: o índice de outro espaço por uma ligação é recusado
     c.execute("CREATE TABLE IF NOT EXISTS pedaco (fonte TEXT, ref TEXT, titulo TEXT, trecho TEXT, hash TEXT, "
               "vec BLOB, atualizado TEXT DEFAULT (datetime('now')), PRIMARY KEY (fonte, ref))")
     return c

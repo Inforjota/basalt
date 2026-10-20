@@ -49,7 +49,7 @@ def vec_por_nota():
     de outro tamanho que o primeiro (mudou o modelo de embeddings) não contam."""
     if not DB.exists():
         return {}
-    c = sqlite3.connect(DB)
+    c = sqlite3.connect(caminhos.sem_ligacao(DB))       # ronda 13: sem seguir ligações
     try:
         linhas = list(c.execute("SELECT ref,vec FROM pedaco WHERE fonte='nota'"))
     except sqlite3.DatabaseError:

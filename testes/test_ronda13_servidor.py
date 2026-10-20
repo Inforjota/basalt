@@ -677,3 +677,19 @@ def test_trinco_da_copia_por_ligacao_e_recusado(memoria, tmp_path):
         with pytest.raises(OSError):
             with como(espera=1):
                 pass
+
+
+def test_indice_por_ligacao_nao_abre_o_de_outra_conta(dois):
+    """o índice da pesquisa tem os trechos das notas: `A/dados/semantica.sqlite` → o de B punha a pesquisa de A a ler os de B."""
+    from basalt import config, sig
+    s, a, b = dois
+    _por_no_indice(b, [("nota", "privada#0", "privada", "TRECHO_PRIVADO_DA_BEA")])
+    _trocar_por_ligacao(a.semantica, b.semantica)
+    with config.dentro(a):
+        try:
+            c = sig.db()
+            trechos = [t for (t,) in c.execute("SELECT trecho FROM pedaco")]
+            c.close()
+        except OSError:
+            trechos = []
+    assert "TRECHO_PRIVADO_DA_BEA" not in trechos, "o índice de A abriu o de B"

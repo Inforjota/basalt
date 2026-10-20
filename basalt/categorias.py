@@ -107,7 +107,7 @@ def _ler_indice():
         return None
     try:
         import sqlite3
-        c = sqlite3.connect(p.resolve().as_uri() + "?mode=ro", uri=True)
+        c = sqlite3.connect(caminhos.sem_ligacao(p).absolute().as_uri() + "?mode=ro", uri=True)   # ronda 13: sem ligações
         try:
             n = c.execute("SELECT count(*) FROM pedaco").fetchone()[0]
             linhas = c.execute("SELECT fonte, ref, titulo, trecho FROM pedaco WHERE fonte != 'nota' ORDER BY fonte, ref").fetchall()
