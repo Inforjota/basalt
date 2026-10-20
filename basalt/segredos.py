@@ -181,9 +181,10 @@ LOTE = 50                               # ficheiros por chamada ao verificador
 
 class VerificacaoFalhou(SegredoEmClaro):
     """o verificador de segredos não respondeu 0 nem 1: não se sabe se o texto tem segredo, por isso não passa."""
-    def __init__(self, porque: str = ""):
+    def __init__(self, porque: str = "", adiada: bool = False):
         super().__init__(MOTIVO_VERIFICACAO)
         self.porque = porque
+        self.adiada = adiada     # ronda 13c: True = não foi este texto que fez o verificador falhar (o ciclo já tinha uma falha)
 
 
 _VERIFICADOS: dict = {}                 # (comando, sha256 do texto) → tem segredo? — só as respostas certas (0 ou 1), nunca as falhas
@@ -292,7 +293,7 @@ def verificar(textos) -> list:
     pend = list(falta.items())
     ciclo = getattr(_CICLO, "estado", None)
     if pend and ciclo and ciclo["falhou"]:
-        raise VerificacaoFalhou(f"adiado: o verificador já falhou neste ciclo ({ciclo['falhou']})")
+        raise VerificacaoFalhou(f"adiado: o verificador já falhou neste ciclo ({ciclo['falhou']})", adiada=True)
     try:
         for a in range(0, len(pend), LOTE):
             lote = pend[a:a + LOTE]

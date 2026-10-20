@@ -86,6 +86,15 @@ def tem_segredo(p: Path):
     return tem_segredo_nota(caminhos.ler_texto(p))
 
 
+_CULPADAS: dict = {}     # ronda 13c: por cópia, as notas em que o verificador de segredos FALHOU no último ciclo (ver _ciclo)
+
+
+def culpadas() -> set:
+    """as notas desta cópia em que o [segredos] verificador falhou no último ciclo — vão para o FIM do ciclo seguinte, para
+    uma nota em que ele falha sempre não adiar em todos os ciclos as que vêm depois dela."""
+    return _CULPADAS.get(str(COPIA), set())
+
+
 def tem_segredo_bytes(b, nome):
     """o mesmo que tem_segredo(), mas sobre os BYTES já lidos — o que se verifica é exactamente o que se escreve."""
     with tempfile.TemporaryDirectory(prefix="basalt2v-seg-") as d:
@@ -139,7 +148,12 @@ def _ciclo():
         else:
             trocas.append((t, nome, valor_led, lista))
 
-    for nome in sorted(nomes):
+    # ronda 13c: a nota em que o verificador falhou no ciclo anterior vai para o FIM. Com «uma chamada falhada por ciclo» (13b)
+    # e a ordem sempre igual, uma nota em que ele falha sempre (tempo esgotado só com ela, um erro só com ela) adiava em TODOS os
+    # ciclos as notas a seguir a ela — essas nunca chegavam a sincronizar.
+    copia_actual, atras = str(COPIA), culpadas()
+    _CULPADAS[copia_actual] = set()
+    for nome in sorted(nomes - atras) + sorted(nomes & atras):
         # ronda 13: se o verificador de segredos falhar, a nota fica para o ciclo seguinte (nada muda, o registo não avança)
         try:
             pr, pc = REAL / nome, COPIA / nome
@@ -193,8 +207,10 @@ def _ciclo():
             # sem mudança relevante: alinhar o ledger com o estado actual (quando os dois lados já estão iguais)
             if rh and rh == ch:
                 led[nome] = rh
-        except VerificacaoFalhou:
+        except VerificacaoFalhou as e:
             adiados.append(nome)
+            if not e.adiada:                       # ronda 13c: foi ESTA que fez o verificador falhar — no próximo ciclo vai para o fim
+                _CULPADAS[copia_actual].add(nome)
 
     # confirmar as trocas. A que falhar (alguém escreveu nesse instante) fica com a escrita dessa pessoa e o
     # registo NÃO avança → o ciclo seguinte vê as duas mudanças e trata-as (empurrar, puxar ou conflito), sem perder nada.
