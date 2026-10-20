@@ -629,6 +629,15 @@ pre.pendentes-texto{
   white-space:pre-wrap; word-break:break-word; margin:0; max-height:240px; overflow:auto;
   background:var(--bg-elev2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px; font-size:.82rem;
 }
+/* ronda 12: um resultado de uma fonte externa ([fontes_extra]), só para ler */
+.fonte-cab{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:10px}
+.fonte-cab .badge-origem{font-size:.8rem; padding:3px 10px}
+.fonte-pedacos{display:flex; flex-direction:column; gap:12px; margin-top:12px}
+pre.fonte-texto{
+  white-space:pre-wrap; word-break:break-word; margin:0; font-family:inherit; font-size:.95rem; line-height:1.55;
+  background:var(--bg-elev); border:1px solid var(--border); border-radius:var(--radius-sm); padding:12px 14px;
+}
+pre.fonte-texto.fonte-actual{border-color:var(--accent)}
 
 /* ---------- toasts ---------- */
 #toast-root{position:fixed; left:50%; bottom:20px; transform:translateX(-50%); z-index:100; display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none}
@@ -1233,7 +1242,14 @@ const EN = {
   "{n} edições de outras contas deste browser estão guardadas à parte: sobem quando essas contas voltarem a entrar aqui.": "{n} edits from other accounts in this browser are kept aside: they are sent when those accounts sign in here again.",
   "Edições por enviar": "Unsent edits",
   "Há edições guardadas neste aparelho que não chegaram a ser enviadas e que não se sabe de que conta são. Vê-as, envia-as em teu nome (um conflito fica para resolveres na nota, nunca por cima), descarrega-as ou esconde o aviso (continuam no Início).": "Some edits saved on this device were never sent and it is not known which account they belong to. View them, send them as you (a conflict is left for you to resolve in the note, never overwritten), download them or hide the notice (they stay listed on Home).",
-  "Edições que ficaram neste aparelho sem chegar ao servidor e de que não se sabe a conta (de uma versão anterior desta página, por exemplo). Abre a lista para as ver, descarregar ou enviar em teu nome.": "Edits that stayed on this device without reaching the server and whose account is unknown (from an earlier version of this page, for example). Open the list to view, download or send them as you."
+  "Edições que ficaram neste aparelho sem chegar ao servidor e de que não se sabe a conta (de uma versão anterior desta página, por exemplo). Abre a lista para as ver, descarregar ou enviar em teu nome.": "Edits that stayed on this device without reaching the server and whose account is unknown (from an earlier version of this page, for example). Open the list to view, download or send them as you.",
+  "Fonte externa": "External source",
+  "Fonte": "Source",
+  "Texto não encontrado (ou reservado por ter dados sensíveis).": "Text not found (or withheld because it holds sensitive data).",
+  "Texto que a fonte externa «{fonte}» trouxe para a pesquisa ({ref}). Não é uma nota: lê-se aqui e muda-se na origem.": "Text that the external source “{fonte}” brought into search ({ref}). It is not a note: read it here and change it at its origin.",
+  "1 pedaço deste texto não se mostra: parece ter uma password ou chave em claro.": "1 part of this text is not shown: it seems to hold a password or key in plain text.",
+  "{n} pedaços deste texto não se mostram: parecem ter uma password ou chave em claro.": "{n} parts of this text are not shown: they seem to hold a password or key in plain text.",
+  "Este texto não é uma nota: veio de uma fonte externa configurada no servidor e está aqui só para leres. Para o mudar, muda-o na origem; aparece mudado depois da próxima indexação.": "This text is not a note: it came from an external source set up on the server and is here only for reading. To change it, change it at its origin; the change shows after the next indexing."
 };
 function t(s){ return IDIOMA === "en" && Object.prototype.hasOwnProperty.call(EN, s) ? EN[s] : s; }
 function tf(s, vars){ return t(s).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)); }
@@ -3502,6 +3518,9 @@ function linkifyCitations(escapedText, fontes){
     if(f && f.nome){
       return '<a href="#/nota/' + f.nome + '" class="cite">[' + num + ']</a>';
     }
+    if(f && f.fonte && f.fonte !== "nota" && f.ref){
+      return '<a href="' + hrefFonte(f.fonte, f.ref) + '" class="cite">[' + num + ']</a>';
+    }
     return '<span class="cite cite-static">[' + num + "]</span>";
   });
 }
@@ -3524,6 +3543,13 @@ async function executarProcura(q){
           '<div class="cmd-result-trecho">' + escapeHtml(r.trecho || "") + '</div>' +
           '<div class="cmd-result-fonte">' + escapeHtml(r.fonte) + '</div></a>';
       }
+      if(r.fonte && r.fonte !== "nota" && r.ref){            // ronda 12: fonte externa ([fontes_extra]) → abre só para ler
+        return '<a class="cmd-result cmd-result-externa" href="' + hrefFonte(r.fonte, r.ref) + '">' +
+          '<div class="cmd-result-top"><span class="cmd-result-titulo">' + escapeHtml(r.titulo || t("(sem título)")) +
+          '</span><span class="cmd-result-sim">' + pct + '%</span></div>' +
+          '<div class="cmd-result-trecho">' + escapeHtml(r.trecho || "") + '</div>' +
+          '<div class="cmd-result-fonte">' + escapeHtml(r.fonte) + " · " + t("só leitura") + '</div></a>';
+      }
       return '<div class="cmd-result cmd-result-static">' +
         '<div class="cmd-result-top"><span class="cmd-result-titulo">' + escapeHtml(r.titulo || t("(sem título)")) +
         '</span><span class="cmd-result-sim">' + pct + '%</span></div>' +
@@ -3544,6 +3570,9 @@ async function executarPergunta(q){
     var chips = (res.fontes || []).map(function(f){
       if(f.nome){
         return '<a class="chip" href="#/nota/' + f.nome + '">[' + f.n + "] " + escapeHtml(f.titulo) + "</a>";
+      }
+      if(f.fonte && f.fonte !== "nota" && f.ref){
+        return '<a class="chip" href="' + hrefFonte(f.fonte, f.ref) + '">[' + f.n + "] " + escapeHtml(f.titulo) + "</a>";
       }
       return '<span class="chip" style="opacity:.6">[' + f.n + "] " + escapeHtml(f.titulo) + "</span>";
     }).join("");
@@ -3769,6 +3798,7 @@ async function route(){
     case "recentes": return viewRecentes(main);
     case "diario": return viewDiario(main, parts[1]);
     case "ligar": return viewLigar(main);
+    case "fonte": return viewFonte(main, parts[1], parts.slice(2).join("/"));
     default: return viewHome(main);
   }
 }
@@ -5807,6 +5837,50 @@ function abrirProgressoUnir(jobId, main){
    Recentes
    ==================================================================== */
 
+/* ========================================================================
+   ronda 12 — Fonte externa: um resultado de [fontes_extra] (texto que um comando trouxe para o índice) abre-se SÓ PARA LER, com o
+   texto que o índice tem dessa ref (todos os pedaços, pela ordem). Não é uma nota: não há editar, apagar nem unir — muda-se na
+   origem. As exclusões são as da procura (o servidor não devolve pedaços com o que parece uma password ou chave).
+   ==================================================================== */
+function hrefFonte(fonte, ref){
+  return "#/fonte/" + encodeURIComponent(fonte) + "/" + encodeURIComponent(ref);
+}
+function decodificarParte(s){
+  try{ return decodeURIComponent(s || ""); }catch(e){ return ""; }
+}
+async function viewFonte(main, fonteParte, refParte){
+  var fonte = decodificarParte(fonteParte), ref = decodificarParte(refParte);
+  main.innerHTML = renderShell(t("Fonte externa"));
+  var body = main.querySelector(".view-body");
+  if(!fonte || !ref || fonte === "nota"){
+    renderErrorBox(body, t("Texto não encontrado (ou reservado por ter dados sensíveis)."));
+    return;
+  }
+  renderLoading(body, t("a carregar…"));
+  try{
+    var d = await apiGet("/api/fonte?fonte=" + encodeURIComponent(fonte) + "&ref=" + encodeURIComponent(ref));
+    var h1 = main.querySelector(".view-heading h1");
+    if(h1) h1.textContent = d.titulo || ref;
+    var varios = (d.pedacos || []).length > 1;
+    body.innerHTML = '<div class="fonte-vista" id="fonte-vista" data-fonte="' + escapeHtml(d.fonte) + '" data-ref="' + escapeHtml(d.ref) + '">' +
+      '<div class="fonte-cab">' +
+        '<span class="badge badge-origem" title="' + escapeHtml(t("Fonte")) + '">' + escapeHtml(d.fonte) + '</span>' +
+        '<span class="badge badge-readonly">' + t("só leitura") + '</span>' +
+      '</div>' +
+      '<p class="dim-note">' + escapeHtml(tf("Texto que a fonte externa «{fonte}» trouxe para a pesquisa ({ref}). Não é uma nota: lê-se aqui e muda-se na origem.", {fonte: d.fonte, ref: d.ref})) + '</p>' +
+      '<div class="fonte-pedacos">' + (d.pedacos || []).map(function(p){
+        return '<pre class="fonte-texto' + (varios && p.ref === d.ref ? " fonte-actual" : "") + '" data-ref="' + escapeHtml(p.ref) + '">' + escapeHtml(p.texto) + "</pre>";
+      }).join("") + "</div>" +
+      (d.omitidos ? '<p class="dim-note">' + escapeHtml(d.omitidos === 1
+          ? t("1 pedaço deste texto não se mostra: parece ter uma password ou chave em claro.")
+          : tf("{n} pedaços deste texto não se mostram: parecem ter uma password ou chave em claro.", {n: d.omitidos})) + "</p>" : "") +
+      "</div>";
+  }catch(e){
+    if(e && e.status === 404) renderErrorBox(body, t("Texto não encontrado (ou reservado por ter dados sensíveis)."));
+    else renderErrorBox(body, tf("não consegui carregar: {erro}", {erro: e.message}), function(){ viewFonte(main, fonteParte, refParte); });
+  }
+}
+
 async function viewRecentes(main){
   main.innerHTML = renderShell(t("Recentes"));
   var body = main.querySelector(".view-body");
@@ -6467,6 +6541,9 @@ var AJUDA = {
     {sel: "#diario-notas-mudadas", nome: t("Notas alteradas"), texto: t("Notas que foram alteradas neste dia.")},
     {sel: "#diario-commits", nome: t("Gravações na memória"), texto: t("Gravações feitas na memória nesse dia, com os ficheiros tocados em cada uma.")},
     {sel: "#diario-entrada", nome: t("Entrou na caixa"), texto: t("Ideias que entraram na Entrada neste dia.")}
+  ],
+  fonte: [
+    {sel: ".fonte-cab", nome: t("Fonte externa"), texto: t("Este texto não é uma nota: veio de uma fonte externa configurada no servidor e está aqui só para leres. Para o mudar, muda-o na origem; aparece mudado depois da próxima indexação.")}
   ],
   ligar: [
     {sel: ".ligar-ias", nome: t("Escolher a IA"), texto: t("Escolhe a tua IA para veres os passos e o endereço a copiar.")},

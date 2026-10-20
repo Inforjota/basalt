@@ -385,8 +385,22 @@ def pergunta(q):
     except ValueError:
         return {"resposta": "Não consegui responder agora.", "fontes": []}
     for f in d.get("fontes", []):
-        f["nome"] = f["ref"].split("#")[0] if not f["ref"].startswith(("decisao-", "memoria-", "tarefa-")) else None
+        f["nome"] = (nome_da_ref(f["fonte"], f["ref"]) if "fonte" in f else      # ronda 12: o motor diz de que fonte é cada excerto
+                     f["ref"].split("#")[0] if not f["ref"].startswith(("decisao-", "memoria-", "tarefa-")) else None)
     return d
+
+
+def fonte_extra(fonte, ref):
+    """ronda 12: um resultado de `[fontes_extra]` para LER (o texto que o índice tem dessa ref, pela ordem, com as exclusões da
+    procura). As notas não passam por aqui (abrem-se em /api/nota); nada se escreve. None = não há (ou não se mostra)."""
+    if not fonte or fonte == "nota" or not ref:
+        return None
+    r = motor(["fonte", fonte[:200], ref[:1000], "--json"])
+    try:
+        d = json.loads(r.stdout or "null")
+    except ValueError:
+        return None
+    return d if isinstance(d, dict) and d.get("pedacos") else None
 
 
 def entrada():
@@ -1505,6 +1519,9 @@ class H(BaseHTTPRequestHandler):
                     res = procura(g("q")[:300], max(1, min(int(g("n", "10") or 10), 30)))
                     toque("procurar", [r.get("nome") for r in res[:3]])
                     return self._json(200, res)
+                if u.path == "/api/fonte":                                                     # ronda 12: fonte externa, só leitura
+                    d = fonte_extra(g("fonte"), g("ref"))
+                    return self._json(200, d) if d else self._json(404, {"erro": "Texto não encontrado (ou reservado por ter dados sensíveis)."})
                 if u.path == "/api/grafo": return self._json(200, grafo())
                 if u.path == "/api/indice": return self._json(200, indice())
                 if u.path == "/api/categorias": return self._json(200, categorias())

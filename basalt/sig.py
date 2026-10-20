@@ -8,6 +8,7 @@ palavras (BM25, basalt.lexical): menos esperto, mas funciona sem IA nenhuma. Nad
   python -m basalt.sig procura "texto" [-n N] [--json]
   python -m basalt.sig pergunta "texto" [--json]      responde só com excertos da memória (precisa do chat em [ia])
   python -m basalt.sig guarda "texto" [--de ORIGEM]   ideia rápida → caixa de entrada
+  python -m basalt.sig fonte FONTE REF [--json]       o texto que o índice tem de um resultado de [fontes_extra] (só leitura)
   python -m basalt.sig entrada [--json] | arquivar N | estado | --autoteste
 
 Índice: <dados>/semantica.sqlite. Espaço: BASALT_ESPACO (+ basalt.toml); BASALT_REAL, BASALT_SIG_DB, BASALT_INBOX,
@@ -229,13 +230,14 @@ def _retida_agora(nome, excl):
     return r
 
 
-def carregar(c):
+def carregar(c, onde="", args=()):
     """[(fonte, ref, titulo, trecho, vec_bytes)] — sem as notas retidas TAL COMO ESTÃO AGORA (lista, nome, texto actual), nem
     pedaços com segredo em claro (um índice feito antes de a nota ficar retida ainda os pode ter: saem na próxima indexação, mas
-    entretanto também não chegam ao modelo)."""
+    entretanto também não chegam ao modelo). `onde`/`args`: um filtro SQL a mais (ronda 12: `ler_fonte` lê só uma ref) — o
+    filtro das exclusões é este, o MESMO da procura e da pergunta."""
     excl, retida = _excluidas(), {}
     out = []
-    for f, r, t, tr, v in c.execute("SELECT fonte,ref,titulo,trecho,vec FROM pedaco"):
+    for f, r, t, tr, v in c.execute("SELECT fonte,ref,titulo,trecho,vec FROM pedaco" + onde, args):
         if f == "nota":
             nome = r.split("#")[0]
             if nome not in retida:
@@ -245,6 +247,43 @@ def carregar(c):
         if not tem_segredo_texto(tr or ""):
             out.append((f, r, t, tr, v or b""))
     return out
+
+
+def _ordem_pedaco(ref):
+    """«doc» antes de «doc#0», «doc#2» antes de «doc#10»; um sufixo que não é número vai para o fim, por ordem alfabética."""
+    _, cardinal, suf = ref.partition("#")
+    if not cardinal:
+        return (0, 0, "")
+    return (1, int(suf), "") if suf.isascii() and suf.isdigit() else (2, 0, suf)
+
+
+def ler_fonte(fonte, ref):
+    """ronda 12: o texto que o índice tem de um resultado de uma fonte externa (`[fontes_extra]`), para se ler sem sair do Basalt.
+    Todos os pedaços dessa ref (a ref tal e qual e as «ref#N» com o mesmo título — como a procura, que junta por «ref#»), pela
+    ordem. As exclusões são as da procura (`carregar`): um pedaço com um segredo em claro não sai (`omitidos` conta-os, sem
+    nada do texto); se nada sobra, None. As notas não se lêem aqui (`fonte="nota"` → None): abrem-se na página, com as regras delas."""
+    fonte, ref = str(fonte or ""), str(ref or "")
+    base = ref.split("#")[0]
+    if not fonte or fonte == "nota" or not base:
+        return None
+    c = db()
+    try:
+        onde, args = " WHERE fonte=? AND (ref=? OR substr(ref, 1, ?)=?)", (fonte, base, len(base) + 1, base + "#")
+        todas = c.execute("SELECT ref, titulo FROM pedaco" + onde, args).fetchall()
+        linhas = carregar(c, onde, args)
+    finally:
+        c.close()
+    # «repo#12» e «repo#13» podem ser coisas diferentes (dois pedidos do mesmo repositório): com a ref exacta no índice, só se
+    # juntam os pedaços com o título dela (os de uma nota partida têm todos o mesmo título)
+    exactas = [t for r, t in todas if r == ref]
+    if exactas:
+        todas = [(r, t) for r, t in todas if t == exactas[0]]
+        linhas = [l for l in linhas if l[2] == exactas[0]]
+    if not linhas:
+        return None
+    linhas.sort(key=lambda l: _ordem_pedaco(l[1]))
+    return {"fonte": fonte, "ref": ref, "titulo": (exactas[0] if exactas else linhas[0][2]) or base,
+            "pedacos": [{"ref": l[1], "texto": l[3]} for l in linhas], "omitidos": max(0, len(todas) - len(linhas))}
 
 
 BANAIS = {"como", "para", "pelo", "pela", "esta", "este", "isso", "fazer", "feito", "sobre", "mais", "menos", "quando",
@@ -426,7 +465,7 @@ def pergunta(termo, como_json=False):
         return
     resp = _llm(termo, fortes)
     if como_json:
-        print(json.dumps({"resposta": resp, "fontes": [{"n": i, "titulo": r["titulo"], "ref": r["ref"]}
+        print(json.dumps({"resposta": resp, "fontes": [{"n": i, "titulo": r["titulo"], "ref": r["ref"], "fonte": r["fonte"]}
                                                         for i, r in enumerate(fortes, 1)]}, ensure_ascii=False)); return
     print(resp + "\n")
     recusa = resp.strip().lower().startswith("não está na memória")
@@ -548,6 +587,18 @@ def _comando(a):
         if not resto:
             sys.exit('python -m basalt.sig guarda "texto"')
         return guardar(" ".join(resto), de)
+    if a[0] == "fonte":                  # ronda 12: um resultado de [fontes_extra], só para ler (a página abre-o sem o poder mudar)
+        if len(a) < 3:
+            sys.exit("python -m basalt.sig fonte FONTE REF [--json]")
+        d = ler_fonte(a[1], a[2])
+        if "--json" in a[3:]:
+            print(json.dumps(d, ensure_ascii=False))
+        elif d is None:
+            print("não está no índice (ou não se mostra: parece ter uma password ou chave em claro).")
+        else:
+            print(f"{d['titulo']}  ({d['fonte']} · {d['ref']})\n")
+            print("\n\n".join(x["texto"] for x in d["pedacos"]))
+        return None if d else sys.exit(1)
     if a[0] == "entrada":
         return entrada("--json" in a[1:])
     if a[0] == "arquivar":
