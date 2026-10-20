@@ -8,7 +8,8 @@ resposta até o teste a soltar, para reproduzir corridas.
 Contas (ronda 8): `/api/eu` diz o `dono` da conta que está «no browser» (`ESTADO["dono"]`; mudá-lo = outra conta entrou); um pedido
 com `X-Basalt-Dono` diferente leva 403 «outra conta» (`X-Basalt-Outra-Conta: 1`), como o servidor a sério; ronda 9: sem ele leva 428
 (menos /api/eu), e com o certo a resposta traz o eco `X-Basalt-Dono` (o service worker só guarda com ele). Ficam registados os donos
-de cada pedido (`donos`), os textos enviados a /api/sincronizar com o dono (`sinc`) e os POST a /api/sair (`sair`).
+de cada pedido (`donos`), os textos enviados a /api/sincronizar com o dono (`sinc`) e a base deles (`sinc_base`), e os POST
+a /api/sair (`sair`).
 
 `BASALT_STATIC=DIR` testa outra versão da página (ex.: uma cópia antiga, para provar que cada teste apanha o defeito).
 Esperas SEMPRE com `page.wait_for_timeout` (nunca `time.sleep`: os eventos do Playwright não chegam).
@@ -53,6 +54,8 @@ GANCHO = ('window.__t = {guardarEdicaoOffline: guardarEdicaoOffline, sincronizar
           'swDaCopiaPronto: typeof swDaCopiaPronto === "function" ? swDaCopiaPronto : null, '
           'reservarInstante: typeof reservarInstante === "function" ? reservarInstante : null, '
           'guardarPacoteLocal: typeof guardarPacoteLocal === "function" ? guardarPacoteLocal : null, '
+          # ronda 12 (A): o aviso das edições guardadas à parte (lido de novo depois de o teste mexer na cópia)
+          'atualizarAvisoPendentes: typeof atualizarAvisoPendentes === "function" ? atualizarAvisoPendentes : null, '
           'protocolo: function(){ return typeof PROTOCOLO_COPIA === "undefined" ? null : PROTOCOLO_COPIA; }};\n  iniciarOffline();')
 
 NOTA = {"nome": "n1", "titulo": "n1", "desc": "nota de teste", "tipo": "project", "mtime": 1758900000, "projeto": "demo",
@@ -63,7 +66,7 @@ ESTADO = {}
 def reset(**k):
     ESTADO.update(modo="ok", pacote=[], put=[], sinc_pedidos=0, nota_texto="S novo", nota_hash="H2", put_solta=None,
                   sinc_409=None, sinc_503=False, pacote_solta=None, pacote_pedidos=0, nota_solta=None, put_falha_rede=False,
-                  nota_status=200, idioma="pt", pacote_uma=None, dono="d-ana", modo_auth="cabecalho", donos=[], sinc=[], sair=0, anexos=[])
+                  nota_status=200, idioma="pt", pacote_uma=None, dono="d-ana", modo_auth="cabecalho", donos=[], sinc=[], sinc_base=[], sair=0, anexos=[])
     ESTADO["sinc_solta"] = threading.Event()
     ESTADO.update(k)
 
@@ -195,6 +198,7 @@ class Servidor(BaseHTTPRequestHandler):
             corpo = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)) or b"{}")
             ESTADO["sinc_pedidos"] += 1
             ESTADO["sinc"].append((corpo.get("texto", ""), hd))
+            ESTADO["sinc_base"].append(corpo.get("base_texto", ""))      # ronda 12: a base com que a edição subiu
             if ESTADO["sinc_503"]:
                 return self._envia(503, {"erro": "ocupado", "estado": "ocupado"})
             ESTADO["sinc_solta"].wait(20)

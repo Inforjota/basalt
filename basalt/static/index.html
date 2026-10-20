@@ -611,6 +611,25 @@ body.modo-notas .obsidian-shell{
 #offline-aviso.mostrar{display:block}
 @media (max-width:720px){ #offline-aviso{bottom:76px} }
 
+/* ---------- ronda 12 (A): edições guardadas à parte neste aparelho (de uma versão anterior da página) ---------- */
+#pendentes-aviso{
+  position:fixed; right:16px; bottom:20px; z-index:70; max-width:360px;
+  background:var(--bg-elev); color:var(--text); border:1px solid var(--warning); border-left:4px solid var(--warning);
+  border-radius:var(--radius); box-shadow:var(--shadow); padding:10px 12px; font-size:.85rem;
+}
+#pendentes-aviso[hidden]{display:none}
+#pendentes-aviso p{margin:0 0 8px}
+.pendentes-accoes{display:flex; flex-wrap:wrap; gap:6px}
+#pendentes-aviso .btn{min-height:34px; padding:5px 10px; font-size:.82rem}
+@media (max-width:720px){ #pendentes-aviso{left:16px; right:16px; bottom:118px; max-width:none} }
+.pendentes-modal{max-width:720px}
+.pendentes-lista{list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px}
+.pendentes-cab{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:4px}
+pre.pendentes-texto{
+  white-space:pre-wrap; word-break:break-word; margin:0; max-height:240px; overflow:auto;
+  background:var(--bg-elev2); border:1px solid var(--border); border-radius:var(--radius-sm); padding:8px 10px; font-size:.82rem;
+}
+
 /* ---------- toasts ---------- */
 #toast-root{position:fixed; left:50%; bottom:20px; transform:translateX(-50%); z-index:100; display:flex; flex-direction:column; gap:8px; align-items:center; pointer-events:none}
 @media (max-width:720px){#toast-root{bottom:76px}}
@@ -1185,7 +1204,36 @@ const EN = {
   "Ideias que entraram na Entrada neste dia.": "Ideas that came into the Inbox on this day.",
   "nada para explicar aqui.": "Nothing to explain here.",
   "Terminar sessão ({quem})": "Sign out ({quem})",
-  "ainda não sei de que conta é este browser — não gravei; tenta outra vez daqui a pouco (o texto continua aqui).": "I don’t know yet which account this browser belongs to — nothing was saved; try again in a moment (your text is still here)."
+  "ainda não sei de que conta é este browser — não gravei; tenta outra vez daqui a pouco (o texto continua aqui).": "I don’t know yet which account this browser belongs to — nothing was saved; try again in a moment (your text is still here).",
+  "Há 1 edição guardada neste aparelho que não chegou a ser enviada.": "There is 1 edit saved on this device that was never sent.",
+  "Há {n} edições guardadas neste aparelho que não chegaram a ser enviadas.": "There are {n} edits saved on this device that were never sent.",
+  "Ver": "View",
+  "Enviar em meu nome": "Send as me",
+  "Descarregar": "Download",
+  "Esconder aviso": "Hide notice",
+  "Edições guardadas à parte neste aparelho": "Edits kept aside on this device",
+  "Ficaram de uma versão anterior desta página (ou de quando não havia sessão iniciada) e não se sabe de que conta eram, por isso não foram enviadas sozinhas. Nada foi apagado. Ver ou descarregar não envia nada.": "They were left by an earlier version of this page (or while nobody was signed in) and it is not known which account they belonged to, so they were not sent automatically. Nothing was deleted. Viewing or downloading sends nothing.",
+  "conflito por resolver": "unresolved conflict",
+  "Não há edições de conta desconhecida guardadas neste aparelho.": "There are no edits from an unknown account saved on this device.",
+  "a cópia deste aparelho está desligada: volta a ligá-la no Início para enviar estas edições (descarregar funciona sempre).": "the copy on this device is switched off: switch it back on from Home to send these edits (downloading always works).",
+  "precisa de rede para enviar — podes descarregar as edições sem rede.": "a network connection is needed to send — you can download the edits without one.",
+  "ainda não sei de que conta é este browser — não enviei nada; tenta outra vez daqui a pouco.": "I don’t know yet which account this browser belongs to — nothing was sent; try again in a moment.",
+  "não enviei: a cópia deste aparelho mudou entretanto (entrou outra conta ou a cópia foi apagada). Recarrega a página.": "nothing was sent: the copy on this device changed in the meantime (another account signed in or the copy was deleted). Reload the page.",
+  "1 edição entrou na fila para enviar em teu nome": "1 edit was queued to be sent as you",
+  "{n} edições entraram na fila para enviar em teu nome": "{n} edits were queued to be sent as you",
+  "1 conflito passou para a nota, para o resolveres lá": "1 conflict moved to its note, for you to resolve there",
+  "{n} conflitos passaram para as notas, para os resolveres lá": "{n} conflicts moved to their notes, for you to resolve there",
+  "1 ficou guardada à parte: já há outra alteração dessa nota por enviar ou por resolver": "1 stayed aside: that note already has another change waiting to be sent or resolved",
+  "{n} ficaram guardadas à parte: já há outras alterações dessas notas por enviar ou por resolver": "{n} stayed aside: those notes already have other changes waiting to be sent or resolved",
+  "não havia nada para enviar.": "there was nothing to send.",
+  "conflito": "conflict",
+  "aviso escondido. As edições continuam guardadas neste aparelho: estão no Início, em «Edições guardadas à parte neste aparelho».": "notice hidden. The edits are still saved on this device: find them on Home, under “Edits kept aside on this device”.",
+  "Edições guardadas à parte neste aparelho ({n})": "Edits kept aside on this device ({n})",
+  "1 edição de outra conta deste browser está guardada à parte: sobe quando essa conta voltar a entrar aqui.": "1 edit from another account in this browser is kept aside: it is sent when that account signs in here again.",
+  "{n} edições de outras contas deste browser estão guardadas à parte: sobem quando essas contas voltarem a entrar aqui.": "{n} edits from other accounts in this browser are kept aside: they are sent when those accounts sign in here again.",
+  "Edições por enviar": "Unsent edits",
+  "Há edições guardadas neste aparelho que não chegaram a ser enviadas e que não se sabe de que conta são. Vê-as, envia-as em teu nome (um conflito fica para resolveres na nota, nunca por cima), descarrega-as ou esconde o aviso (continuam no Início).": "Some edits saved on this device were never sent and it is not known which account they belong to. View them, send them as you (a conflict is left for you to resolve in the note, never overwritten), download them or hide the notice (they stay listed on Home).",
+  "Edições que ficaram neste aparelho sem chegar ao servidor e de que não se sabe a conta (de uma versão anterior desta página, por exemplo). Abre a lista para as ver, descarregar ou enviar em teu nome.": "Edits that stayed on this device without reaching the server and whose account is unknown (from an earlier version of this page, for example). Open the list to view, download or send them as you."
 };
 function t(s){ return IDIOMA === "en" && Object.prototype.hasOwnProperty.call(EN, s) ? EN[s] : s; }
 function tf(s, vars){ return t(s).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)); }
@@ -2007,6 +2055,7 @@ function verificarDono(){
       if(!eu || typeof eu.dono !== "string" || !eu.dono) return;
       await trocarDono(eu.dono);
       DONO_OK = (DONO === eu.dono);
+      atualizarAvisoPendentes();                             // ronda 12 (A): o que ficou à parte (ex.: de uma versão anterior) vê-se
     }catch(e){}
   })();
   DONO_A_VERIFICAR.then(function(){ DONO_A_VERIFICAR = null; });
@@ -2046,7 +2095,9 @@ async function trocarDono(novo){
           var gq = tx.objectStore("notas").count();
           gq.onsuccess = function(){
           if(semDono && novo && !gf.result.length && !gc.result.length && !gq.result){ meta.put({chave:"dono", valor: novo}); return; }
-          var chaveAntigo = semDono ? "?" : antigo;            // ronda 9: de quem não se sabe
+          // ronda 9: de quem não se sabe. Ronda 12: também com dono "" (depois de «Terminar sessão») — antes, o que lá estivesse
+          // por enviar perdia-se aqui (nem ia para a fila de quem entrou, nem ficava à parte)
+          var chaveAntigo = (semDono || antigo === "") ? "?" : antigo;
           var gg = meta.get("geracao");
           gg.onsuccess = function(){
             var gv = chaveAntigo ? meta.get("pendentes-de:" + chaveAntigo) : null;
@@ -2105,6 +2156,288 @@ window.basaltAntesDeSair = async function(){
   try{ await trocarDono(""); }catch(e){}
   DONO_OK = false;
 };
+
+/* ronda 12 (A — actualizar sem perder nada): o que ficou guardado À PARTE neste aparelho («pendentes-de:<conta>»).
+   «pendentes-de:?» = edições de uma versão anterior desta página (a cópia não tinha dono) ou escritas sem sessão iniciada: não se
+   sabe de que conta são, por isso NUNCA sobem sozinhas. Em vez de ficarem invisíveis, há um aviso com Ver (sem enviar nada) ·
+   Enviar em meu nome (entram na fila desta conta com a MESMA base de versão: o servidor junta-as ou devolve conflito — a nota
+   não é escrita por cima e a versão sem rede fica guardada no servidor) · Descarregar (.md, ou .zip com várias, feito aqui, sem
+   rede) · Esconder aviso (os dados ficam; voltam a ver-se no Início). Nada se apaga.
+   As de outra conta conhecida («pendentes-de:<outra>») sobem sozinhas quando ela voltar a entrar: aqui só se diz quantas são,
+   nunca o texto (são de outra pessoa). */
+var PENDENTES_SEM_DONO = "pendentes-de:?", PENDENTES_ESCONDIDO = "pendentes-escondido";
+var PENDENTES_ULTIMO = {itens: [], outras: 0, assinatura: ""};
+var A_ENVIAR_PENDENTES = false;
+function itensPendentes(v){
+  var out = [];
+  ((v && v.fila) || []).forEach(function(i){
+    if(i && typeof i.nome === "string") out.push({nome: i.nome, texto: i.texto == null ? "" : String(i.texto), quando: i.quando, rev: i.rev, tipo: "fila"});
+  });
+  ((v && v.conflitos) || []).forEach(function(c){
+    if(c && typeof c.nome === "string") out.push({nome: c.nome, texto: c.teu == null ? "" : String(c.teu), quando: c.quando, rev: c.rev, tipo: "conflito"});
+  });
+  return out;
+}
+function assinaturaPendentes(itens){
+  return itens.map(function(i){ return i.tipo + ":" + i.nome + ":" + (i.rev || i.quando || ""); }).sort().join("|");
+}
+function lerPendentesAParte(){
+  return abrirDB().then(function(db){
+    return new Promise(function(resolve, reject){
+      var tx = db.transaction("meta", "readonly"), meta = tx.objectStore("meta"), r = {semDono: null, outras: 0, escondido: null};
+      var ga = meta.getAll(IDBKeyRange.bound("pendentes-de:", "pendentes-de:￿"));
+      ga.onsuccess = function(){
+        (ga.result || []).forEach(function(v){
+          if(v.chave === PENDENTES_SEM_DONO) r.semDono = v;
+          else if(v.chave !== "pendentes-de:" + DONO) r.outras += (v.fila || []).length + (v.conflitos || []).length;
+        });
+      };
+      var ge = meta.get(PENDENTES_ESCONDIDO);
+      ge.onsuccess = function(){ r.escondido = ge.result ? ge.result.valor : null; };
+      tx.oncomplete = function(){ resolve(r); };
+      tx.onerror = function(){ reject(tx.error); };
+    });
+  });
+}
+/* lê de novo o que está à parte e mostra (ou esconde) o aviso; devolve quantas edições de conta desconhecida há. Só com a cópia
+   legível por quem está (com dono, não trancada, sem outra conta a meio) — o mesmo que mostra as notas da cópia. */
+async function atualizarAvisoPendentes(){
+  var r;
+  try{ r = await lerPendentesAParte(); }catch(e){ return 0; }
+  var podeVer = !!DONO && !COPIA_BLOQUEADA && !OUTRA_CONTA;
+  var itens = podeVer ? itensPendentes(r.semDono) : [], assinatura = assinaturaPendentes(itens), esc = r.escondido;
+  PENDENTES_ULTIMO = {itens: itens, outras: podeVer ? r.outras : 0, assinatura: assinatura};
+  // «esconder» vale para ESTE conjunto e esta conta: chega outra edição (ou entra outra conta) e o aviso volta
+  var escondido = !!(esc && esc.dono === DONO && esc.assinatura === assinatura);
+  mostrarAvisoPendentes(escondido ? 0 : itens.length);
+  preencherPendentesInicio();
+  return itens.length;
+}
+function accaoPendentes(a){
+  if(a === "ver") abrirPendentesModal();
+  else if(a === "enviar") enviarPendentesEmMeuNome();
+  else if(a === "descarregar") descarregarPendentes();
+  else if(a === "esconder") esconderAvisoPendentes();
+  else if(a === "fechar") fecharPendentesModal();
+}
+function mostrarAvisoPendentes(n){
+  var el = document.getElementById("pendentes-aviso");
+  if(!n){ if(el) el.hidden = true; return; }
+  if(!el){
+    el = document.createElement("div");
+    el.id = "pendentes-aviso";
+    el.setAttribute("role", "status");
+    el.addEventListener("click", function(e){
+      var b = e.target && e.target.closest ? e.target.closest("[data-pendentes]") : null;
+      if(b) accaoPendentes(b.getAttribute("data-pendentes"));
+    });
+    document.body.appendChild(el);
+  }
+  el.innerHTML = "<p>" + escapeHtml(n === 1 ? t("Há 1 edição guardada neste aparelho que não chegou a ser enviada.")
+                                           : tf("Há {n} edições guardadas neste aparelho que não chegaram a ser enviadas.", {n: n})) + "</p>" +
+    '<div class="pendentes-accoes">' +
+      '<button type="button" class="btn" data-pendentes="ver">' + t("Ver") + "</button>" +
+      '<button type="button" class="btn btn-primary" data-pendentes="enviar">' + t("Enviar em meu nome") + "</button>" +
+      '<button type="button" class="btn" data-pendentes="descarregar">' + t("Descarregar") + "</button>" +
+      '<button type="button" class="btn" data-pendentes="esconder">' + t("Esconder aviso") + "</button>" +
+    "</div>";
+  el.hidden = false;
+}
+function textoOutrasContas(n){
+  return n === 1 ? t("1 edição de outra conta deste browser está guardada à parte: sobe quando essa conta voltar a entrar aqui.")
+                 : tf("{n} edições de outras contas deste browser estão guardadas à parte: sobem quando essas contas voltarem a entrar aqui.", {n: n});
+}
+function preencherPendentesInicio(){
+  var el = document.getElementById("pendentes-inicio");
+  if(!el) return;
+  var p = PENDENTES_ULTIMO, n = (p.itens || []).length, partes = [];
+  if(n) partes.push('<a href="#" id="pendentes-link">' + escapeHtml(tf("Edições guardadas à parte neste aparelho ({n})", {n: n})) + "</a>");
+  if(p.outras) partes.push(escapeHtml(textoOutrasContas(p.outras)));
+  el.innerHTML = partes.join("<br>");
+  el.hidden = !partes.length;
+  var a = el.querySelector("#pendentes-link");
+  if(a) a.addEventListener("click", function(e){ e.preventDefault(); abrirPendentesModal(); });
+}
+function fecharPendentesModal(){
+  var root = document.getElementById("modal-root");
+  if(root && root.querySelector(".pendentes-modal")) root.innerHTML = "";
+}
+function abrirPendentesModal(){
+  var root = document.getElementById("modal-root");
+  if(!root) return;
+  var p = PENDENTES_ULTIMO, itens = p.itens || [];
+  var lista = itens.map(function(i){
+    var conf = i.tipo === "conflito";
+    return '<li class="pendentes-item"><div class="pendentes-cab"><strong>' + escapeHtml(i.nome) + "</strong> " +
+      '<span class="badge ' + (conf ? "badge-readonly" : "badge-porenviar") + '">' + (conf ? t("conflito por resolver") : t("por enviar")) + "</span>" +
+      (i.quando ? ' <span class="dim-note">' + escapeHtml(fmtDataCurta(new Date(i.quando))) + "</span>" : "") +
+      '</div><pre class="pendentes-texto">' + escapeHtml(i.texto) + "</pre></li>";
+  }).join("");
+  root.innerHTML =
+    '<div class="modal-backdrop" id="pendentes-backdrop">' +
+      '<div class="modal pendentes-modal" role="dialog" aria-modal="true" aria-labelledby="pendentes-titulo">' +
+        '<h2 id="pendentes-titulo">' + t("Edições guardadas à parte neste aparelho") + "</h2>" +
+        '<p class="dim-note">' + t("Ficaram de uma versão anterior desta página (ou de quando não havia sessão iniciada) e não se sabe de que conta eram, por isso não foram enviadas sozinhas. Nada foi apagado. Ver ou descarregar não envia nada.") + "</p>" +
+        (itens.length ? '<ul class="pendentes-lista">' + lista + "</ul>"
+                      : '<p class="dim-note">' + t("Não há edições de conta desconhecida guardadas neste aparelho.") + "</p>") +
+        (p.outras ? '<p class="dim-note">' + escapeHtml(textoOutrasContas(p.outras)) + "</p>" : "") +
+        '<div class="modal-actions pendentes-accoes">' +
+          (itens.length ? '<button type="button" class="btn" data-pendentes="descarregar">' + t("Descarregar") + "</button>" +
+                          '<button type="button" class="btn btn-primary" data-pendentes="enviar">' + t("Enviar em meu nome") + "</button>" : "") +
+          '<button type="button" class="btn" data-pendentes="fechar">' + t("Fechar") + "</button>" +
+        "</div></div></div>";
+  var fundo = root.querySelector("#pendentes-backdrop");
+  fundo.addEventListener("click", function(e){
+    if(e.target === fundo){ fecharPendentesModal(); return; }
+    var b = e.target && e.target.closest ? e.target.closest("[data-pendentes]") : null;
+    if(b) accaoPendentes(b.getAttribute("data-pendentes"));
+  });
+}
+/* «Enviar em meu nome»: passam para a fila (e os conflitos para a loja dos conflitos) DESTA conta, numa só transacção com a
+   cópia ligada, a mesma geração e o mesmo dono — e sobem pelo caminho normal (sincronizarFila), com a base que a página
+   anterior guardou. Uma nota que já tem outra alteração por enviar ou por resolver não é tocada: essa edição fica à parte. */
+async function enviarPendentesEmMeuNome(){
+  if(A_ENVIAR_PENDENTES) return;
+  if(COPIA_DESLIGADA){ showToast(t("a cópia deste aparelho está desligada: volta a ligá-la no Início para enviar estas edições (descarregar funciona sempre).")); return; }
+  if(!navigator.onLine){ showToast(t("precisa de rede para enviar — podes descarregar as edições sem rede.")); return; }
+  A_ENVIAR_PENDENTES = true;
+  try{
+    if(!(await donoConfirmado())){ showToast(t("ainda não sei de que conta é este browser — não enviei nada; tenta outra vez daqui a pouco.")); return; }
+    var dono = DONO, geracao = await geracaoActual(), r;
+    try{
+      r = await transacao(["fila", "conflitos", "notas", "meta"], function(tx, saida){
+        var meta = tx.objectStore("meta"), fila = tx.objectStore("fila"), confl = tx.objectStore("conflitos"), notas = tx.objectStore("notas");
+        saida.valor = {filas: 0, conflitos: 0, ficaram: 0};
+        seCopiaLigada(tx, saida, function(){ seGeracaoIgual(tx, saida, geracao, function(){
+          var gp = meta.get(PENDENTES_SEM_DONO);
+          gp.onsuccess = function(){
+            var v = gp.result;
+            if(!v) return;
+            var gfk = fila.getAllKeys();
+            gfk.onsuccess = function(){
+              var gck = confl.getAllKeys();
+              gck.onsuccess = function(){
+                var ocupado = {}, restoF = [], restoC = [];
+                (gfk.result || []).concat(gck.result || []).forEach(function(k){ ocupado[k] = true; });
+                (v.fila || []).forEach(function(i){
+                  if(!i || typeof i.nome !== "string" || ocupado[i.nome]){ restoF.push(i); return; }
+                  ocupado[i.nome] = true;
+                  var item = {nome: i.nome, base_texto: i.base_texto, texto: i.texto, quando: i.quando || Date.now(), rev: i.rev || novaRevisao()};
+                  fila.put(item);
+                  saida.valor.filas++;
+                  var n = notas.get(i.nome);
+                  n.onsuccess = function(){
+                    var local = n.result;
+                    if(local) instanteNaTx(tx, function(q){ local.texto = item.texto; local.porEnviar = true; local.guardadoEm = q; notas.put(local); });
+                  };
+                });
+                (v.conflitos || []).forEach(function(c){
+                  if(!c || typeof c.nome !== "string" || ocupado[c.nome]){ restoC.push(c); return; }
+                  ocupado[c.nome] = true;
+                  confl.put(c);
+                  saida.valor.conflitos++;
+                });
+                saida.valor.ficaram = restoF.length + restoC.length;
+                if(saida.valor.ficaram) meta.put({chave: PENDENTES_SEM_DONO, fila: restoF, conflitos: restoC});
+                else meta.delete(PENDENTES_SEM_DONO);
+              };
+            };
+          };
+        }, dono); });
+      });
+    }catch(e){ r = null; }
+    if(!r || typeof r !== "object"){
+      showToast(t("não enviei: a cópia deste aparelho mudou entretanto (entrou outra conta ou a cópia foi apagada). Recarrega a página."));
+      return;
+    }
+    await atualizarContadorFila();
+    await atualizarAvisoPendentes();
+    fecharPendentesModal();
+    var partes = [];
+    if(r.filas) partes.push(r.filas === 1 ? t("1 edição entrou na fila para enviar em teu nome") : tf("{n} edições entraram na fila para enviar em teu nome", {n: r.filas}));
+    if(r.conflitos) partes.push(r.conflitos === 1 ? t("1 conflito passou para a nota, para o resolveres lá") : tf("{n} conflitos passaram para as notas, para os resolveres lá", {n: r.conflitos}));
+    if(r.ficaram) partes.push(r.ficaram === 1 ? t("1 ficou guardada à parte: já há outra alteração dessa nota por enviar ou por resolver")
+                                              : tf("{n} ficaram guardadas à parte: já há outras alterações dessas notas por enviar ou por resolver", {n: r.ficaram}));
+    showToast(partes.length ? partes.join(" · ") + "." : t("não havia nada para enviar."));
+    if(r.filas) sincronizarFila();
+  }finally{
+    A_ENVIAR_PENDENTES = false;
+  }
+}
+/* «Descarregar»: tudo feito aqui (sem rede) — uma edição dá um .md; várias, um .zip sem compressão (um ficheiro por edição) */
+function nomeFicheiroSeguro(s){
+  var n = String(s == null ? "" : s).replace(/[\\\/:*?"<>|\u0000-\u001f]/g, "_").replace(/^\.+/, "_").slice(0, 120);
+  return n || "nota";
+}
+var CRC32_TABELA = null;
+function crc32(bytes){
+  if(!CRC32_TABELA){
+    CRC32_TABELA = new Uint32Array(256);
+    for(var n = 0; n < 256; n++){
+      var c = n;
+      for(var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      CRC32_TABELA[n] = c >>> 0;
+    }
+  }
+  var crc = 0xFFFFFFFF;
+  for(var i = 0; i < bytes.length; i++) crc = CRC32_TABELA[(crc ^ bytes[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+function zipSemCompressao(ficheiros){
+  var enc = new TextEncoder(), partes = [], central = [], desloc = 0, d = new Date();
+  var hora = ((d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1)) & 0xFFFF;
+  var dia = ((Math.max(d.getFullYear() - 1980, 0) << 9) | ((d.getMonth() + 1) << 5) | d.getDate()) & 0xFFFF;
+  ficheiros.forEach(function(f){
+    var nome = enc.encode(f.nome), dados = enc.encode(f.texto), crc = crc32(dados);
+    var loc = new DataView(new ArrayBuffer(30));                     // cabeçalho local (método 0 = guardado; 0x0800 = nome em UTF-8)
+    loc.setUint32(0, 0x04034b50, true); loc.setUint16(4, 20, true); loc.setUint16(6, 0x0800, true); loc.setUint16(8, 0, true);
+    loc.setUint16(10, hora, true); loc.setUint16(12, dia, true); loc.setUint32(14, crc, true);
+    loc.setUint32(18, dados.length, true); loc.setUint32(22, dados.length, true); loc.setUint16(26, nome.length, true); loc.setUint16(28, 0, true);
+    partes.push(loc.buffer, nome, dados);
+    var cen = new DataView(new ArrayBuffer(46));                     // entrada do directório central
+    cen.setUint32(0, 0x02014b50, true); cen.setUint16(4, 20, true); cen.setUint16(6, 20, true); cen.setUint16(8, 0x0800, true);
+    cen.setUint16(10, 0, true); cen.setUint16(12, hora, true); cen.setUint16(14, dia, true); cen.setUint32(16, crc, true);
+    cen.setUint32(20, dados.length, true); cen.setUint32(24, dados.length, true); cen.setUint16(28, nome.length, true);
+    cen.setUint16(30, 0, true); cen.setUint16(32, 0, true); cen.setUint16(34, 0, true); cen.setUint16(36, 0, true);
+    cen.setUint32(38, 0, true); cen.setUint32(42, desloc, true);
+    central.push(cen.buffer, nome);
+    desloc += 30 + nome.length + dados.length;
+  });
+  var tamCentral = central.reduce(function(s, p){ return s + p.byteLength; }, 0);
+  var fim = new DataView(new ArrayBuffer(22));
+  fim.setUint32(0, 0x06054b50, true); fim.setUint16(4, 0, true); fim.setUint16(6, 0, true);
+  fim.setUint16(8, ficheiros.length, true); fim.setUint16(10, ficheiros.length, true);
+  fim.setUint32(12, tamCentral, true); fim.setUint32(16, desloc, true); fim.setUint16(20, 0, true);
+  return new Blob(partes.concat(central, [fim.buffer]), {type: "application/zip"});
+}
+function descarregarBlob(blob, nome){
+  var url = URL.createObjectURL(blob), a = document.createElement("a");
+  a.href = url; a.download = nome; a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ URL.revokeObjectURL(url); a.remove(); }, 2000);
+}
+function descarregarPendentes(){
+  var itens = PENDENTES_ULTIMO.itens || [];
+  if(!itens.length) return;
+  var usados = {}, ficheiros = itens.map(function(i){
+    var base = nomeFicheiroSeguro(i.nome) + (i.tipo === "conflito" ? " (" + t("conflito") + ")" : ""), nome = base + ".md", k = 2;
+    while(usados[nome.toLowerCase()]){ nome = base + " (" + k + ").md"; k++; }
+    usados[nome.toLowerCase()] = true;
+    return {nome: nome, texto: i.texto};
+  });
+  if(ficheiros.length === 1){
+    descarregarBlob(new Blob([ficheiros[0].texto], {type: "text/markdown;charset=utf-8"}), ficheiros[0].nome);
+    return;
+  }
+  var d = new Date(), dois = function(x){ return (x < 10 ? "0" : "") + x; };
+  descarregarBlob(zipSemCompressao(ficheiros), "basalt-edicoes-por-enviar-" + d.getFullYear() + "-" + dois(d.getMonth() + 1) + "-" + dois(d.getDate()) + ".zip");
+}
+async function esconderAvisoPendentes(){
+  try{ await idbPut("meta", {chave: PENDENTES_ESCONDIDO, valor: {assinatura: PENDENTES_ULTIMO.assinatura, dono: DONO}}); }catch(e){}
+  mostrarAvisoPendentes(0);
+  showToast(t("aviso escondido. As edições continuam guardadas neste aparelho: estão no Início, em «Edições guardadas à parte neste aparelho»."));
+}
 /* ronda 6 G6: a geração que vale AGORA — a persistente, posta em dia com a deste separador nos dois sentidos (a IndexedDB
    pode ter sido limpa pelo browser e o localStorage não, ou o contrário). É o que cada pedido captura antes de partir. */
 function geracaoActual(){
@@ -2701,6 +3034,7 @@ async function iniciarOffline(){
   var aviso = lerLocal("basalt-aviso-pos-recarga");
   if(aviso){ gravarLocal("basalt-aviso-pos-recarga", null); showToast(aviso); }
   atualizarContadorFila();
+  atualizarAvisoPendentes();                                   // ronda 12 (A)
   if(navigator.onLine){ sincronizarPacote(); sincronizarFila(); }
   setInterval(function(){
     if(navigator.onLine && document.visibilityState === "visible") sincronizarPacote();
@@ -3670,7 +4004,9 @@ async function viewHome(main){
           '<a class="btn" href="#/entrada">' + t("Abrir a entrada →") + '</a></section>' +
       "</div>" +
       '<p class="dim-note" style="margin-top:24px"><a href="#" id="apagar-copia-link">' +
-        (COPIA_DESLIGADA ? t("Voltar a guardar cópia neste aparelho (para funcionar sem rede)") : t("Apagar cópia deste aparelho")) + "</a></p>";
+        (COPIA_DESLIGADA ? t("Voltar a guardar cópia neste aparelho (para funcionar sem rede)") : t("Apagar cópia deste aparelho")) + "</a></p>" +
+      '<p class="dim-note" id="pendentes-inicio" hidden></p>';          // ronda 12 (A): o que ficou guardado à parte neste aparelho
+    atualizarAvisoPendentes();
     body.querySelector("#quick-guarda-btn").addEventListener("click", function(){ quickGuarda(body); });
     body.querySelector("#quick-guarda-input").addEventListener("keydown", function(e){
       if(e.key === "Enter") quickGuarda(body);
@@ -6067,7 +6403,8 @@ var AJUDA = {
       {sel: "#salto-rapido-btn", nome: t("Saltar para nota"), texto: t("Pesquisa rápida para saltares direto para qualquer nota, sem tirar as mãos do teclado (Ctrl+O).")},
       {sel: "#theme-toggle", nome: t("Tema"), texto: t("Alterna entre tema claro e escuro. Fica guardado neste aparelho.")},
       {sel: "#ligar-ia-btn", nome: t("Ligar a tua IA"), texto: t("Liga o Claude, o ChatGPT, o Claude Code ou o Codex às tuas notas, e vê ou revoga as ligações.")},
-      {sel: "#ajuda-btn", nome: t("Ajuda"), texto: t("Esta ajuda — mostra o que cada coisa desta página faz.")}
+      {sel: "#ajuda-btn", nome: t("Ajuda"), texto: t("Esta ajuda — mostra o que cada coisa desta página faz.")},
+      {sel: "#pendentes-aviso", nome: t("Edições por enviar"), texto: t("Há edições guardadas neste aparelho que não chegaram a ser enviadas e que não se sabe de que conta são. Vê-as, envia-as em teu nome (um conflito fica para resolveres na nota, nunca por cima), descarrega-as ou esconde o aviso (continuam no Início).")}
     ]),
   inicio: [
     {sel: ".cards-grid", nome: t("Números-resumo"), texto: t("Quantas notas tens, quantas ligações entre elas, quantas ideias por arrumar na Entrada e quantos pedaços de texto há para pesquisar.")},
@@ -6076,7 +6413,8 @@ var AJUDA = {
     {sel: ".quick-guarda", nome: t("Guardar uma ideia"), texto: t("Guarda uma ideia rápida sem saíres desta página — fica à espera na Entrada.")},
     {sel: ".home-grid section.panel:nth-of-type(1)", nome: t("Últimas alterações"), texto: t("As últimas gravações feitas na memória.")},
     {sel: ".home-grid section.panel:nth-of-type(2)", nome: t("Entrada"), texto: t("Quantas ideias da Entrada já têm sugestão de nota, e atalho para as abrires.")},
-    {sel: "#apagar-copia-link", nome: t("Apagar cópia deste aparelho"), texto: t("Apaga a cópia local das notas guardada neste aparelho e deixa de a guardar até voltares a ligar (no mesmo sítio). Não apaga nada no servidor — só a cópia para funcionar sem rede.")}
+    {sel: "#apagar-copia-link", nome: t("Apagar cópia deste aparelho"), texto: t("Apaga a cópia local das notas guardada neste aparelho e deixa de a guardar até voltares a ligar (no mesmo sítio). Não apaga nada no servidor — só a cópia para funcionar sem rede.")},
+    {sel: "#pendentes-link", nome: t("Edições guardadas à parte neste aparelho"), texto: t("Edições que ficaram neste aparelho sem chegar ao servidor e de que não se sabe a conta (de uma versão anterior desta página, por exemplo). Abre a lista para as ver, descarregar ou enviar em teu nome.")}
   ],
   notas: [
     {sel: "#exp-filtro", nome: t("Filtrar notas"), texto: t("Filtra a lista de notas pelo título ou pela descrição.")},
