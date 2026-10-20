@@ -495,7 +495,7 @@ def entrada_apagar(t):
 
 
 # ───────── Entrada AUTOMÁTICA («Automático + Desfazer») ─────────
-# De 3 em 3 min: cada ideia nova → candidatas (palavra rara em comum + significado) → a IA do [ia] decide juntar/lixo/dúvida.
+# De 3 em 3 min: cada ideia nova → candidatas (palavra rara em comum + significado) → a IA de [ia.arrumar] (ou a de [ia]) decide juntar/lixo/dúvida.
 # Travões: só junta a uma CANDIDATA com confiança ≥ 0.75; só arquiva como teste se for curta (≤ 60) e SEM palavras distintivas
 # (uma ideia real nunca vai para o lixo); o resto fica na Entrada como sugestão para o utilizador aprovar. Tudo com Desfazer.
 # PORTE: era um modelo local fixo; agora `ia.actual().chat_json`. Sem IA de chat a entrada automática não faz nada (vigia_entrada

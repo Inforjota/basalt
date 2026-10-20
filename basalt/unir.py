@@ -1,5 +1,5 @@
 """basalt.unir — funde duas notas numa só sem perder nada e mantém a memória funcional.
-Passos: fundir (a IA configurada em [ia]) → VALIDAR (nada perdido; senão não aplica) → aplicar (fotografia git; grava a que fica;
+Passos: fundir (a IA da tarefa «unir»: [ia.unir] por cima de [ia]) → VALIDAR (nada perdido; senão não aplica) → aplicar (fotografia git; grava a que fica;
 troca [[fundida]]→[[que fica]] nas outras notas; índice MEMORY.md; apaga a fundida; commit) → pode DESFAZER (git revert).
 Usado pela página (botão «Unir» em Arrumar) e por basalt.auto_arrumar. CLI: python -m basalt.unir --teste (sem rede, numa
 memória de rascunho).

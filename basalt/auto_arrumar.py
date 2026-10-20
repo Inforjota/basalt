@@ -1,6 +1,6 @@
 """basalt.auto_arrumar — arruma sozinho, de noite, as «notas muito parecidas» da memória.
 
-Para cada par parecido (basalt.arrumar), a IA configurada em [ia] decide:
+Para cada par parecido (basalt.arrumar), a IA da tarefa «arrumar» decide ([ia.arrumar] por cima de [ia]; a fusão é da de [ia.unir]):
   ligar    mesmo projecto, partes diferentes → põe [[ligação]] nas duas (só acrescenta; nada se perde)
   arquivar uma é registo velho (sessão/snapshot) da outra → a principal ganha «Histórico: [[velha]]» e a velha sai do MEMORY.md
   unir     dizem o mesmo → funde (basalt.unir, como o botão Unir), SÓ se: confiança ≥ 0.85, nenhuma mexida nas últimas 6 h,
@@ -11,7 +11,7 @@ Cada alteração: fotografia git antes + commit + «trabalho» em <dados>/unir/ 
 botão Desfazer. Resumo: <dados>/auto-arrumar/ultimo.json (e no stdout). Pares já decididos não voltam a ser avaliados durante 30 dias.
 
   python -m basalt.auto_arrumar [--simular]      --simular: só mostra o que faria (não grava)
-Pensado para correr de noite (cron/systemd timer), depois de `python -m basalt.sig indexar`. Precisa de [ia] fornecedor ≠ «nenhum»;
+Pensado para correr de noite (cron/systemd timer), depois de `python -m basalt.sig indexar`. Precisa de uma IA ([ia] ou [ia.arrumar] fornecedor ≠ «nenhum»);
 sem IA não faz nada (e não deixa a memória a meio).
 """
 import datetime, fcntl, hashlib, json, os, re, subprocess, sys, time, uuid
