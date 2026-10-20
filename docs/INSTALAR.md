@@ -130,10 +130,12 @@ nos tokens, por isso tem de ser exactamente o que vais colar no Claude/ChatGPT (
 
 O Claude e o ChatGPT chamam o Basalt **a partir da nuvem deles**, não do teu computador: o endereço tem de se ver na internet
 (um proxy público, ou um túnel como o Cloudflare Tunnel ou o Tailscale Funnel se o Basalt está em casa). Se o proxy tem login (SSO),
-estas rotas ficam **sem** ele — a protecção é o token:
+estas rotas ficam **sem** ele — a protecção é o token. Cada uma leva `auth_request off;`: se o login estiver definido no bloco
+`server` (como é costume), as `location` herdam-no, e não pôr a directiva **não** o desliga — a nuvem da IA ficava a bater no login:
 
 ```nginx
 location ~ ^/(mcp|\.well-known/oauth-|oauth/(register|token)$) {   # chamadas pela nuvem da IA
+    auth_request off;
     proxy_pass http://127.0.0.1:8121;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $remote_addr;
@@ -151,6 +153,7 @@ location = /oauth/authorize {
 }
 location = /__basalt_oauth_inicio {
     internal;
+    auth_request off;           # também aqui: sem isto herdava o login do server
     proxy_pass http://127.0.0.1:8121/oauth/authorize$is_args$args;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $remote_addr;
