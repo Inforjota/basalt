@@ -119,8 +119,9 @@ def definir(ia_) -> None:
 
 def actual(tarefa: str | None = None) -> "IA":
     """a IA do processo, construída do basalt.toml à primeira chamada. Usada pelos módulos de linha de comandos (sig,
-    categorias, unir, arrumar…) para não ser cada um a ler a configuração. Com `tarefa` ("unir", "arrumar") é a dessa tarefa:
-    [ia] com o que [ia.<tarefa>] sobrepuser (sem a sub-tabela, a mesma de sempre)."""
+    categorias, unir, arrumar…) para não ser cada um a ler a configuração. Com `tarefa` ("unir", "arrumar", "entrada") é a dessa
+    tarefa: [ia] com o que [ia.<tarefa>] sobrepuser (sem a sub-tabela, a de recurso — a Entrada usa a de [ia.arrumar] — ou a de
+    sempre)."""
     global _global
     if _global is None:
         from .config import carregar
@@ -138,10 +139,17 @@ class IA:
         self._tarefas: dict = {}
 
     def para(self, tarefa: str) -> "IA":
-        """a IA de uma tarefa ([ia.<tarefa>] por cima de [ia]); sem sub-tabela, esta mesma."""
+        """a IA de uma tarefa ([ia.<tarefa>] por cima de [ia]); sem sub-tabela, a da tarefa de recurso (o MESMO objecto: a Entrada
+        sem [ia.entrada] partilha a IA de [ia.arrumar]) ou esta mesma."""
         if tarefa not in self._tarefas:
             c = self.cfg.para(tarefa)
-            self._tarefas[tarefa] = self if c is self.cfg else type(self)(c)
+            if c is self.cfg:
+                x = self
+            elif c.seccao != f"ia.{tarefa}":           # veio de outra tarefa (RECURSO_IA)
+                x = self.para(c.seccao.split(".", 1)[1])
+            else:
+                x = type(self)(c)
+            self._tarefas[tarefa] = x
         return self._tarefas[tarefa]
 
     # ── estado ──
@@ -161,12 +169,13 @@ class IA:
         d = {"chat": self.cfg.fornecedor, "modelo": self.modelo if self.chat_activo else "",
              "embeddings": (self.cfg.embeddings_fornecedor or ("openai" if self.cfg.fornecedor == "openai" else "nenhum")),
              "modelo_embeddings": self.cfg.embeddings_modelo if self.embeddings_activos else ""}
-        if self.cfg.tarefas:                           # só quando há [ia.unir]/[ia.arrumar]: qual está em uso em cada tarefa
+        if self.cfg.tarefas:                           # só quando há [ia.unir]/[ia.arrumar]/[ia.entrada]: qual está em uso em cada tarefa
             from .config import TAREFAS_IA
             d["tarefas"] = {}
-            for t in TAREFAS_IA:
+            for t in TAREFAS_IA:                       # «de»: a secção de onde veio ("ia", "ia.arrumar"…)
                 x = self.para(t)
-                d["tarefas"][t] = {"chat": x.cfg.fornecedor, "modelo": x.modelo if x.chat_activo else "", "propria": x is not self}
+                d["tarefas"][t] = {"chat": x.cfg.fornecedor, "modelo": x.modelo if x.chat_activo else "", "propria": x is not self,
+                                   "de": x.cfg.seccao}
         return d
 
     # ── chat ──

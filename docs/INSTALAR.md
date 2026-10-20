@@ -65,8 +65,8 @@ sudo cp sistema/basalt-arrumar.* /etc/systemd/system/ && sudo systemctl enable -
 O código fica em `/opt/basalt` (sem pip) e as unidades põem `PYTHONPATH=/opt/basalt`; o serviço corre em `/var/lib/basalt`
 com o `basalt.toml` de lá. Se puseres o código noutro sítio, ajusta o `PYTHONPATH` nas duas unidades. O timer corre
 `basalt arrumar --auto` às 04:10, com o mesmo utilizador e o mesmo endurecimento do serviço. Por cada espaço faz o que o servidor faz à Entrada
-(se `[entrada] automatica` estiver ligada), arruma as notas parecidas, reindexa e refaz as categorias; precisa de uma IA configurada (`[ia]`),
-sem ela só reindexa e refaz as categorias. Para ver o que faria sem escrever nada: `basalt arrumar --auto --simular`.
+(se `[entrada] automatica` estiver ligada), arruma as notas parecidas, reindexa e refaz as categorias; a Entrada e as notas parecidas
+precisam de uma IA configurada (`[ia]`, ou a de cada tarefa — § 5); sem ela só reindexa e refaz as categorias. Para ver o que faria sem escrever nada: `basalt arrumar --auto --simular`.
 
 ## 4. Na rede: proxy com HTTPS
 
@@ -178,13 +178,15 @@ O `basalt/basalt.toml.exemplo` já aponta ao Ollama local. Qualquer API compatí
 Sem IA nenhuma: a pesquisa é por palavras (BM25), a Entrada arruma-se à mão, o editor não tem os botões de IA. Tudo o resto
 funciona.
 
-**Uma IA por tarefa (opcional).** `[ia.unir]` (fundir notas: o botão Unir e o `arrumar --auto`) e `[ia.arrumar]` (classificar:
-a Entrada e as notas parecidas) podem usar outro fornecedor ou modelo — por exemplo um modelo local barato para classificar e um
-mais forte para fundir. Cada uma só muda o que declara (`fornecedor`, `url`, `modelo_chat`, `chave_env`, `chave_ficheiro`,
+**Uma IA por tarefa (opcional).** `[ia.unir]` (fundir notas: o botão Unir e o `arrumar --auto`), `[ia.arrumar]` (decidir os
+pares de notas parecidas do `arrumar --auto`) e `[ia.entrada]` (classificar as ideias da Entrada, no servidor e no `arrumar --auto`)
+podem usar outro fornecedor ou modelo — por exemplo um modelo local barato para a Entrada e um mais forte para fundir. Sem
+`[ia.entrada]`, a Entrada usa a de `[ia.arrumar]` e, sem essa, a de `[ia]`. Cada uma só muda o que declara (`fornecedor`, `url`, `modelo_chat`, `chave_env`, `chave_ficheiro`,
 `tempo_limite`); o resto vem de `[ia]`. A chave de `[ia]` só passa para a tarefa se o fornecedor e o url forem os mesmos (a
 chave de um serviço nunca vai para outro endereço). Os limites por hora continuam os de `[ia]`. `basalt estado` mostra a IA de
-cada tarefa; `[ia.unir] fornecedor = "nenhum"` desliga só a fusão (o `arrumar --auto` passa a ligar as notas parecidas em vez
-de as fundir).
+cada tarefa e de onde vem. Uma tarefa desligada não leva as outras: `[ia.unir] fornecedor = "nenhum"` desliga só a fusão (o
+`arrumar --auto` passa a ligar as notas parecidas em vez de as fundir); `[ia.arrumar] fornecedor = "nenhum"` desliga só os pares
+(a Entrada continua a ser classificada pela de `[ia.entrada]`, e o índice e as categorias continuam a ser refeitos).
 
 ## 6. Cópias de segurança
 
@@ -204,6 +206,7 @@ password em claro → recusa com código de saída 2, nada fica gravado):
 ```bash
 python3 -m basalt --config ~/basalt-dados/basalt.toml entrada "comprar velas" --de telegram -u ana@exemplo.pt
 printf '%s' "$TEXTO" | python3 -m basalt entrada - --de telegram     # «-»: o texto vem do stdin (não aparece na lista de processos)
+python3 -m basalt entrada --de telegram -- "-urgente"               # um texto que comece por «-» vai depois de --
 python3 -m basalt entrada                                            # sem texto: lista as ideias por arrumar (--json)
 ```
 

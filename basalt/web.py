@@ -495,10 +495,11 @@ def entrada_apagar(t):
 
 
 # ───────── Entrada AUTOMÁTICA («Automático + Desfazer») ─────────
-# De 3 em 3 min: cada ideia nova → candidatas (palavra rara em comum + significado) → a IA de [ia.arrumar] (ou a de [ia]) decide juntar/lixo/dúvida.
+# De 3 em 3 min: cada ideia nova → candidatas (palavra rara em comum + significado) → a IA da Entrada ([ia.entrada]; sem ela a de
+# [ia.arrumar]; sem essa a de [ia]) decide juntar/lixo/dúvida.
 # Travões: só junta a uma CANDIDATA com confiança ≥ 0.75; só arquiva como teste se for curta (≤ 60) e SEM palavras distintivas
 # (uma ideia real nunca vai para o lixo); o resto fica na Entrada como sugestão para o utilizador aprovar. Tudo com Desfazer.
-# PORTE: era um modelo local fixo; agora `ia.actual().chat_json`. Sem IA de chat a entrada automática não faz nada (vigia_entrada
+# PORTE: era um modelo local fixo; agora `ia.actual("entrada").chat_json`. Sem IA de chat a entrada automática não faz nada (vigia_entrada
 # nem arranca). Os travões usam `sim` do motor: em pesquisa só por palavras a escala é outra e quase nada passa (fica «dúvida»).
 def _candidatas(texto, n=3):
     textos = {p.stem: _norm(caminhos.ler_texto(p)) for p in caminhos.notas(COPIA)}
@@ -522,7 +523,7 @@ def decidir_entrada(texto):
     desc = "\n".join(f"{i}) {k} — {campo(caminhos.ler_texto(COPIA / (k + '.md')), 'description')[:200]}"
                      for i, (k, *_) in enumerate(cands, 1)) or "(nenhuma)"
     try:
-        d = ia_mod.actual("arrumar").chat_json(f"""Ideia guardada à pressa pelo utilizador: «{texto[:1500]}»
+        d = ia_mod.actual("entrada").chat_json(f"""Ideia guardada à pressa pelo utilizador: «{texto[:1500]}»
 Notas candidatas da memória dele:
 {desc}
 Responde só JSON: {{"acao":"juntar|lixo|duvida","nota":"<nome exacto de uma candidata ou vazio>","confianca":0.0-1.0,"motivo":"frase curta em português de Portugal"}}
@@ -591,8 +592,8 @@ def processar_entrada():
 
 
 def vigia_entrada(cfg):
-    if not (cfg.entrada.automatica and ia_mod.actual("arrumar").chat_activo):
-        return                                     # PORTE: sem IA de chat (ou desligada no toml) não há entrada automática; ronda 12: a de [ia.arrumar]
+    if not (cfg.entrada.automatica and ia_mod.actual("entrada").chat_activo):
+        return                                     # PORTE: sem IA de chat (ou desligada no toml) não há entrada automática; ronda 12: a de [ia.entrada] (→ [ia.arrumar] → [ia])
     while True:
         for esp in _espacos(cfg):
             try:

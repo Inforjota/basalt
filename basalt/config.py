@@ -25,9 +25,13 @@ ENV_CONFIG = "BASALT_CONFIG"
 LOCAIS = ("./basalt.toml", "~/.config/basalt/basalt.toml", "/etc/basalt/basalt.toml")
 ESPACO_OMISSAO = "principal"
 FORNECEDORES = ("nenhum", "openai", "anthropic", "claude-cli")
-# IA por tarefa: [ia.unir] (o botão Unir e as fusões do `arrumar --auto`) e [ia.arrumar] (classificar a Entrada e decidir os pares
-# parecidos). Cada uma sobrepõe só estes campos de [ia]; o resto (limites por hora, texto máximo, embeddings) é sempre o de [ia].
-TAREFAS_IA = ("unir", "arrumar")
+# IA por tarefa: [ia.unir] (o botão Unir e as fusões do `arrumar --auto`), [ia.arrumar] (decidir os pares de notas parecidas do
+# `arrumar --auto`) e [ia.entrada] (classificar as ideias da Entrada: o vigia do servidor e o `arrumar --auto`). Cada uma sobrepõe
+# só estes campos de [ia]; o resto (limites por hora, texto máximo, embeddings) é sempre o de [ia].
+TAREFAS_IA = ("unir", "arrumar", "entrada")
+# sem a sua sub-tabela, uma tarefa usa a de outra antes de cair em [ia]: a Entrada era classificada pela de [ia.arrumar] antes de
+# haver [ia.entrada], e assim continua para quem não a declarar (entrada → arrumar → [ia])
+RECURSO_IA = {"entrada": "arrumar"}
 CAMPOS_TAREFA = ("fornecedor", "url", "modelo_chat", "chave_env", "chave_ficheiro", "tempo_limite")
 MODOS_AUTH = ("cabecalho", "senha", "aberto")
 IDIOMAS = ("pt", "en", "auto")
@@ -72,7 +76,7 @@ class IAConfig:
     embeddings_url: str = ""            # openai: …/v1 (usa /embeddings) · ollama: http://host:11434 (usa /api/embeddings)
     embeddings_modelo: str = "nomic-embed-text"
     embeddings_chave_env: str = ""      # "" = a mesma do chat
-    tarefas: dict = field(default_factory=dict)   # [ia.unir], [ia.arrumar]… tal como vêm do toml (só em [ia])
+    tarefas: dict = field(default_factory=dict)   # [ia.unir], [ia.arrumar], [ia.entrada] tal como vêm do toml (só em [ia])
     seccao: str = "ia"                  # de onde vem esta configuração, para as mensagens ("ia" ou "ia.unir"…)
     proprios: frozenset = frozenset()   # os campos que a tarefa declarou ela própria (o resto veio de [ia])
 
@@ -81,15 +85,17 @@ class IAConfig:
         return f != "nenhum"
 
     def para(self, tarefa: str) -> "IAConfig":
-        """a configuração de IA para uma tarefa: [ia] com o que [ia.<tarefa>] declarar por cima. Sem a sub-tabela é o próprio
-        [ia] (o mesmo objecto). Regras da herança — a chave de [ia] nunca vai parar a outro sítio sem se pedir:
+        """a configuração de IA para uma tarefa: [ia] com o que [ia.<tarefa>] declarar por cima. Sem a sub-tabela é a da tarefa de
+        recurso (RECURSO_IA: a Entrada usa a de [ia.arrumar]) e, sem essa, o próprio [ia] (o mesmo objecto); `seccao` diz qual
+        ficou. Regras da herança — a chave de [ia] nunca vai parar a outro sítio sem se pedir:
           · outro fornecedor → só herda o tempo_limite (url, modelo e chave são os da sub-tabela);
           · o mesmo fornecedor → herda tudo, mas a chave só se o url também for o mesmo;
           · declarar chave_env sem chave_ficheiro (ou o contrário) tira a outra.
         Com valores maus (só possível com validar=False) fica o herdado: quem valida é o `validar()`."""
         t = self.tarefas.get(tarefa)
         if not isinstance(t, dict):
-            return self
+            outra = RECURSO_IA.get(tarefa)
+            return self.para(outra) if outra else self
         d = {k: t[k] for k in CAMPOS_TAREFA if k in t}
         for k in ("fornecedor", "url", "modelo_chat", "chave_env", "chave_ficheiro"):
             if k in d and not isinstance(d[k], str):
@@ -194,7 +200,7 @@ class Config:
             raise ConfigInvalida(f"[ia] fornecedor tem de ser um de {FORNECEDORES}, não {self.ia.fornecedor!r}")
         if self.ia.fornecedor == "openai" and not self.ia.url:
             raise ConfigInvalida("[ia] fornecedor openai precisa de url (ex.: http://127.0.0.1:11434/v1)")
-        for nome, t in self.ia.tarefas.items():          # [ia.unir], [ia.arrumar]: as mesmas regras de [ia]
+        for nome, t in self.ia.tarefas.items():          # [ia.unir], [ia.arrumar], [ia.entrada]: as mesmas regras de [ia]
             if nome not in TAREFAS_IA:
                 raise ConfigInvalida(f"[ia] não conheço a secção [ia.{nome}]: as tarefas com IA própria são "
                                      + ", ".join(f"[ia.{x}]" for x in TAREFAS_IA) + " (e [ia.embeddings] para a pesquisa)")

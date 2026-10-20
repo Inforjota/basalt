@@ -58,8 +58,10 @@ modelo = "nomic-embed-text"
 # fornecedor = "claude-cli"        # pode mudar: fornecedor, url, modelo_chat, chave_env, chave_ficheiro, tempo_limite; o resto vem de [ia]
 # modelo_chat = "sonnet"
 # tempo_limite = 600               # segundos; sem ele, o tempo de cada pedido fica o de sempre
-# [ia.arrumar]                     # opcional: outra IA só para CLASSIFICAR (a Entrada e as notas parecidas) — p. ex. uma mais barata
-# url = "http://127.0.0.1:11434/v1"
+# [ia.arrumar]                     # opcional: outra IA só para decidir os PARES de notas parecidas (`arrumar --auto`)
+# fornecedor = "nenhum"            # p. ex. desligar só os pares (a Entrada, o índice e as categorias continuam)
+# [ia.entrada]                     # opcional: outra IA só para CLASSIFICAR a Entrada — p. ex. uma mais barata
+# url = "http://127.0.0.1:11434/v1"  # sem [ia.entrada] a Entrada usa a de [ia.arrumar] e, sem essa, a de [ia]
 # modelo_chat = "qwen2.5:3b"
 # (a chave de [ia] só passa para a tarefa se o fornecedor E o url forem os mesmos; senão declara chave_env/chave_ficheiro aqui.
 #  Os limites por hora são os de [ia], para todas. As categorias, o editor e a pergunta com fontes usam sempre [ia].)

@@ -324,18 +324,35 @@ def cmd_arrumar(a):
         if a.auto:
             # ronda 9 (achado M6 da ronda 2): o timer nocturno faz o mesmo que o servidor numa volta do vigia — a Entrada (web.processar_entrada) —
             # e mais a arrumação das notas parecidas, o índice e as categorias, pelas MESMAS funções. Com --simular não escreve nada.
-            if not ia_mod.actual("arrumar").chat_activo:
-                print(f"[{esp.nome}] a arrumação automática precisa de uma IA ([ia] ou [ia.arrumar] fornecedor); só o relatório.", file=sys.stderr)
+            # Ronda 12: a Entrada e os pares têm cada um a sua IA ([ia.entrada] → [ia.arrumar] → [ia]; [ia.arrumar] → [ia]) e uma
+            # desligada não leva a outra: com os pares desligados a Entrada continua a ser classificada (antes saltava as duas).
+            ent, par = ia_mod.actual("entrada"), ia_mod.actual("arrumar")
+            if not ent.chat_activo and not par.chat_activo:
+                print(f"[{esp.nome}] a arrumação automática precisa de uma IA ([ia], [ia.entrada] ou [ia.arrumar] fornecedor); só o relatório.",
+                      file=sys.stderr)
             else:
                 if cfg.entrada.automatica:
-                    _arrumar_entrada(esp, bool(a.simular), entrada_mod)
-                auto_arrumar.SIMULAR = bool(a.simular)
-                auto_arrumar._correr()
+                    if ent.chat_activo:
+                        _arrumar_entrada(esp, bool(a.simular), entrada_mod)
+                    else:
+                        print(f"[{esp.nome}] Entrada: sem IA ([{_seccao_ia(ent)}] fornecedor = \"nenhum\"); as ideias ficam para arrumar à mão.",
+                              file=sys.stderr)
+                if par.chat_activo:
+                    auto_arrumar.SIMULAR = bool(a.simular)
+                    auto_arrumar._correr()
+                else:
+                    print(f"[{esp.nome}] notas parecidas: sem IA ([{_seccao_ia(par)}] fornecedor = \"nenhum\"); não decidi nenhum par.",
+                          file=sys.stderr)
             if not a.simular:
                 sig.indexar()
                 categorias.main()
         arrumar.relatorio()
     _dentro_de_cada(cfg, a, um)
+
+
+def _seccao_ia(x):
+    """a secção do basalt.toml de onde vem uma IA ("ia", "ia.arrumar"…), para as mensagens."""
+    return getattr(getattr(x, "cfg", None), "seccao", "ia")
 
 
 def _arrumar_entrada(esp, simular, entrada_mod):
@@ -437,10 +454,11 @@ def cmd_estado(a):
     cfg = _cfg(a)
     print(f"basalt {__version__} · config {_caminho_config(a)}\n dados {cfg.dados} · escuta {config.endereco(cfg.escutar, cfg.porta)} · auth {cfg.auth.modo} · git {'sim' if cfg.git else 'não'}")
     print(f" ia {cfg.ia.fornecedor} {cfg.ia.modelo_chat or ''} · embeddings {cfg.ia.embeddings_fornecedor or 'nenhum'} {cfg.ia.embeddings_modelo or ''}".rstrip())
-    if cfg.ia.tarefas:                    # ronda 12: [ia.unir]/[ia.arrumar] — qual IA cada tarefa usa
+    if cfg.ia.tarefas:                    # ronda 12: [ia.unir]/[ia.arrumar]/[ia.entrada] — qual IA cada tarefa usa e de onde vem
         for t in config.TAREFAS_IA:
             c = cfg.ia.para(t)
-            print(f"  ia.{t:8} {c.fornecedor} {c.modelo_chat or ''}".rstrip() + ("" if c is not cfg.ia else "  (a de [ia])"))
+            print(f"  ia.{t:8} {c.fornecedor} {c.modelo_chat or ''}".rstrip()
+                  + (" (desligada)" if c.fornecedor == "nenhum" else "") + ("" if c.seccao == f"ia.{t}" else f"  (a de [{c.seccao}])"))
     for esp in _espacos(cfg, a):
         n = len(caminhos.notas(esp.real)) if esp.real.exists() else 0
         c = len(caminhos.notas(esp.copia)) if esp.copia.exists() else 0
@@ -478,7 +496,8 @@ def main(argv=None):
         p = sub.add_parser(nome); p.add_argument("termo", nargs="+"); p.add_argument("-n", type=int, default=8)
         p.add_argument("--json", action="store_true"); p.add_argument("--utilizador", "-u", default=""); p.set_defaults(fn=fn)
     p = sub.add_parser("entrada", help="guardar uma ideia na Entrada (com o trinco da página) · sem texto: listá-las")
-    p.add_argument("texto", nargs="*", help="o texto da ideia; «-» lê-o do stdin")
+    p.add_argument("texto", nargs="*", help='o texto da ideia; «-» lê-o do stdin. Um texto que comece por «-» vai depois de -- '
+                                             '(ex.: basalt entrada --de bot -- "-urgente")')
     p.add_argument("--de", default="terminal", help="de onde vem (omissão: terminal); fora de [entrada] fontes_de_confianca fica à espera de aprovação")
     p.add_argument("--json", action="store_true", help="sem texto: a lista em JSON")
     p.add_argument("--utilizador", "-u", default=""); p.set_defaults(fn=cmd_entrada)
