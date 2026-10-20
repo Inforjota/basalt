@@ -4,6 +4,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### «Mudar a senha» na interface (20/10/2026)
+- Na página **🔌 Ligar a tua IA**, secção «A tua senha» (só no modo `senha`): senha actual + nova (pelo menos 8 caracteres)
+  + repetir. O hash novo grava-se no `basalt.toml` de uma vez (temporário 0600, só substitui se carregar) e, ao mudar, **as outras
+  sessões, as IAs ligadas por OAuth e os tokens pessoais caem** (voltam a pedir «Permitir»); este browser continua dentro. Senha
+  actual errada conta para o mesmo limite de tentativas do «Entrar». Um token de IA não muda a senha (403). No modo `cabecalho`
+  (SSO) a secção não aparece. Esqueceste a senha? Continua a ser no terminal: `python3 -m basalt utilizador senha O_TEU_EMAIL`.
+- A linha de comandos e a interface escrevem o `basalt.toml` com o mesmo trinco (`basalt.toml.trinco`) e um temporário único.
+
 ### Segurança, ronda 13 (OAuth) (20/10/2026)
 - **Uma ligação ao Claude/ChatGPT não volta a valer quando a conta reaparece:** apagar uma conta (ou mudar-lhe o espaço ou a
   senha) revoga de vez as ligações e os tokens pessoais dela, gravado na base. Recriar a conta com o mesmo email já não os

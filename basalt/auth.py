@@ -35,6 +35,37 @@ MAXMEM = 64 * 1024 * 1024             # o OpenSSL recusa acima de 32 MiB por omi
 
 
 # ───────────────────────────── senhas e tokens ─────────────────────────────
+class trinco_toml:
+    """um só escritor do basalt.toml de cada vez (a interface e a linha de comandos): flock num ficheiro ao lado."""
+    def __init__(self, caminho: Path):
+        self.caminho = Path(caminho).with_name(Path(caminho).name + ".trinco")
+
+    def __enter__(self):
+        import fcntl
+        self.f = open(self.caminho, "a")
+        fcntl.flock(self.f, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *a):
+        self.f.close()
+
+
+def gravar_toml(caminho: Path, texto: str):
+    """troca o basalt.toml de uma vez (temporário único 0600 → só se carregar → os.replace); senão não mexe no verdadeiro."""
+    import tempfile
+    caminho = Path(caminho)
+    fd, tmp = tempfile.mkstemp(prefix=".basalt.toml.", dir=caminho.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(texto)
+        os.chmod(tmp, 0o600)
+        config.carregar(Path(tmp))
+        os.replace(tmp, caminho)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
 def hash_senha(senha: str) -> str:
     if len(senha) < 8:
         raise ValueError("a senha tem de ter pelo menos 8 caracteres")
@@ -241,6 +272,57 @@ class Autenticador:
             except OSError as e:                                  # ronda 8 (configuração relida em execução): sem sessão gravada não há sessão — e diz-se
                 self._sessoes.pop(hash_token(token), None)
                 return False, f"Não consegui guardar a sessão ({e.strerror or e}); o início de sessão não ficou feito."
+            return True, token
+
+    def mudar_senha(self, email: str, atual: str, nova: str, ip: str) -> tuple[bool, str]:
+        """19/10/2026 («Mudar a senha» na interface): (ok, token-da-sessão-nova ou motivo). Só no modo senha. Confere a senha
+        actual (com o mesmo limite por IP do entrar), grava o hash novo no basalt.toml (trinco + ficheiro temporário + validação,
+        como o `utilizador senha`) e relê-o: as outras sessões e as ligações das IAs caem sozinhas (estão presas à impressão da
+        senha antiga). Este browser recebe uma sessão nova para não ser posto fora."""
+        if self.cfg.auth.modo != "senha":
+            return False, "Neste servidor o início de sessão não é por senha do Basalt."
+        if self._origem is None:
+            return False, "Este servidor não tem basalt.toml onde gravar a senha."
+        if not isinstance(nova, str) or len(nova) < 8:
+            return False, "A senha nova tem de ter pelo menos 8 caracteres."
+        if len(nova) > 1024:
+            return False, "A senha nova é demasiado longa."
+        if nova == atual:
+            return False, "A senha nova é igual à actual."
+        self.reler_se_mudou()
+        with self._lock:
+            if self._fechado:
+                return False, "O basalt.toml do servidor tem um erro: corrige-o primeiro."
+            if self._bloqueado(ip):
+                return False, "Demasiadas tentativas; espera %d minutos." % self.cfg.auth.janela_minutos
+            u = self.cfg.utilizador(email)
+            if not (u and u.senha_hash and verificar_senha(u.senha_hash, atual or "")):
+                self._falhou(ip)
+                return False, "A senha actual está errada."
+        h = hash_senha(nova)                                  # scrypt fora do trinco (não atrasa os outros pedidos)
+        from .__main__ import definir_chave_utilizador        # o mesmo editor do `utilizador senha` (só a chave pedida)
+        try:
+            with trinco_toml(self._origem):
+                texto = self._origem.read_text(encoding="utf-8")
+                gravar_toml(self._origem, definir_chave_utilizador(texto, u.email, "senha_hash", h))
+        except KeyError:
+            return False, "A tua conta não está no basalt.toml (foi apagada?)."
+        except (OSError, config.ConfigInvalida, ValueError) as e:
+            return False, f"Não consegui gravar a senha nova ({getattr(e, 'strerror', None) or e}); a antiga continua a valer."
+        self.reler_se_mudou()
+        with self._lock:
+            u = self.cfg.utilizador(email)
+            if not (u and hmac.compare_digest(u.senha_hash, h)):
+                return False, "A senha foi gravada, mas o servidor ainda não a leu: entra outra vez com a senha nova."
+            token = secrets.token_urlsafe(32)
+            agora = time.time()
+            self._sessoes[hash_token(token)] = Sessao(email=u.email, expira=agora + self.cfg.auth.sessao_horas * 3600, criada=agora,
+                                                      cred=impressao_credencial(u.senha_hash))
+            try:
+                self._guardar()
+            except OSError:
+                self._sessoes.pop(hash_token(token), None)
+                return False, "A senha mudou, mas não consegui guardar a sessão: entra outra vez com a senha nova."
             return True, token
 
     def sair(self, token: str) -> tuple[bool, str]:

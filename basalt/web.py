@@ -1573,6 +1573,25 @@ class H(BaseHTTPRequestHandler):
             return self._responder_erro(500, "Erro interno.")
 
     # ── escritas ──
+    def _mudar_senha(self, user):
+        """19/10/2026: só com a sessão do browser (um token de agente não muda a senha da conta); a resposta traz o cookie novo."""
+        if self._por_token():
+            return self._json(403, {"erro": "A senha só se muda na interface, com a sessão do browser."})
+        if (self.headers.get("Sec-Fetch-Site") or "").lower() == "cross-site":       # aqui sempre, com ou sem [anfitrioes]
+            return self._json(403, {"erro": "Pedido de outro sítio."})
+        try:
+            c = self._corpo()
+        except Exception:
+            return self._json(400, {"erro": "Pedido inválido."})
+        if not isinstance(c, dict):
+            return self._json(400, {"erro": "Pedido inválido."})
+        ok, r = self.aut.mudar_senha(user.email, str(c.get("atual", "")), str(c.get("nova", "")), self._ip())
+        if not ok:
+            return self._json(429 if r.startswith("Demasiadas") else 400, {"erro": r})
+        seguro = (self.headers.get("X-Forwarded-Proto") or "").lower() == "https"
+        return self._json(200, {"ok": True, "mensagem": "Senha mudada. As outras sessões e as IAs ligadas foram desligadas."},
+                          [("Set-Cookie", self.aut.cabecalho_cookie(r, seguro))])
+
     def _escrita(self, user):
         if self.headers.get("X-Basalt") != "1":
             self._json(403, {"erro": "Pedido sem o cabeçalho X-Basalt."}); return False
@@ -1692,6 +1711,8 @@ class H(BaseHTTPRequestHandler):
             return self._sem_acesso(u.path)
         if not self._escrita(user):
             return
+        if u.path == "/api/senha":                                                           # «Mudar a senha» (só o browser)
+            return self._mudar_senha(user)
         if u.path == "/api/anexos":                                                          # corpo = o ficheiro, não JSON
             return self._anexo_enviar(user, u)
         try:

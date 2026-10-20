@@ -795,6 +795,17 @@ const EN = {
   "Liga o Claude, o ChatGPT, o Claude Code ou o Codex às tuas notas, e vê ou revoga as ligações.": "Connect Claude, ChatGPT, Claude Code or Codex to your notes, and see or revoke the connections.",
   "Ligar a tua IA": "Connect your AI",
   "Ligações activas": "Active connections",
+  "A tua senha": "Your password",
+  "Ao mudar a senha, as outras sessões e as IAs ligadas são desligadas: voltam a pedir «Permitir».": "Changing the password signs out your other sessions and disconnects the connected AIs: they will ask for \"Allow\" again.",
+  "Senha actual": "Current password",
+  "Senha nova (pelo menos 8 caracteres)": "New password (at least 8 characters)",
+  "Repete a senha nova": "Repeat the new password",
+  "Mudar a senha": "Change password",
+  "Esqueceste a senha? No servidor: python3 -m basalt utilizador senha O_TEU_EMAIL": "Forgot your password? On the server: python3 -m basalt utilizador senha YOUR_EMAIL",
+  "A senha nova tem de ter pelo menos 8 caracteres.": "The new password must have at least 8 characters.",
+  "As duas senhas novas não são iguais.": "The two new passwords do not match.",
+  "Mudar a senha? As outras sessões e as IAs ligadas são desligadas (voltam a pedir «Permitir»).": "Change the password? Your other sessions and the connected AIs are disconnected (they will ask for \"Allow\" again).",
+  "Senha mudada. As outras sessões e as IAs ligadas foram desligadas.": "Password changed. Your other sessions and the connected AIs were disconnected.",
   "Na primeira vez, no Claude Code: /mcp → Autenticar (abre o browser) → Permitir.": "The first time, in Claude Code: /mcp → Authenticate (opens the browser) → Allow.",
   "No ChatGPT: Definições → Apps (se não vires «Criar», liga Avançado → Modo de programador).": "In ChatGPT: Settings → Apps (if you do not see \"Create\", turn on Advanced → Developer mode).",
   "No Claude (site, app ou telemóvel): Personalizar → Conectores → «Adicionar conector personalizado».": "In Claude (web, app or phone): Customize → Connectors → \"Add custom connector\".",
@@ -3922,6 +3933,18 @@ async function ligarVerificar(d, alvo){
     '<p class="dim-note">' + t("O que daqui não se prova: se o Basalt só se vê na tua rede de casa, o Claude e o ChatGPT não lhe chegam — ligam-se a partir da nuvem deles (o Claude sai de 160.79.104.0/21). A prova real é a ligação aparecer na lista abaixo com o último uso.") + "</p>";
 }
 
+/* 19/10/2026 — «Mudar a senha» (só no modo senha; esqueceste-a? é no terminal: python3 -m basalt utilizador senha) */
+function senhaForm(){
+  return "<h2>" + t("A tua senha") + "</h2>" +
+    '<form id="senha-form" class="ligar-cartao" autocomplete="on">' +
+    '<p>' + t("Ao mudar a senha, as outras sessões e as IAs ligadas são desligadas: voltam a pedir «Permitir».") + "</p>" +
+    '<p><label>' + t("Senha actual") + '<br><input id="senha-atual" type="password" autocomplete="current-password" required></label></p>' +
+    '<p><label>' + t("Senha nova (pelo menos 8 caracteres)") + '<br><input id="senha-nova" type="password" autocomplete="new-password" minlength="8" required></label></p>' +
+    '<p><label>' + t("Repete a senha nova") + '<br><input id="senha-rep" type="password" autocomplete="new-password" minlength="8" required></label></p>' +
+    '<p><button class="btn btn-primary" type="submit">' + t("Mudar a senha") + '</button> <span id="senha-msg" role="status"></span></p>' +
+    '<p class="muted">' + t("Esqueceste a senha? No servidor: python3 -m basalt utilizador senha O_TEU_EMAIL") + "</p></form>";
+}
+
 async function viewLigar(main){
   main.innerHTML = renderShell(t("Ligar a tua IA"));
   var body = main.querySelector(".view-body");
@@ -3937,8 +3960,26 @@ async function viewLigar(main){
         escapeHtml(ia === "outra" ? t("Outra") : LIGAR_NOMES[ia]) + "</button>";
     }).join("") + "</div>" +
     '<div class="ligar-cartao" id="ligar-cartao" hidden></div>' +
-    "<h2>" + t("Ligações activas") + '</h2><div id="ligar-lista">' + ligarLista(d) + "</div>";
+    "<h2>" + t("Ligações activas") + '</h2><div id="ligar-lista">' + ligarLista(d) + "</div>" +
+    ((window.BASALT_EU && window.BASALT_EU.modo === "senha") ? senhaForm() : "");
   var cartao = body.querySelector("#ligar-cartao");
+  var fs = body.querySelector("#senha-form");
+  if(fs) fs.addEventListener("submit", async function(e){
+    e.preventDefault();
+    var atual = fs.querySelector("#senha-atual").value, nova = fs.querySelector("#senha-nova").value,
+        rep = fs.querySelector("#senha-rep").value, msg = fs.querySelector("#senha-msg");
+    if(nova.length < 8){ msg.textContent = t("A senha nova tem de ter pelo menos 8 caracteres."); return; }
+    if(nova !== rep){ msg.textContent = t("As duas senhas novas não são iguais."); return; }
+    if(!confirm(t("Mudar a senha? As outras sessões e as IAs ligadas são desligadas (voltam a pedir «Permitir»)."))) return;
+    var bt = fs.querySelector("button"); bt.disabled = true; msg.textContent = "";
+    try{
+      await apiSend("POST", "/api/senha", {atual: atual, nova: nova});
+      fs.reset();
+      msg.textContent = t("Senha mudada. As outras sessões e as IAs ligadas foram desligadas.");
+      recarregarLista();
+    }catch(err){ msg.textContent = err.message; }
+    finally{ bt.disabled = false; }
+  });
 
   async function recarregarLista(){
     try{ d = await apiGet("/api/ligacoes"); body.querySelector("#ligar-lista").innerHTML = ligarLista(d); }

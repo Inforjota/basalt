@@ -110,6 +110,10 @@ Dois utilizadores no mesmo espaço são recusados ao arrancar, a não ser que po
 propósito (aí vêem e editam as mesmas notas). Os utilizadores, as senhas e os tokens MCP relêem-se do `basalt.toml` sem
 reiniciar; as outras opções só mudam ao reiniciar.
 
+**Mudar a senha:** cada utilizador muda a sua na página **🔌 Ligar a tua IA → A tua senha** (senha actual + nova). As outras
+sessões e as IAs ligadas caem e voltam a pedir «Permitir». Esqueceste-a? No servidor: `python3 -m basalt utilizador senha
+O_TEU_EMAIL`. O serviço precisa de poder escrever na pasta do `basalt.toml` (no `sistema/basalt.service` já pode).
+
 **Já tens login (SSO) no proxy?** Põe `[auth] modo = "cabecalho"` e faz o proxy **substituir** `X-Basalt-Email` pelo e-mail
 autenticado (p. ex. `proxy_set_header X-Basalt-Email $upstream_http_x_auth_request_email;` com o oauth2-proxy). A rota `/mcp`
 não pode exigir esse login (ver [MCP.md](MCP.md)).

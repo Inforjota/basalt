@@ -95,15 +95,13 @@ def _ler_toml(caminho: Path) -> str:
 
 
 def _escrever_toml(caminho: Path, texto: str):
-    tmp = caminho.with_suffix(".toml.tmp")
-    tmp.write_text(texto, encoding="utf-8")
-    os.chmod(tmp, 0o600)
+    from .auth import gravar_toml, trinco_toml
+    caminho.parent.mkdir(parents=True, exist_ok=True)
     try:
-        config.carregar(tmp)          # tem de carregar ANTES de substituir o verdadeiro; senão ficava um toml inválido no sítio
+        with trinco_toml(caminho):    # a interface («Mudar a senha») também escreve: um de cada vez
+            gravar_toml(caminho, texto)   # tem de carregar ANTES de substituir o verdadeiro; senão ficava um toml inválido no sítio
     except (config.ConfigInvalida, ValueError, OSError) as e:   # ValueError = toml mal formado
-        tmp.unlink(missing_ok=True)
         _falha(f"o basalt.toml ficaria inválido ({e}) — não mexi em {caminho}")
-    os.replace(tmp, caminho)
 
 
 def _cfg(a):
