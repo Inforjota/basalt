@@ -53,8 +53,8 @@ def ler(p: Path):
 
 @contextlib.contextmanager
 def trinco(espera=300):
-    TRINCO.parent.mkdir(parents=True, exist_ok=True)
-    with open(TRINCO, "a+") as f:
+    f = caminhos.abrir_trinco(TRINCO)    # ronda 13: sem seguir ligações
+    try:
         fim = time.time() + espera
         while True:
             try:
@@ -65,6 +65,8 @@ def trinco(espera=300):
                     raise TimeoutError(f"trinco {TRINCO} ocupado há {espera} s")
                 time.sleep(0.05)
         yield
+    finally:
+        os.close(f)
 
 
 def nota(nome):
@@ -120,7 +122,10 @@ def ciclo():
 
 
 def _ciclo():
-    led = json.loads(LEDGER.read_text()) if LEDGER.exists() else {}
+    try:
+        led = json.loads(caminhos.ler_texto(LEDGER))       # ronda 13: uma ligação simbólica é recusada, não seguida
+    except FileNotFoundError:
+        led = {}
     nomes = notas_de(REAL) | notas_de(COPIA)
     empurrados, puxados, conflitos, retidos, apagados, adiados = [], [], [], [], [], []
     fez_foto = False
@@ -209,8 +214,7 @@ def _ciclo():
     if salvos:
         alerta(f"escritas ao mesmo tempo na mesma nota — a outra versão ficou guardada em: {', '.join(salvos)}")
 
-    LEDGER.parent.mkdir(parents=True, exist_ok=True)
-    tmp = LEDGER.with_suffix(".tmp"); tmp.write_text(json.dumps(led, ensure_ascii=False, indent=0)); tmp.replace(LEDGER)
+    caminhos.escrever_atomico(LEDGER, json.dumps(led, ensure_ascii=False, indent=0).encode("utf-8"))
     if retidos:
         alerta(f"{len(retidos)} nota(s) com segredo em claro NÃO aceites da cópia: {', '.join(retidos)}")
     if conflitos:

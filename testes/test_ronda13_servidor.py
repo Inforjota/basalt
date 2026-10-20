@@ -641,3 +641,39 @@ def test_controlo_a_entrada_e_os_trabalhos_da_propria_conta_continuam(dois):
     assert "trabalho normal da ana" in s.get("/api/unir", email=ANA).corpo.decode()
     assert s.get(f"/api/unir?job={jid}", email=ANA).json["mensagem"] == "trabalho normal da ana"
     assert IDEIA_B.encode() not in r.corpo
+
+
+def test_sincronizacao_com_registo_por_ligacao_nao_usa_o_de_outra_conta(memoria, monkeypatch, tmp_path):
+    """o registo da sincronização (ledger) de A apontado a outro diz «esta nota já esteve nos dois lados»: a nota nova que
+    só está na cópia passava por apagada na memória real e saía da cópia."""
+    import hashlib
+    from basalt import duasvias
+    monkeypatch.setattr(duasvias, "GIT", False)
+    monkeypatch.setattr(duasvias, "ALERTAS", False)
+    t = FM.format(nome="so-na-copia") + "\nideia escrita na página, ainda por sincronizar.\n"
+    (memoria.copia / "so-na-copia.md").write_text(t, encoding="utf-8")
+    alheio = tmp_path / "registo-de-outra-conta.json"
+    alheio.write_text(json.dumps({"so-na-copia.md": hashlib.sha1(t.encode()).hexdigest()}), encoding="utf-8")
+    if memoria.ledger.exists():
+        memoria.ledger.unlink()
+    memoria.ledger.symlink_to(alheio)
+    try:
+        duasvias.ciclo()
+    except OSError:
+        pass
+    assert (memoria.copia / "so-na-copia.md").exists(), "o registo de fora fez apagar a nota da cópia"
+
+
+def test_trinco_da_copia_por_ligacao_e_recusado(memoria, tmp_path):
+    from basalt import duasvias, web
+    alvo = tmp_path / "trinco-de-fora.lock"
+    alvo.write_text("", encoding="utf-8")
+    trinco = Path(duasvias.TRINCO)
+    trinco.parent.mkdir(parents=True, exist_ok=True)
+    if trinco.exists():
+        trinco.unlink()
+    trinco.symlink_to(alvo)
+    for como in (duasvias.trinco, web.trinco_copia):
+        with pytest.raises(OSError):
+            with como(espera=1):
+                pass

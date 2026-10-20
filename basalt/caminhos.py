@@ -322,11 +322,17 @@ def acrescentar(p, dados: bytes, modo: int = 0o644) -> None:
         os.close(fd)
 
 
+def abrir_trinco(p) -> int:
+    """o descritor do ficheiro de trinco `p` (criado, com as pastas, se faltar), aberto sem seguir ligações; quem chama faz o
+    flock e fecha."""
+    p = Path(p)
+    return abrir(p.parent, [p.name], os.O_RDWR | os.O_CREAT, 0o644)
+
+
 @contextlib.contextmanager
 def trinco(p):
     """flock exclusivo no ficheiro `p` (criado se faltar), aberto sem seguir ligações."""
-    p = Path(p)
-    fd = abrir(p.parent, [p.name], os.O_RDWR | os.O_CREAT, 0o644)
+    fd = abrir_trinco(p)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX)
         yield

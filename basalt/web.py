@@ -151,8 +151,7 @@ def trinco_copia(espera=None):
         raise Ocupado()
     f = None
     try:
-        TRINCO.parent.mkdir(parents=True, exist_ok=True)
-        f = open(TRINCO, "a+")
+        f = caminhos.abrir_trinco(TRINCO)  # ronda 13: sem seguir ligações (A/dados/copia.lock → o trinco de B)
         fim = time.time() + espera
         while True:
             try:
@@ -164,8 +163,8 @@ def trinco_copia(espera=None):
                 time.sleep(0.05)
         yield
     finally:
-        if f:
-            f.close()                      # fechar o ficheiro liberta o flock
+        if f is not None:
+            os.close(f)                    # fechar o ficheiro liberta o flock
         lk.release()
 
 
