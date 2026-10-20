@@ -90,6 +90,13 @@ Escuta em `127.0.0.1` por omissão; para a rede, um proxy com HTTPS à frente. S
 limite de tentativas por IP. O MCP por HTTP só aceita `Authorization: Bearer` (nunca a cookie — um site alheio no teu browser
 não escreve nas tuas notas). Mais em [docs/SEGURANCA.md](docs/SEGURANCA.md); dás acesso a outras pessoas? [docs/PRIVACIDADE.md](docs/PRIVACIDADE.md) (RGPD, modelo de aviso). Encontraste algo? Abre um *issue* privado.
 
+## Não queres instalar sozinho?
+
+- **Instalado por nós**: 49 €, pagos uma vez, com IVA. Instalamos no teu computador ou servidor e ligamos a tua IA.
+- **Basalt na nuvem** (brevemente): não instalas nada e os servidores ficam na UE.
+
+Mais em [inforjota.com/basalt](https://inforjota.com/basalt/). O código continua grátis e completo; o que se paga é o serviço.
+
 ## Licença
 
 MIT — ver [LICENCA](LICENCA). Feito nos Açores por [Inforjota](https://inforjota.com).

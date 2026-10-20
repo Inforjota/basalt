@@ -100,6 +100,13 @@ Listens on `127.0.0.1` by default; for the network, put an HTTPS proxy in front.
 per-IP attempt limit. MCP over HTTP accepts `Authorization: Bearer` only (never the cookie — a third-party site in your browser
 cannot write to your notes). More in [docs/SEGURANCA.md](docs/SEGURANCA.md); giving others access? [docs/PRIVACIDADE.md](docs/PRIVACIDADE.md) (GDPR, notice template, PT). Found something? Open a private issue.
 
+## Don't want to install it yourself?
+
+- **Installed for you**: €49, paid once, VAT included. We install it on your computer or server and connect your AI.
+- **Basalt in the cloud** (coming soon): nothing to install, and the servers are in the EU.
+
+More at [inforjota.com/basalt](https://inforjota.com/basalt/) (page in Portuguese). The code stays free and complete; what you pay for is the service.
+
 ## Licence
 
 MIT — see [LICENCA](LICENCA). Made in the Azores by [Inforjota](https://inforjota.com).
