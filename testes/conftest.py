@@ -8,6 +8,7 @@ import hashlib
 import http.client
 import json
 import os
+import re
 import socket
 import subprocess
 import sys
@@ -251,9 +252,11 @@ class Servidor(Cliente):
 
     def __init__(self, mem: Memoria, ollama=None, modo="cabecalho", utilizadores=None, extra="", indexar=False):
         self.mem = mem
-        self.porta = porta_livre()
+        # porta 0: quem escolhe é o sistema, no próprio bind — com uma porta «livre» escolhida antes, outro processo podia ficar com
+        # ela entretanto e o servidor não arrancava. A porta lê-se da linha «basalt em http://…:PORTA» do registo.
+        self.porta = 0
         self.toml = mem.base / "basalt.toml"
-        self.toml.write_text(toml_de(self.porta, mem.base / "raiz", modo, ollama, utilizadores, extra), encoding="utf-8")
+        self.toml.write_text(toml_de(0, mem.base / "raiz", modo, ollama, utilizadores, extra), encoding="utf-8")
         env = dict(os.environ, **mem.ambiente(), HOME=str(mem.home), PYTHONUNBUFFERED="1", PYTHONPATH=str(RAIZ),
                    BASALT_CAS_GRACA=os.environ["BASALT_CAS_GRACA"], BASALT_SIG_ISOLADO="1")
         env.pop("BASALT_CONFIG", None)
@@ -268,10 +271,22 @@ class Servidor(Cliente):
         self.proc = subprocess.Popen([sys.executable, str(AQUI / "lanca_servidor.py"), str(self.toml)], env=env, cwd=str(mem.base),
                                      stdout=self.log, stderr=subprocess.STDOUT)
         try:
+            self.porta = self._porta_do_registo()
             esperar_porta(self.porta, proc=self.proc)
         except Exception:
             self.parar()
             raise RuntimeError("o servidor não arrancou:\n" + self.registo())
+
+    def _porta_do_registo(self, segundos=30):
+        fim = time.time() + segundos
+        while time.time() < fim:
+            m = re.search(r"^basalt em http://\S+:(\d+) ", self.registo(), re.M)
+            if m:
+                return int(m.group(1))
+            if self.proc.poll() is not None:
+                raise RuntimeError("o processo terminou antes de abrir a porta")
+            time.sleep(0.05)
+        raise RuntimeError(f"o servidor não disse em que porta escuta em {segundos} s")
 
     def parar(self):
         if self.proc.poll() is None:

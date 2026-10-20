@@ -16,7 +16,6 @@ import urllib.parse
 import pytest
 
 from basalt import auth, config, oauth, web
-from conftest import porta_livre
 
 SENHA = "uma senha comprida"
 HASH = auth.hash_senha(SENHA)
@@ -43,9 +42,11 @@ class Srv:
     """um Basalt em processo com o OAuth ligado (url_publico = http://<nome>:<porta>, loopback para os testes)."""
 
     def __init__(self, tmp_path, modo="senha", nome="127.0.0.1", url=True, utilizadores=None, extra=""):
-        self.porta = porta_livre()
+        # porta 0: o sistema escolhe-a no próprio bind (uma porta «livre» escolhida antes podia ser apanhada por outro processo
+        # entretanto); o url_publico e o basalt.toml acertam-se com a porta que calhou
+        self.porta = 0
         self.nome = nome
-        self.url = f"http://{nome}:{self.porta}" if url else ""
+        self.url = f"http://{nome}" if url else ""
         self.toml = tmp_path / "basalt.toml"
         self.dados = tmp_path / "dados"
         self.tmp = tmp_path
@@ -55,7 +56,11 @@ class Srv:
         self.modo = modo
         self.escrever()
         self.cfg = config.carregar(self.toml, ambiente={})
-        self.srv = web.criar_servidor(self.cfg, host="127.0.0.1", porta=self.porta)
+        self.srv = web.criar_servidor(self.cfg, host="127.0.0.1", porta=0)
+        self.porta = self.srv.server_address[1]
+        if url:
+            self.url = self.cfg.url_publico = f"http://{nome}:{self.porta}"
+        self.escrever()
         self.fio = threading.Thread(target=self.srv.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True)
         self.fio.start()
         for esp, texto, n in (("ana", NOTA, "barcos"), ("rui", NOTA_RUI, "segredo-do-rui")):
