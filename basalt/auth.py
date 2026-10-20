@@ -180,6 +180,8 @@ class Autenticador:
             for k in mortas:
                 self._sessoes.pop(k, None)
             self.cfg.utilizadores = novos                      # o mesmo objecto Config que o servidor web usa
+            if getattr(self, "oauth", None) is not None:
+                self.oauth.contas_mudaram()                    # ronda 13: quem saiu ou mudou fica com as ligações revogadas na base
             self._fechado = ""
             # ronda 10 (achado G3 da r3): a marca nova só se publica DEPOIS de os utilizadores novos estarem no lugar (e as sessões
             # mortas fora). Antes mudava primeiro: um pedido que visse a marca nova saltava o trinco e autenticava-se (Bearer, proxy)

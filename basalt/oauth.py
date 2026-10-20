@@ -52,6 +52,11 @@ CLIENTE_SEM_USO_S = 86400
 PENDENTES_POR_IP, PENDENTES_MAX = 20, 200
 TOKEN_FALHAS_MAX, TOKEN_JANELA_S = 30, 15 * 60
 PESSOAIS_MAX = 20
+# ronda 13: nenhuma conta enche a base partilhada — tectos por conta e por ligação (o resto apaga-se, não fica à espera de 90 dias)
+OAUTH_POR_CONTA = 50                # ligações OAuth vivas por conta (cada «Permitir» abre uma)
+RENOVACOES_POR_HORA = 60            # por ligação: um cliente normal renova uma vez por hora
+ACESSOS_GUARDADOS, RENOVACOES_USADAS_GUARDADAS = 2, 5   # por ligação: os mais recentes (as usadas servem para apanhar uma reutilização)
+REVOGADAS_POR_CONTA = 100           # ligações revogadas guardadas por conta
 FORM_MAX = 16384
 FORM_CONSENTIMENTO_MAX = 4096
 ESPERA_S = 10
@@ -295,6 +300,7 @@ TEXTOS = {
         "e_token": "esta página não aceita tokens; abre-a no browser", "e_ocupado": "o servidor está ocupado; tenta outra vez daqui a pouco",
         "e_demasiados": "demasiados pedidos de ligação por aprovar; tenta mais tarde",
         "e_fechado": "a configuração do servidor tem um erro: ninguém entra até ser corrigida",
+        "e_muitas": "esta conta já tem demasiadas aplicações ligadas; desliga alguma no Basalt (🔌 «Ligar a tua IA») e tenta outra vez",
     },
     "en": {
         "erro_titulo": "Could not connect", "erro_h1": "Could not connect the application",
@@ -318,6 +324,7 @@ TEXTOS = {
         "e_token": "this page does not accept tokens; open it in the browser", "e_ocupado": "the server is busy; try again shortly",
         "e_demasiados": "too many connection requests waiting; try later",
         "e_fechado": "the server configuration has an error: nobody gets in until it is fixed",
+        "e_muitas": "this account already has too many connected applications; disconnect one in Basalt (🔌 «Connect your AI») and try again",
     },
 }
 
@@ -419,6 +426,13 @@ class OAuth:
         self._pronta = False
         self._lock = threading.Lock()
         self._falhas: dict[str, list[float]] = {}
+        self._renovacoes: dict[str, list[float]] = {}     # ronda 13: família → instantes das renovações da última hora
+        # ronda 13: as contas como estavam da última vez (email → espaço, impressão da senha). Quem desaparece ou muda fica com as
+        # ligações revogadas NA BASE antes do próximo uso — recusar não chegava: com a conta recriada igual, os tokens voltavam a valer
+        self._contas = self._fotografia()
+        self._a_revogar: list[tuple[str, float]] = []
+        self._rever_tudo = True                            # no arranque: a configuração pode ter mudado com o servidor parado
+        self._rever_lock = threading.Lock()
 
     # ── base ──
     def _ligar(self) -> sqlite3.Connection:
@@ -459,6 +473,14 @@ class OAuth:
                     self_.c = oauth._ligar()
                 except sqlite3.OperationalError as e:
                     raise (_erro_sqlite(e) or e)
+                try:
+                    oauth._rever(self_.c)                  # ronda 13: revogações pendentes primeiro — nenhum pedido vê a base antiga
+                except sqlite3.OperationalError as e:
+                    self_.c.close()
+                    raise (_erro_sqlite(e) or e)
+                except BaseException:
+                    self_.c.close()
+                    raise
                 return self_.c
 
             def __exit__(self_, tipo, valor, tb):
@@ -484,14 +506,30 @@ class OAuth:
 
     def _limpar(self, conn, t):
         """dentro de uma Transacao: pedidos expirados ou decididos, códigos com mais de um dia, tokens expirados há mais de 7 dias,
-        clientes registados que nunca chegaram a ser usados (24 h) e famílias revogadas há mais de 90 dias."""
+        clientes registados que nunca chegaram a ser usados (24 h) e famílias revogadas há mais de 90 dias.
+        ronda 13: uma família sem nenhum token válido (código nunca trocado, renovação expirada) passa a revogada; as revogadas perdem
+        já os tokens e os códigos, e cada conta guarda no máximo REVOGADAS_POR_CONTA delas."""
         conn.execute("DELETE FROM pedidos WHERE expira <= ? OR usado IS NOT NULL", (t,))
         conn.execute("DELETE FROM codigos WHERE expira < ?", (t - 86400,))
         conn.execute("DELETE FROM tokens WHERE expira IS NOT NULL AND expira < ?", (t - 7 * 86400,))
         conn.execute("DELETE FROM clientes WHERE usado IS NULL AND criado < ?", (t - CLIENTE_SEM_USO_S,))
-        conn.execute("DELETE FROM tokens WHERE familia IN (SELECT id FROM familias WHERE revogada IS NOT NULL AND revogada < ?)",
-                     (t - 90 * 86400,))
-        conn.execute("DELETE FROM familias WHERE revogada IS NOT NULL AND revogada < ?", (t - 90 * 86400,))
+        conn.execute("UPDATE familias SET revogada=? WHERE revogada IS NULL AND criado <= ? AND NOT EXISTS (SELECT 1 FROM tokens k "
+                     "WHERE k.familia=familias.id AND k.revogado IS NULL AND (k.expira IS NULL OR k.expira > ?))", (t, t - T_CODIGO, t))
+        conn.execute("DELETE FROM tokens WHERE familia IN (SELECT id FROM familias WHERE revogada IS NOT NULL)")
+        conn.execute("DELETE FROM codigos WHERE familia IN (SELECT id FROM familias WHERE revogada IS NOT NULL)")
+        conn.execute("DELETE FROM familias WHERE revogada IS NOT NULL AND (revogada < ? OR id IN (SELECT id FROM (SELECT id, ROW_NUMBER() "
+                     "OVER (PARTITION BY email, espaco ORDER BY revogada DESC, rowid DESC) AS n FROM familias WHERE revogada IS NOT NULL) "
+                     "WHERE n > ?))", (t - 90 * 86400, REVOGADAS_POR_CONTA))
+
+    @staticmethod
+    def _podar_familia(conn, familia):
+        """ronda 13: dentro de uma Transacao, depois de emitir — a família guarda só os acessos mais recentes, a renovação viva e as
+        últimas renovações usadas. Antes cada renovação deixava mais dois registos para sempre e uma conta enchia a base de todas."""
+        conn.execute("DELETE FROM tokens WHERE familia=? AND tipo='acesso' AND rowid NOT IN (SELECT rowid FROM tokens WHERE familia=? "
+                     "AND tipo='acesso' ORDER BY criado DESC, rowid DESC LIMIT ?)", (familia, familia, ACESSOS_GUARDADOS))
+        conn.execute("DELETE FROM tokens WHERE familia=? AND tipo='renovar' AND usado IS NOT NULL AND rowid NOT IN (SELECT rowid FROM tokens "
+                     "WHERE familia=? AND tipo='renovar' AND usado IS NOT NULL ORDER BY usado DESC, rowid DESC LIMIT ?)",
+                     (familia, familia, RENOVACOES_USADAS_GUARDADAS))
 
     # ── contas ──
     def _conta(self, email: str):
@@ -510,6 +548,51 @@ class OAuth:
         if u is None or u.espaco != espaco or not hmac.compare_digest(self._cred(u), cred):
             return None
         return u
+
+    def _fotografia(self) -> dict:
+        return {u.email.lower(): (u.espaco, self._cred(u)) for u in self.cfg.utilizadores}
+
+    def contas_mudaram(self) -> None:
+        """ronda 13: o Autenticador chama isto (dentro do trinco dele, só memória) quando o basalt.toml relido trouxe outros
+        utilizadores. As contas que desapareceram, ou mudaram de espaço ou de senha, ficam marcadas; a revogação grava-se na base
+        antes do próximo uso dela (`_rever`). Assim um token antigo não volta a valer se a conta reaparecer igual."""
+        nova = self._fotografia()
+        t = agora()
+        with self._lock:
+            for email, antes in self._contas.items():
+                if nova.get(email) != antes:
+                    self._a_revogar.append((email, t))
+            self._contas = nova
+
+    def _rever(self, conn) -> None:
+        """ronda 13: as revogações pendentes — as famílias das contas marcadas (nascidas até à mudança) e, no arranque, todas as que
+        já não correspondem a uma conta viva. Se a base não deixar, Ocupado: nenhum pedido segue com o estado antigo."""
+        with self._lock:
+            if not self._rever_tudo and not self._a_revogar:
+                return
+        with self._rever_lock:
+            with self._lock:
+                tudo, lista = self._rever_tudo, list(self._a_revogar)
+            if not tudo and not lista:
+                return
+            t = agora()
+            ids = set()
+            with Transacao(conn):
+                for email, quando in lista:
+                    ids.update(r[0] for r in conn.execute("SELECT id FROM familias WHERE email=? AND revogada IS NULL AND criado <= ?",
+                                                          (email, quando)).fetchall())
+                if tudo:
+                    for fid, email, espaco, cred in conn.execute("SELECT id, email, espaco, cred FROM familias WHERE revogada IS NULL").fetchall():
+                        if self._familia_viva(email, espaco, cred) is None:
+                            ids.add(fid)
+                for fid in ids:
+                    self._revogar_familia(conn, fid, t)
+            with self._lock:
+                del self._a_revogar[:len(lista)]
+                if tudo:
+                    self._rever_tudo = False
+        for fid in sorted(ids):
+            _avisar("familia_revogada", motivo="conta_mudou", familia=fid[:8])
 
     @staticmethod
     def _revogar_familia(conn, familia, t=None):
@@ -544,7 +627,13 @@ class OAuth:
                 if tipo == "acesso" and recurso != self.cfg.recurso:
                     return None
                 u = self._familia_viva(email, espaco, cred)
-                if u is None:
+                if u is None:                       # ronda 13: fica revogada na base — não volta a valer se a conta reaparecer
+                    try:
+                        with Transacao(conn):
+                            self._revogar_familia(conn, fam, t)
+                        _avisar("familia_revogada", motivo="conta_mudou", familia=fam[:8])
+                    except (Ocupado, sqlite3.OperationalError):
+                        pass
                     return None
                 if ultimo is None or t - ultimo > 60:      # «último uso» na página, sem escrever em todos os pedidos
                     try:
@@ -730,6 +819,8 @@ class OAuth:
         if not p:
             return self._erro_pagina(h, "e_expirou")
         client_id, nome, ru, preso = p
+        if not redirect_permitido(self.cfg, ru):    # ronda 13: a lista pode ter encolhido depois do pedido ([oauth] redirects_extra)
+            return self._erro_pagina(h, "e_pedido")
         if imita_oficial(nome, ru):
             return self._erro_pagina(h, "e_imita", 403)
         user = self._utilizador_browser(h)
@@ -813,6 +904,7 @@ class OAuth:
                     volta = "/oauth/authorize?" + urllib.parse.urlencode({"pedido": pid})
                     return _redirigir(h, "/entrar?" + urllib.parse.urlencode({"volta": volta}),
                                       extra=(("Set-Cookie", h.aut.cabecalho_apagar_cookie()),))
+                erro = None
                 with Transacao(conn):
                     t = agora()
                     p = _uma(conn, "SELECT client_id, nome, redirect_uri, explicito, state, challenge, email FROM pedidos "
@@ -822,10 +914,24 @@ class OAuth:
                     client_id, nome, ru, expl, state, chal, preso = p
                     if preso != email:
                         return self._erro_pagina(h, "e_outra", 403)
-                    conn.execute("UPDATE pedidos SET usado=? WHERE id=?", (t, pid))
-                    if decisao != "permitir":
+                    if not redirect_permitido(self.cfg, ru):
+                        # ronda 13: o endereço saiu da lista depois do pedido — o pedido gasta-se e NUNCA se volta para lá
+                        conn.execute("UPDATE pedidos SET usado=? WHERE id=?", (t, pid))
+                        erro = ("e_pedido", 400)
+                    elif decisao == "permitir":
+                        # ronda 13: tecto de ligações por conta (o pedido não se gasta: pode desligar alguma e voltar a carregar)
+                        self._limpar(conn, t)
+                        n = _uma(conn, "SELECT COUNT(*) FROM familias WHERE email=? AND espaco=? AND tipo='oauth' AND revogada IS NULL "
+                                       "AND cred=?", (email, user.espaco, self._cred(user)))[0]
+                        if n >= OAUTH_POR_CONTA:
+                            erro = ("e_muitas", 429)
+                    if erro:
+                        codigo = None
+                    elif decisao != "permitir":
+                        conn.execute("UPDATE pedidos SET usado=? WHERE id=?", (t, pid))
                         codigo = None
                     else:
+                        conn.execute("UPDATE pedidos SET usado=? WHERE id=?", (t, pid))
                         codigo, familia = secrets.token_urlsafe(32), secrets.token_urlsafe(16)
                         onde = (urllib.parse.urlsplit(ru).hostname or "").lower()
                         conn.execute("INSERT INTO familias (id, tipo, client_id, nome, onde, email, espaco, cred, criado) "
@@ -837,6 +943,9 @@ class OAuth:
                         conn.execute("UPDATE clientes SET usado=? WHERE client_id=?", (t, client_id))
         except Ocupado:
             return self._erro_pagina(h, "e_ocupado", 503)
+        if erro:
+            _avisar("ligacao_recusada", client=client_id[:12], motivo=erro[0], ip=ip)
+            return self._erro_pagina(h, *erro)
         if codigo is None:
             _avisar("ligacao_recusada", client=client_id[:12], ip=ip)
             return self._redir_app(h, ru, error="access_denied", state=state)
@@ -895,6 +1004,21 @@ class OAuth:
         except Ocupado:                              # ROLLBACK feito: o código/token ficou como estava
             return _json_erro(h, "temporarily_unavailable", "ocupado; tenta outra vez daqui a pouco", 503)
 
+    def _pode_renovar(self, familia, t) -> bool:
+        """ronda 13: no máximo RENOVACOES_POR_HORA por família (memória, como as falhas). Conta já esta, se passar."""
+        with self._lock:
+            for k in list(self._renovacoes):
+                xs = [x for x in self._renovacoes[k] if t - x < 3600]
+                if xs:
+                    self._renovacoes[k] = xs
+                else:
+                    del self._renovacoes[k]
+            xs = self._renovacoes.setdefault(familia, [])
+            if len(xs) >= RENOVACOES_POR_HORA:
+                return False
+            xs.append(t)
+            return True
+
     def _emitir(self, conn, familia, recurso):
         """o par novo (acesso + renovação) dentro da Transacao de quem chama, ou None se a família já não vale."""
         if not _uma(conn, "SELECT 1 FROM familias WHERE id=? AND revogada IS NULL", (familia,)):
@@ -946,7 +1070,10 @@ class OAuth:
             return self._falha(h, ip, "pkce", "invalid_grant", "PKCE: code_verifier errado")
         if (f.get("resource") and not recurso_ok(self.cfg, f["resource"])) or recurso != self.cfg.recurso:
             return self._falha(h, ip, "outro_recurso", "invalid_target", "este servidor só emite tokens para " + self.cfg.recurso)
+        if not redirect_permitido(self.cfg, ru):    # ronda 13: o endereço saiu da lista entretanto
+            return self._falha(h, ip, "redirect_retirado", "invalid_grant", "o endereço de regresso já não é aceite por este servidor")
         with Transacao(conn) as tx:
+            self._limpar(conn, agora())             # ronda 13: a poda corre em todo o /oauth/token que emite
             if self._conta_da_familia(conn, familia) is None:     # conta apagada, mudou de espaço ou de senha desde o «Permitir»
                 self._revogar_familia(conn, familia)
                 par = None
@@ -987,6 +1114,10 @@ class OAuth:
             elif self._conta_da_familia(conn, familia) is None:
                 self._revogar_familia(conn, familia, t)
                 revogada, motivo = familia, "conta_mudou"
+            elif not self._pode_renovar(familia, t):
+                # ronda 13: renovações a mais nesta ligação — nada se gasta nem conta como falha; o mesmo token volta a valer daqui a pouco
+                _avisar("renovacao_adiada", familia=familia[:8], ip=ip)
+                return _json_erro(h, "temporarily_unavailable", "demasiadas renovações; tenta daqui a uns minutos", 429)
             else:
                 conn.execute("UPDATE tokens SET usado=? WHERE hash=?", (t, _h(tok)))
                 self._limpar(conn, t)           # a renovação é o caminho quente (uma por hora, meses a fio): a poda também corre aqui
@@ -994,6 +1125,7 @@ class OAuth:
                 if par is None:
                     tx.desfazer()
                     return self._falha(h, ip, "familia_revogada", "invalid_grant", "ligação desligada")
+                self._podar_familia(conn, familia)
         if revogada:
             _avisar("familia_revogada", motivo=motivo, familia=revogada[:8], ip=ip)
             return self._falha(h, ip, motivo, "invalid_grant",
@@ -1036,8 +1168,10 @@ class OAuth:
         with self._bd() as conn:
             with Transacao(conn):
                 t = agora()
-                n = _uma(conn, "SELECT COUNT(*) FROM familias WHERE email=? AND espaco=? AND tipo='pessoal' AND revogada IS NULL",
-                         (u.email.lower(), u.espaco))[0]
+                self._limpar(conn, t)
+                # ronda 13: só contam os da senha actual — depois de a mudar, os antigos já não valem nem aparecem na lista
+                n = _uma(conn, "SELECT COUNT(*) FROM familias WHERE email=? AND espaco=? AND tipo='pessoal' AND revogada IS NULL AND cred=?",
+                         (u.email.lower(), u.espaco, self._cred(u)))[0]
                 if n >= PESSOAIS_MAX:
                     return None, f"já tens {PESSOAIS_MAX} tokens pessoais; revoga algum primeiro"
                 familia = secrets.token_urlsafe(16)
