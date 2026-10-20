@@ -17,7 +17,9 @@ Falar de passwords sem as escrever continua a poder gravar-se: «senha: está no
 """
 from __future__ import annotations
 
+import contextlib
 import re
+import threading
 from pathlib import Path
 
 MOTIVO = "O texto tem o que parece uma password ou chave em claro — não gravei. Guarda-a num gestor de palavras-passe."
@@ -186,6 +188,22 @@ class VerificacaoFalhou(SegredoEmClaro):
 
 _VERIFICADOS: dict = {}                 # (comando, sha256 do texto) → tem segredo? — só as respostas certas (0 ou 1), nunca as falhas
 _ULTIMO_ALERTA = [0.0]
+_CICLO = threading.local()              # ronda 13b: o estado do ciclo em curso neste fio (ver uma_falha_por_ciclo)
+
+
+@contextlib.contextmanager
+def uma_falha_por_ciclo():
+    """ronda 13b: dentro de um ciclo (a sincronização, o arranque), depois da 1.ª falha do verificador as verificações seguintes
+    falham logo (VerificacaoFalhou «adiado»), sem o chamar nem novo ALERTA — antes, 100 notas × 30 s de tempo limite prendiam
+    o fio 50 min. O que já está na cache e o guarda de cima respondem na mesma. Um ciclo dentro de outro é o mesmo ciclo."""
+    if getattr(_CICLO, "estado", None) is not None:
+        yield
+        return
+    _CICLO.estado = {"falhou": ""}
+    try:
+        yield
+    finally:
+        _CICLO.estado = None
 
 
 def _verificador() -> tuple:
@@ -272,6 +290,9 @@ def verificar(textos) -> list:
             else:
                 falta.setdefault(k, (t, []))[1].append(i)
     pend = list(falta.items())
+    ciclo = getattr(_CICLO, "estado", None)
+    if pend and ciclo and ciclo["falhou"]:
+        raise VerificacaoFalhou(f"adiado: o verificador já falhou neste ciclo ({ciclo['falhou']})")
     try:
         for a in range(0, len(pend), LOTE):
             lote = pend[a:a + LOTE]
@@ -282,6 +303,8 @@ def verificar(textos) -> list:
                 for i in idx:
                     out[i] = r
     except VerificacaoFalhou as e:
+        if ciclo is not None:
+            ciclo["falhou"] = e.porque or "falhou"
         _alertar(e.porque)
         raise
     return out

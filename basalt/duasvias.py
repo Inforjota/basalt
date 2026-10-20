@@ -19,7 +19,7 @@ BASALT_GIT=1 (omissão): fotografia git da memória real antes de a alterar.
 import contextlib, fcntl, hashlib, json, os, re, subprocess, sys, tempfile, time
 from pathlib import Path
 
-from . import avisos, caminhos, cas, config
+from . import avisos, caminhos, cas, config, segredos
 from .config import Via
 from .segredos import SEGREDO_RX, VerificacaoFalhou, mascarar, tem_segredo_nota, tem_segredo_texto  # noqa: F401  (SEGREDO_RX: basalt.unir importa daqui)
 
@@ -117,7 +117,7 @@ def alerta(msg):
 
 def ciclo():
     COPIA.mkdir(parents=True, exist_ok=True)
-    with trinco():
+    with trinco(), segredos.uma_falha_por_ciclo():   # ronda 13b: o verificador falhou → as outras notas ficam adiadas sem nova chamada
         return _ciclo()
 
 

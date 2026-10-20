@@ -1852,27 +1852,38 @@ def criar_servidor(cfg, host=None, porta=None):
     return srv
 
 
-def servir(cfg, vigias=True, host=None, porta=None):
-    srv = criar_servidor(cfg, host, porta)
-    if vigias:
-        # PORTE: um ciclo de sincronização ANTES de calcular as notas retidas — numa instalação nova a cópia está vazia e,
-        # sem isto, todas as notas apareciam como «retidas pelo guarda de segredos» até ao refresco dos 5 minutos.
-        from . import duasvias
+def _arranque(cfg, vigias):
+    """a sincronização inicial e as notas retidas, depois os vigias (pela ordem de sempre). Ronda 13b: corre num fio, com o servidor
+    já a atender — um [segredos] verificador lento prendia o arranque (um tempo limite por nota). Uma falha dele adia o resto do
+    arranque sem novas chamadas; até lá, excl() calcula na 1.ª vez que se pede e falha fechado (a cópia só tem notas verificadas)."""
+    from . import duasvias, segredos
+    with segredos.uma_falha_por_ciclo():
+        if vigias:
+            # PORTE: um ciclo de sincronização ANTES de calcular as notas retidas — numa instalação nova a cópia está vazia e,
+            # sem isto, todas as notas apareciam como «retidas pelo guarda de segredos» até ao refresco dos 5 minutos.
+            for esp in _espacos(cfg):
+                try:
+                    with config.dentro(esp):
+                        duasvias.ciclo()
+                except Exception as e:
+                    print("sincronização inicial:", _erro(e)[:200], flush=True)
         for esp in _espacos(cfg):
             try:
                 with config.dentro(esp):
-                    duasvias.ciclo()
+                    refazer_exclusao()
             except Exception as e:
-                print("sincronização inicial:", _erro(e)[:200], flush=True)
-    for esp in _espacos(cfg):
-        with config.dentro(esp):
-            refazer_exclusao()
+                print("exclusão inicial:", _erro(e)[:200], flush=True)
     if vigias:
         segundos = int(os.environ.get("BASALT_VIGIA_SEGUNDOS", "10"))
         threading.Thread(target=vigia_copia, args=(cfg, segundos), daemon=True).start()
     threading.Thread(target=vigia_exclusao, args=(cfg,), daemon=True).start()
     threading.Thread(target=indexar_se_vazio, args=(cfg,), daemon=True).start()
     threading.Thread(target=vigia_entrada, args=(cfg,), daemon=True).start()          # entrada automática (só com IA de chat)
+
+
+def servir(cfg, vigias=True, host=None, porta=None):
+    srv = criar_servidor(cfg, host, porta)
+    threading.Thread(target=_arranque, args=(cfg, vigias), daemon=True).start()       # ronda 13b: o arranque não prende o servidor
     h, p = srv.server_address[:2]
     print(f"basalt em http://{config.endereco(h, p)} (auth={cfg.auth.modo}, ia={cfg.ia.fornecedor}, vigias={'sim' if vigias else 'não'})", flush=True)
     try:
