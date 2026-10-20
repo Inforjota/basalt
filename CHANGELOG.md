@@ -11,6 +11,13 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   actual errada conta para o mesmo limite de tentativas do «Entrar». Um token de IA não muda a senha (403). No modo `cabecalho`
   (SSO) a secção não aparece. Esqueceste a senha? Continua a ser no terminal: `python3 -m basalt utilizador senha O_TEU_EMAIL`.
 - A linha de comandos e a interface escrevem o `basalt.toml` com o mesmo trinco (`basalt.toml.trinco`) e um temporário único.
+- Revisão antes de publicar: **a CLI (`utilizador novo/senha/mcp-token`) lê, edita e grava com o trinco tomado** — lia o ficheiro,
+  pedia a senha no terminal e gravava o texto velho, desfazendo uma senha mudada na página entretanto (e matando a sessão nova dessa
+  pessoa na releitura). **A página só troca a senha se a do ficheiro ainda for a conferida** (compara-e-troca; se o admin a mudou a
+  meio, diz-o e manda entrar com a nova). **O ficheiro novo mantém o dono e o grupo do anterior** e o trinco abre-se só para leitura
+  quando não se pode escrever — a CLI corrida como root deixava o `basalt.toml` root:root 0600 e o serviço (`User=basalt`), ao
+  relê-lo, fechava a porta a toda a gente. Os editores do toml vivem em `basalt/auth.py` (o `__main__` importa-os de lá; o servidor
+  já não importa `basalt.__main__`, que sob `python -m basalt` carregava o ficheiro uma segunda vez).
 
 ### Segurança, ronda 13 (OAuth) (20/10/2026)
 - **Uma ligação ao Claude/ChatGPT não volta a valer quando a conta reaparece:** apagar uma conta (ou mudar-lhe o espaço ou a

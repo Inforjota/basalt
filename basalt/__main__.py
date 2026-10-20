@@ -25,6 +25,8 @@ import sys
 from pathlib import Path
 
 from . import __version__, caminhos, config
+from .auth import (_BLOCO_RX, _bloco_de, _toml_str, acrescentar_utilizador, bloco_utilizador,   # noqa: F401 (re-exportados: testes e
+                   definir_chave_utilizador, editar_toml, gravar_toml, trinco_toml)                #  quem importava daqui)
 from .config import Config, Utilizador
 
 EMAIL_RX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -35,56 +37,8 @@ def _falha(msg):
 
 
 # ───────────────────────────── editar o basalt.toml sem o reescrever todo ─────────────────────────────
-_BLOCO_RX = re.compile(r"(?ms)^\[\[utilizadores\]\][ \t]*\n(.*?)(?=^\[|\Z)")
-
-
-def _bloco_de(texto: str, email: str):
-    """(início, fim) do bloco [[utilizadores]] com esse e-mail, ou None."""
-    for m in _BLOCO_RX.finditer(texto):
-        e = re.search(r'(?m)^\s*email\s*=\s*"([^"]*)"', m.group(1))
-        if e and e.group(1).strip().lower() == email.lower():
-            return m.start(), m.end()
-    return None
-
-
-def _toml_str(v: str) -> str:
-    return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def definir_chave_utilizador(texto: str, email: str, chave: str, valor) -> str:
-    """põe `chave = valor` no bloco desse utilizador: substitui a linha (mesmo comentada) ou acrescenta-a a seguir ao e-mail."""
-    pos = _bloco_de(texto, email)
-    if not pos:
-        raise KeyError(email)
-    a, b = pos
-    bloco = texto[a:b]
-    linha = f"{chave} = {_toml_str(valor) if isinstance(valor, str) else str(valor).lower()}"
-    rx = re.compile(rf"(?m)^[ \t]*#?[ \t]*{re.escape(chave)}[ \t]*=[^\n]*$")
-    if rx.search(bloco):
-        bloco = rx.sub(linha, bloco, count=1)
-    else:
-        bloco = re.sub(r'(?m)^(\s*email\s*=\s*"[^"]*"[^\n]*)$', lambda m: m.group(1) + "\n" + linha, bloco, count=1)
-    return texto[:a] + bloco + texto[b:]
-
-
-def bloco_utilizador(email: str, espaco: str, nome: str, admin: bool, senha_hash: str = "") -> str:
-    out = ["[[utilizadores]]", f"email = {_toml_str(email)}", f"espaco = {_toml_str(espaco)}", f"nome = {_toml_str(nome)}"]
-    if senha_hash:
-        out.append(f"senha_hash = {_toml_str(senha_hash)}")
-    out.append(f"admin = {'true' if admin else 'false'}")
-    return "\n".join(out) + "\n"
-
-
-def acrescentar_utilizador(texto: str, bloco: str) -> str:
-    """o novo bloco fica a seguir ao último [[utilizadores]] (ou antes de [ia], ou no fim)."""
-    blocos = list(_BLOCO_RX.finditer(texto))
-    if blocos:
-        fim = blocos[-1].end()
-        return texto[:fim].rstrip("\n") + "\n\n" + bloco + "\n" + texto[fim:].lstrip("\n")
-    m = re.search(r"(?m)^\[ia\]", texto)
-    if m:
-        return texto[:m.start()] + bloco + "\n" + texto[m.start():]
-    return texto.rstrip("\n") + "\n\n" + bloco
+# ronda 13: os editores (definir_chave_utilizador, bloco_utilizador, acrescentar_utilizador, trinco_toml, gravar_toml, editar_toml)
+# vivem em basalt/auth.py — a página («Mudar a senha») também os usa, e importar este ficheiro de dentro do servidor duplicava-o.
 
 
 def _ler_toml(caminho: Path) -> str:
@@ -95,11 +49,22 @@ def _ler_toml(caminho: Path) -> str:
 
 
 def _escrever_toml(caminho: Path, texto: str):
-    from .auth import gravar_toml, trinco_toml
+    """o ficheiro INTEIRO (só o `iniciar`, que o cria). Para mudar uma chave num ficheiro que já existe é `_editar_toml`."""
     caminho.parent.mkdir(parents=True, exist_ok=True)
     try:
         with trinco_toml(caminho):    # a interface («Mudar a senha») também escreve: um de cada vez
             gravar_toml(caminho, texto)   # tem de carregar ANTES de substituir o verdadeiro; senão ficava um toml inválido no sítio
+    except (config.ConfigInvalida, ValueError, OSError) as e:   # ValueError = toml mal formado
+        _falha(f"o basalt.toml ficaria inválido ({e}) — não mexi em {caminho}")
+
+
+def _editar_toml(caminho: Path, editar):
+    """ronda 13: ler → editar → gravar com o trinco tomado (ver auth.editar_toml). Antes lia-se o texto no início do comando e, se a
+    página mudasse uma senha enquanto o terminal esperava pela nossa, a gravação do texto velho desfazia-a."""
+    try:
+        editar_toml(caminho, editar)
+    except KeyError as e:
+        _falha(f"utilizador desconhecido: {e.args[0] if e.args else ''}")
     except (config.ConfigInvalida, ValueError, OSError) as e:   # ValueError = toml mal formado
         _falha(f"o basalt.toml ficaria inválido ({e}) — não mexi em {caminho}")
 
@@ -242,7 +207,7 @@ def cmd_serve(a):
 def cmd_utilizador(a):
     from . import auth
     caminho = _caminho_config(a)
-    texto = _ler_toml(caminho)
+    texto = _ler_toml(caminho)            # só para conferir ANTES de pedir a senha; a edição relê o ficheiro dentro do trinco (ronda 13)
     if a.sub == "listar":
         cfg = config.carregar(caminho)
         for u in cfg.utilizadores:
@@ -257,8 +222,13 @@ def cmd_utilizador(a):
         cfg = config.carregar(caminho)
         h = auth.hash_senha(_senha(a)) if cfg.auth.modo == "senha" else ""
         esp = _espaco_para(cfg, email, a.espaco)
-        texto = acrescentar_utilizador(texto, bloco_utilizador(email, esp, a.nome or email.split("@")[0], bool(a.admin), h))
-        _escrever_toml(caminho, texto)
+        bloco = bloco_utilizador(email, esp, a.nome or email.split("@")[0], bool(a.admin), h)
+
+        def novo(t):
+            if _bloco_de(t, email):           # apareceu entretanto
+                _falha(f"{email} já existe (usa `utilizador senha`)")
+            return acrescentar_utilizador(t, bloco)
+        _editar_toml(caminho, novo)
         cfg = config.carregar(caminho)
         e = cfg.espaco_de(cfg.utilizador(email)).criar()
         if cfg.git:
@@ -268,11 +238,12 @@ def cmd_utilizador(a):
     if not _bloco_de(texto, email):
         _falha(f"utilizador desconhecido: {email}")
     if a.sub == "senha":
-        _escrever_toml(caminho, definir_chave_utilizador(texto, email, "senha_hash", auth.hash_senha(_senha(a))))
+        h = auth.hash_senha(_senha(a))
+        _editar_toml(caminho, lambda t: definir_chave_utilizador(t, email, "senha_hash", h))
         print(f"✓ senha de {email} guardada")
     elif a.sub == "mcp-token":
         token, h = auth.gerar_token()
-        _escrever_toml(caminho, definir_chave_utilizador(texto, email, "mcp_token_hash", h))
+        _editar_toml(caminho, lambda t: definir_chave_utilizador(t, email, "mcp_token_hash", h))
         print(f"token MCP de {email} (mostra-se UMA vez; guarda-o no cliente, nunca numa nota):\n\n  {token}\n")
         print('  claude mcp add --transport http basalt https://O-TEU-BASALT/mcp --header "Authorization: Bearer ' + token + '"')
 

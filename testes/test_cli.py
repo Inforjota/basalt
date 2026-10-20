@@ -107,3 +107,49 @@ def test_arranque_para_com_mensagem_clara_se_a_pasta_nao_tem_trocas_atomicas(tmp
         cli.main(["--config", str(tmp_path / "d" / "basalt.toml"), "serve"])
     msg = str(e.value)
     assert "não serve para os dados" in msg and "/mnt/c" in msg and "Só com um portátil" in msg
+
+
+# ── ronda 13: a edição parte sempre do ficheiro ACTUAL (trinco tomado) ──
+def _toml_ana_rui(tmp_path, h_ana, h_rui):
+    toml = tmp_path / "basalt.toml"
+    toml.write_text(f'[basalt]\ndados = "{tmp_path / "dados"}"\nescutar = "127.0.0.1"\ngit = false\n\n[auth]\nmodo = "senha"\n\n'
+                    '[ia]\nfornecedor = "nenhum"\n\n'
+                    f'[[utilizadores]]\nemail = "ana@x.pt"\nespaco = "ana"\nnome = "Ana"\nsenha_hash = "{h_ana}"\nadmin = true\n\n'
+                    f'[[utilizadores]]\nemail = "rui@x.pt"\nespaco = "rui"\nnome = "Rui"\nsenha_hash = "{h_rui}"\nadmin = false\n',
+                    encoding="utf-8")
+    return toml
+
+
+@pytest.mark.parametrize("sub", ["senha", "mcp-token"])
+def test_utilizador_nao_desfaz_a_mudanca_feita_na_pagina_entretanto(tmp_path, monkeypatch, sub):
+    """ronda 13: a CLI lia o basalt.toml, pedia a senha no terminal (podia demorar) e gravava o texto velho — uma senha mudada na
+    página entretanto era desfeita sem ninguém dar por isso. Agora lê, edita e grava com o trinco tomado."""
+    h_ana, h_rui = auth.hash_senha("senha da ana 1"), auth.hash_senha("senha do rui 1")
+    toml = _toml_ana_rui(tmp_path, h_ana, h_rui)
+    novo_rui = auth.hash_senha("senha do rui 2")
+
+    def entretanto():                     # o que a página faz quando o Rui muda a senha: só a chave dele, com o trinco
+        cli._escrever_toml(toml, cli.definir_chave_utilizador(toml.read_text(encoding="utf-8"), "rui@x.pt", "senha_hash", novo_rui))
+    if sub == "senha":
+        real = auth.hash_senha
+        monkeypatch.setattr(auth, "hash_senha", lambda s: (entretanto(), real(s))[1])   # «enquanto o terminal espera pela senha»
+    else:
+        real = auth.gerar_token
+        monkeypatch.setattr(auth, "gerar_token", lambda: (entretanto(), real())[1])
+    cli.main(["--config", str(toml), "utilizador", sub, "ana@x.pt", "--senha", "nova da ana 1"])
+    cfg = config.carregar(toml, ambiente={})
+    assert cfg.utilizador("rui@x.pt").senha_hash == novo_rui                                  # a mudança da página ficou
+    if sub == "senha":
+        assert auth.verificar_senha(cfg.utilizador("ana@x.pt").senha_hash, "nova da ana 1")
+    else:
+        assert cfg.utilizador("ana@x.pt").mcp_token_hash and cfg.utilizador("ana@x.pt").senha_hash == h_ana
+    assert not list(tmp_path.glob(".basalt.toml.*"))
+
+
+def test_utilizador_desconhecido_tambem_dentro_do_trinco(tmp_path):
+    """o utilizador que desaparece entre a conferência e a gravação dá o mesmo erro (e não um KeyError solto)."""
+    toml = _toml_ana_rui(tmp_path, auth.hash_senha("senha da ana 1"), auth.hash_senha("senha do rui 1"))
+    antes = toml.read_text(encoding="utf-8")
+    with pytest.raises(SystemExit, match="desconhecido"):
+        cli._editar_toml(toml, lambda t: cli.definir_chave_utilizador(t, "zed@x.pt", "senha_hash", "scrypt$1"))
+    assert toml.read_text(encoding="utf-8") == antes

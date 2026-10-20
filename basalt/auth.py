@@ -16,10 +16,12 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import secrets
 import sys
 import threading
 import time
+import tomllib
 from dataclasses import dataclass
 from http.cookies import SimpleCookie
 from pathlib import Path
@@ -34,7 +36,69 @@ SCRYPT = dict(n=2 ** 14, r=8, p=1)   # ~40 ms, 16 MiB; dklen 32
 MAXMEM = 64 * 1024 * 1024             # o OpenSSL recusa acima de 32 MiB por omissão
 
 
-# ───────────────────────────── senhas e tokens ─────────────────────────────
+# ───────────────────────────── editar o basalt.toml no sítio (a linha de comandos e a página; só a chave pedida) ─────────────────────────────
+# ronda 13: vivem aqui (e não em __main__) porque o servidor também os usa — importar `basalt.__main__` de dentro do processo lançado
+# com `python -m basalt` carregava o mesmo ficheiro uma segunda vez, como outro módulo ao lado de `__main__`.
+_BLOCO_RX = re.compile(r"(?ms)^\[\[utilizadores\]\][ \t]*\n(.*?)(?=^\[|\Z)")
+
+
+def _bloco_de(texto: str, email: str):
+    """(início, fim) do bloco [[utilizadores]] com esse e-mail, ou None."""
+    for m in _BLOCO_RX.finditer(texto):
+        e = re.search(r'(?m)^\s*email\s*=\s*"([^"]*)"', m.group(1))
+        if e and e.group(1).strip().lower() == email.lower():
+            return m.start(), m.end()
+    return None
+
+
+def _toml_str(v: str) -> str:
+    return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def definir_chave_utilizador(texto: str, email: str, chave: str, valor) -> str:
+    """põe `chave = valor` no bloco desse utilizador: substitui a linha (mesmo comentada) ou acrescenta-a a seguir ao e-mail."""
+    pos = _bloco_de(texto, email)
+    if not pos:
+        raise KeyError(email)
+    a, b = pos
+    bloco = texto[a:b]
+    linha = f"{chave} = {_toml_str(valor) if isinstance(valor, str) else str(valor).lower()}"
+    rx = re.compile(rf"(?m)^[ \t]*#?[ \t]*{re.escape(chave)}[ \t]*=[^\n]*$")
+    if rx.search(bloco):
+        bloco = rx.sub(linha, bloco, count=1)
+    else:
+        bloco = re.sub(r'(?m)^(\s*email\s*=\s*"[^"]*"[^\n]*)$', lambda m: m.group(1) + "\n" + linha, bloco, count=1)
+    return texto[:a] + bloco + texto[b:]
+
+
+def chave_utilizador(texto: str, email: str, chave: str):
+    """o valor de `chave` no bloco desse utilizador, tal como está no TEXTO (None = não há esse utilizador ou essa chave)."""
+    for u in tomllib.loads(texto).get("utilizadores") or []:
+        if isinstance(u, dict) and str(u.get("email", "")).strip().lower() == email.lower():
+            return u.get(chave)
+    return None
+
+
+def bloco_utilizador(email: str, espaco: str, nome: str, admin: bool, senha_hash: str = "") -> str:
+    out = ["[[utilizadores]]", f"email = {_toml_str(email)}", f"espaco = {_toml_str(espaco)}", f"nome = {_toml_str(nome)}"]
+    if senha_hash:
+        out.append(f"senha_hash = {_toml_str(senha_hash)}")
+    out.append(f"admin = {'true' if admin else 'false'}")
+    return "\n".join(out) + "\n"
+
+
+def acrescentar_utilizador(texto: str, bloco: str) -> str:
+    """o novo bloco fica a seguir ao último [[utilizadores]] (ou antes de [ia], ou no fim)."""
+    blocos = list(_BLOCO_RX.finditer(texto))
+    if blocos:
+        fim = blocos[-1].end()
+        return texto[:fim].rstrip("\n") + "\n\n" + bloco + "\n" + texto[fim:].lstrip("\n")
+    m = re.search(r"(?m)^\[ia\]", texto)
+    if m:
+        return texto[:m.start()] + bloco + "\n" + texto[m.start():]
+    return texto.rstrip("\n") + "\n\n" + bloco
+
+
 class trinco_toml:
     """um só escritor do basalt.toml de cada vez (a interface e a linha de comandos): flock num ficheiro ao lado."""
     def __init__(self, caminho: Path):
@@ -42,7 +106,12 @@ class trinco_toml:
 
     def __enter__(self):
         import fcntl
-        self.f = open(self.caminho, "a")
+        try:
+            self.f = open(self.caminho, "a")
+        except PermissionError:
+            # ronda 13: o trinco foi criado por outro utilizador (a CLI corrida como root deixa-o 0644 de root): o flock não precisa de
+            # escrita — abre-se só para ler. Se nem isso der, a excepção (OSError) chega a quem chamou, que a explica.
+            self.f = open(self.caminho, "r")
         fcntl.flock(self.f, fcntl.LOCK_EX)
         return self
 
@@ -51,19 +120,48 @@ class trinco_toml:
 
 
 def gravar_toml(caminho: Path, texto: str):
-    """troca o basalt.toml de uma vez (temporário único 0600 → só se carregar → os.replace); senão não mexe no verdadeiro."""
+    """troca o basalt.toml de uma vez (temporário único 0600 → só se carregar → os.replace); senão não mexe no verdadeiro.
+    ronda 13: o ficheiro novo fica com o dono e o grupo do anterior (como o `sed -i`) — a CLI corrida como root sobre um basalt.toml
+    do serviço deixava-o root:root 0600 e o serviço, que o relê em execução, fechava a porta a toda a gente («não carrega»)."""
     import tempfile
     caminho = Path(caminho)
+    try:
+        dono = os.stat(caminho)
+    except OSError:
+        dono = None
     fd, tmp = tempfile.mkstemp(prefix=".basalt.toml.", dir=caminho.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(texto)
         os.chmod(tmp, 0o600)
+        if dono is not None:
+            try:
+                os.chown(tmp, dono.st_uid, dono.st_gid)
+            except OSError:                       # sem privilégio para mudar o dono (não somos root): fica o nosso, como antes
+                pass
         config.carregar(Path(tmp))
         os.replace(tmp, caminho)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+def editar_toml(caminho: Path, editar) -> str:
+    """lê → `editar(texto)` → grava, TUDO com o trinco tomado: quem escreve parte sempre do ficheiro actual. Devolve o texto gravado.
+    ronda 13: a linha de comandos lia o basalt.toml, pedia a senha no terminal (podia demorar) e gravava o texto velho — uma senha
+    mudada na página entretanto era desfeita sem ninguém dar por isso (e a sessão nova dessa pessoa morria na releitura)."""
+    caminho = Path(caminho)
+    with trinco_toml(caminho):
+        novo = editar(caminho.read_text(encoding="utf-8"))
+        gravar_toml(caminho, novo)
+        return novo
+
+
+class SenhaMudouEntretanto(Exception):
+    """ronda 13: entre conferir a senha actual e gravar a nova, a senha desta conta mudou no basalt.toml (CLI `utilizador senha`)."""
+
+
+# ───────────────────────────── senhas e tokens ─────────────────────────────
 
 
 def hash_senha(senha: str) -> str:
@@ -300,19 +398,28 @@ class Autenticador:
                 self._falhou(ip)
                 return False, "A senha actual está errada."
         h = hash_senha(nova)                                  # scrypt fora do trinco (não atrasa os outros pedidos)
-        from .__main__ import definir_chave_utilizador        # o mesmo editor do `utilizador senha` (só a chave pedida)
+        conta, conferida = u.email, u.senha_hash
+
+        def trocar(texto: str) -> str:
+            """ronda 13 (compara-e-troca): só se a senha no FICHEIRO ainda for a que se conferiu — entre a conferência e o trinco
+            a CLI (`utilizador senha`) pode ter mudado esta conta, e a prova dada era da senha antiga."""
+            if _bloco_de(texto, conta) is None:
+                raise KeyError(conta)
+            if (chave_utilizador(texto, conta, "senha_hash") or "") != conferida:
+                raise SenhaMudouEntretanto()
+            return definir_chave_utilizador(texto, conta, "senha_hash", h)   # o mesmo editor do `utilizador senha` (só a chave pedida)
         try:
-            with trinco_toml(self._origem):
-                texto = self._origem.read_text(encoding="utf-8")
-                gravar_toml(self._origem, definir_chave_utilizador(texto, u.email, "senha_hash", h))
+            editar_toml(self._origem, trocar)
         except KeyError:
             return False, "A tua conta não está no basalt.toml (foi apagada?)."
+        except SenhaMudouEntretanto:
+            return False, "A senha desta conta foi mudada entretanto no servidor: entra outra vez com a senha nova."
         except (OSError, config.ConfigInvalida, ValueError) as e:
             return False, f"Não consegui gravar a senha nova ({getattr(e, 'strerror', None) or e}); a antiga continua a valer."
         self.reler_se_mudou()
         with self._lock:
             u = self.cfg.utilizador(email)
-            if not (u and hmac.compare_digest(u.senha_hash, h)):
+            if not (u and hmac.compare_digest(u.senha_hash or "", h)):
                 return False, "A senha foi gravada, mas o servidor ainda não a leu: entra outra vez com a senha nova."
             token = secrets.token_urlsafe(32)
             agora = time.time()

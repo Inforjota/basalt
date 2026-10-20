@@ -1,8 +1,10 @@
 """19/10/2026 — «Mudar a senha» na interface (POST /api/senha): caso bom e casos maus."""
+import os
+
 import pytest
 
-from basalt import auth, config
-from test_oauth import ANA, RUI, SENHA, Srv, _relogio, ler, mcp, renovar, srv, tokens  # noqa: F401 (fixtures)
+from basalt import __main__ as cli, auth, config
+from test_oauth import ANA, RUI, SENHA, Srv, _relogio, _toml, ler, mcp, renovar, srv, tokens  # noqa: F401 (fixtures)
 
 NOVA = "outra senha bem comprida"
 
@@ -153,3 +155,56 @@ def test_pagina_mudar_senha_no_browser(srv, navegador):
         assert p.locator("#senha-form").count() == 0
     finally:
         ctx.close()
+
+
+# ── ronda 13: o que se apurou na revisão antes de publicar ──
+def test_mudar_senha_nao_sobrepoe_a_senha_mudada_entretanto_na_cli(srv, monkeypatch):
+    """compara-e-troca: entre conferir a senha actual e gravar a nova, a CLI (`utilizador senha`) mudou esta conta — a prova dada era
+    da antiga, por isso a nossa não se grava por cima; a do servidor fica e este pedido diz-o."""
+    s = srv()
+    cookie = s.entrar()
+    do_admin = auth.hash_senha("senha posta pelo admin")
+    real, feito = auth.hash_senha, []
+
+    def hash_e_entretanto(senha):
+        h = real(senha)
+        if not feito:                                    # só na primeira chamada (a deste pedido)
+            feito.append(1)
+            with auth.trinco_toml(s.toml):                   # a CLI (`utilizador senha`), a meio deste pedido
+                auth.gravar_toml(s.toml, cli.definir_chave_utilizador(s.toml.read_text(encoding="utf-8"), ANA, "senha_hash", do_admin))
+        return h
+    monkeypatch.setattr(auth, "hash_senha", hash_e_entretanto)
+    st, r, cab = _mudar(s, cookie)
+    assert st == 400 and "entretanto" in r["erro"], r
+    assert "set-cookie" not in cab
+    assert config.carregar(s.toml, ambiente={}).utilizador(ANA).senha_hash == do_admin   # a do admin ficou
+    assert s.pedir("GET", "/api/eu", cab={"Cookie": cookie})[0] == 401                  # e a sessão de antes caiu (a senha mudou)
+    assert s.entrar(senha="senha posta pelo admin")
+    assert not list(s.toml.parent.glob(".basalt.toml.*"))
+
+
+def test_trinco_abre_so_para_ler_quando_nao_pode_escrever(tmp_path):
+    """o trinco criado por outro utilizador (a CLI como root deixa-o 0644 de root) não impede a página de o tomar: o flock não precisa
+    de escrita."""
+    if os.geteuid() == 0:
+        pytest.skip("root abre tudo")
+    toml = tmp_path / "basalt.toml"
+    toml.write_text("", encoding="utf-8")
+    trinco = tmp_path / "basalt.toml.trinco"
+    trinco.write_text("", encoding="utf-8")
+    os.chmod(trinco, 0o444)
+    with auth.trinco_toml(toml):
+        pass
+
+
+def test_gravar_toml_mantem_o_dono_do_ficheiro_anterior(tmp_path, monkeypatch):
+    """o ficheiro novo pede o dono e o grupo do anterior (só faz diferença como root: a CLI do admin sobre o basalt.toml do serviço
+    deixava-o root:root 0600 e o serviço fechava a porta a toda a gente ao relê-lo)."""
+    toml = tmp_path / "basalt.toml"
+    toml.write_text(_toml(tmp_path / "dados", 8121, ""), encoding="utf-8")
+    st = toml.stat()
+    pedidos, real = [], os.chown
+    monkeypatch.setattr(os, "chown", lambda p, uid, gid: (pedidos.append((str(p), uid, gid)), real(p, uid, gid))[1])
+    auth.gravar_toml(toml, toml.read_text(encoding="utf-8") + "\n")
+    assert any(os.path.basename(p).startswith(".basalt.toml.") and (uid, gid) == (st.st_uid, st.st_gid) for p, uid, gid in pedidos)
+    assert (toml.stat().st_mode & 0o777) == 0o600 and (toml.stat().st_uid, toml.stat().st_gid) == (st.st_uid, st.st_gid)

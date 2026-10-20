@@ -112,7 +112,9 @@ reiniciar; as outras opções só mudam ao reiniciar.
 
 **Mudar a senha:** cada utilizador muda a sua na página **🔌 Ligar a tua IA → A tua senha** (senha actual + nova). As outras
 sessões e as IAs ligadas caem e voltam a pedir «Permitir». Esqueceste-a? No servidor: `python3 -m basalt utilizador senha
-O_TEU_EMAIL`. O serviço precisa de poder escrever na pasta do `basalt.toml` (no `sistema/basalt.service` já pode).
+O_TEU_EMAIL` — na instalação com systemd, como o utilizador do serviço: `sudo -u basalt env PYTHONPATH=/opt/basalt python3 -m basalt
+--config /var/lib/basalt/basalt.toml utilizador senha O_TEU_EMAIL`. O serviço precisa de poder escrever na pasta do `basalt.toml`
+(no `sistema/basalt.service` já pode); a página e a linha de comandos escrevem-no à vez (trinco `basalt.toml.trinco`).
 
 **Já tens login (SSO) no proxy?** Põe `[auth] modo = "cabecalho"` e faz o proxy **substituir** `X-Basalt-Email` pelo e-mail
 autenticado (p. ex. `proxy_set_header X-Basalt-Email $upstream_http_x_auth_request_email;` com o oauth2-proxy). A rota `/mcp`
