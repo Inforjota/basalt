@@ -276,6 +276,8 @@ def ler_fonte(fonte, ref):
     base = ref.split("#")[0]
     if not fonte or fonte == "nota" or not base:
         return None
+    if tem_segredo_texto(fonte) or tem_segredo_texto(ref):   # ronda 13: recusa ANTES de juntar — senão os irmãos limpos abriam
+        return None                                         # pela ref proibida (e a resposta repetia-a)
     c = db()
     try:
         onde, args = " WHERE fonte=? AND (ref=? OR substr(ref, 1, ?)=?)", (fonte, base, len(base) + 1, base + "#")
