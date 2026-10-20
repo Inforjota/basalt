@@ -881,7 +881,8 @@ class OAuth:
             return _json_erro(h, "unsupported_grant_type", "só authorization_code e refresh_token")
         h.aut.reler_se_mudou()
         if getattr(h.aut, "_fechado", ""):          # basalt.toml estragado: nada se gasta nem se revoga — volta a valer quando o corrigirem
-            return _json_erro(h, "invalid_grant", "a configuração do servidor tem um erro; tenta depois")
+            # ronda 13: 503 temporarily_unavailable, não invalid_grant — um cliente trata invalid_grant como definitivo e pede nova ligação
+            return _json_erro(h, "temporarily_unavailable", "a configuração do servidor tem um erro; tenta depois", 503)
         if gt == "refresh_token" and basic_mau:
             return self._falha(h, ip, "basic_invalido", "invalid_client", "Authorization Basic inválido", 401)
         if gt == "refresh_token" and not client_id:

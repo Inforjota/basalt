@@ -686,7 +686,8 @@ def test_toml_estragado_nao_gasta(srv):
     s.toml.write_text("isto [não é toml")
     os.utime(s.toml, (time.time() + 5, time.time() + 5))
     assert mcp(s, t["access_token"])[0] == 401
-    assert renovar(s, cid, t["refresh_token"])[0] == 400
+    st, r, _ = renovar(s, cid, t["refresh_token"])            # indisponível por agora, não «ligação inválida» (ronda 13)
+    assert st == 503 and r["error"] == "temporarily_unavailable", (st, r)
     s.toml.write_text(bom)
     os.utime(s.toml, (time.time() + 10, time.time() + 10))
     assert renovar(s, cid, t["refresh_token"])[0] == 200
