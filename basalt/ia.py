@@ -117,19 +117,32 @@ def definir(ia_) -> None:
     _global = ia_
 
 
-def actual() -> "IA":
+def actual(tarefa: str | None = None) -> "IA":
     """a IA do processo, construída do basalt.toml à primeira chamada. Usada pelos módulos de linha de comandos (sig,
-    categorias, unir, arrumar…) para não ser cada um a ler a configuração."""
+    categorias, unir, arrumar…) para não ser cada um a ler a configuração. Com `tarefa` ("unir", "arrumar") é a dessa tarefa:
+    [ia] com o que [ia.<tarefa>] sobrepuser (sem a sub-tabela, a mesma de sempre)."""
     global _global
     if _global is None:
         from .config import carregar
         _global = IA(carregar(validar=False).ia)
+    if tarefa:
+        para = getattr(_global, "para", None)
+        if callable(para):
+            return para(tarefa)
     return _global
 
 
 class IA:
     def __init__(self, cfg: IAConfig):
         self.cfg = cfg
+        self._tarefas: dict = {}
+
+    def para(self, tarefa: str) -> "IA":
+        """a IA de uma tarefa ([ia.<tarefa>] por cima de [ia]); sem sub-tabela, esta mesma."""
+        if tarefa not in self._tarefas:
+            c = self.cfg.para(tarefa)
+            self._tarefas[tarefa] = self if c is self.cfg else type(self)(c)
+        return self._tarefas[tarefa]
 
     # ── estado ──
     @property
@@ -145,15 +158,24 @@ class IA:
         return self.cfg.modelo_chat or {"claude-cli": "claude (omissão do CLI)", "anthropic": "claude-sonnet-5-5"}.get(self.cfg.fornecedor, "")
 
     def descricao(self) -> dict:
-        return {"chat": self.cfg.fornecedor, "modelo": self.modelo if self.chat_activo else "",
-                "embeddings": (self.cfg.embeddings_fornecedor or ("openai" if self.cfg.fornecedor == "openai" else "nenhum")),
-                "modelo_embeddings": self.cfg.embeddings_modelo if self.embeddings_activos else ""}
+        d = {"chat": self.cfg.fornecedor, "modelo": self.modelo if self.chat_activo else "",
+             "embeddings": (self.cfg.embeddings_fornecedor or ("openai" if self.cfg.fornecedor == "openai" else "nenhum")),
+             "modelo_embeddings": self.cfg.embeddings_modelo if self.embeddings_activos else ""}
+        if self.cfg.tarefas:                           # só quando há [ia.unir]/[ia.arrumar]: qual está em uso em cada tarefa
+            from .config import TAREFAS_IA
+            d["tarefas"] = {}
+            for t in TAREFAS_IA:
+                x = self.para(t)
+                d["tarefas"][t] = {"chat": x.cfg.fornecedor, "modelo": x.modelo if x.chat_activo else "", "propria": x is not self}
+        return d
 
     # ── chat ──
     def chat(self, prompt: str, sistema: str = "", json_: bool = False, tempo: int | None = None) -> str:
         """uma pergunta, uma resposta em texto (já sem ``` à volta). json_=True pede JSON ao fornecedor que o suporte."""
         if not self.chat_activo:
-            raise IAIndisponivel("IA desligada ([ia] fornecedor = \"nenhum\")")
+            raise IAIndisponivel(f"IA desligada ([{self.cfg.seccao}] fornecedor = \"nenhum\")")
+        if "tempo_limite" in self.cfg.proprios:       # [ia.<tarefa>] tempo_limite: quem configurou a tarefa manda
+            tempo = self.cfg.tempo_limite
         tempo = tempo or self.cfg.tempo_limite
         f = self.cfg.fornecedor
         if f == "openai":
@@ -179,7 +201,7 @@ class IA:
 
     def _openai(self, prompt, sistema, json_, tempo):
         if not self.cfg.modelo_chat:
-            raise IAIndisponivel("[ia] modelo_chat em falta")
+            raise IAIndisponivel(f"[{self.cfg.seccao}] modelo_chat em falta")
         msgs = ([{"role": "system", "content": sistema}] if sistema else []) + [{"role": "user", "content": prompt}]
         corpo = {"model": self.cfg.modelo_chat, "messages": msgs, "temperature": 0}
         if json_:
@@ -197,7 +219,9 @@ class IA:
     def _anthropic(self, prompt, sistema, json_, tempo):
         k = _chave(self.cfg.chave_env, self.cfg.chave_ficheiro)
         if not k:
-            raise IAIndisponivel(f"sem chave: define a variável {self.cfg.chave_env} (ou [ia] chave_ficheiro)")
+            if not self.cfg.chave_env and not self.cfg.chave_ficheiro:
+                raise IAIndisponivel(f"sem chave: declara chave_env ou chave_ficheiro em [{self.cfg.seccao}]")
+            raise IAIndisponivel(f"sem chave: define a variável {self.cfg.chave_env} (ou [{self.cfg.seccao}] chave_ficheiro)")
         corpo = {"model": self.cfg.modelo_chat or "claude-sonnet-5-5", "max_tokens": 8192, "temperature": 0,
                  "messages": [{"role": "user", "content": prompt + ("\nResponde APENAS com JSON válido." if json_ else "")}]}
         if sistema:

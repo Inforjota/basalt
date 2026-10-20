@@ -522,7 +522,7 @@ def decidir_entrada(texto):
     desc = "\n".join(f"{i}) {k} — {campo(caminhos.ler_texto(COPIA / (k + '.md')), 'description')[:200]}"
                      for i, (k, *_) in enumerate(cands, 1)) or "(nenhuma)"
     try:
-        d = ia_mod.actual().chat_json(f"""Ideia guardada à pressa pelo utilizador: «{texto[:1500]}»
+        d = ia_mod.actual("arrumar").chat_json(f"""Ideia guardada à pressa pelo utilizador: «{texto[:1500]}»
 Notas candidatas da memória dele:
 {desc}
 Responde só JSON: {{"acao":"juntar|lixo|duvida","nota":"<nome exacto de uma candidata ou vazio>","confianca":0.0-1.0,"motivo":"frase curta em português de Portugal"}}
@@ -591,8 +591,8 @@ def processar_entrada():
 
 
 def vigia_entrada(cfg):
-    if not (cfg.entrada.automatica and ia_mod.actual().chat_activo):
-        return                                     # PORTE: sem IA de chat (ou desligada no toml) não há entrada automática
+    if not (cfg.entrada.automatica and ia_mod.actual("arrumar").chat_activo):
+        return                                     # PORTE: sem IA de chat (ou desligada no toml) não há entrada automática; ronda 12: a de [ia.arrumar]
     while True:
         for esp in _espacos(cfg):
             try:
@@ -738,8 +738,9 @@ def _correr_fusao(j, esp):
 
 
 def iniciar_fusao(manter, fundir):
-    if not ia_mod.actual().chat_activo:
-        return 503, {"erro": "IA desligada neste servidor: sem ela não há fusão automática (liga-a em [ia] do basalt.toml).", "ia": False}
+    if not ia_mod.actual("unir").chat_activo:
+        return 503, {"erro": "IA desligada neste servidor: sem ela não há fusão automática (liga-a em [ia] ou [ia.unir] do basalt.toml).",
+                     "ia": False}
     for n in (manter, fundir):
         if not NOME_RX.match(n or "") or ":" in n or n in excl() or not (REAL / f"{n}.md").exists():
             return 400, {"erro": f"«{n}» não é uma nota desta memória que se possa unir."}

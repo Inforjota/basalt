@@ -118,3 +118,164 @@ def test_controlo_uma_nota_apagada_perde_a_categoria(com_notas):
     categorias.main()
     d = _cats_lidas(com_notas)
     assert "nota_apagada" not in d and "nota_viva" in d
+
+
+# ═════════════════════════ C — IA por tarefa ([ia.unir], [ia.arrumar]) ═════════════════════════
+def _cfg(tmp_path, texto_ia):
+    p = tmp_path / "basalt.toml"
+    p.write_text(toml_de(0, tmp_path / "dados", "aberto", None, [{"email": ANA, "espaco": "t", "admin": True}], texto_ia), encoding="utf-8")
+    return config.carregar(p)
+
+
+def test_a_tarefa_sobrepoe_o_que_declara_e_herda_o_resto(tmp_path):
+    c = _cfg(tmp_path, '[ia]\nfornecedor = "openai"\nurl = "http://127.0.0.1:9/v1"\nmodelo_chat = "barato"\ntempo_limite = 60\n'
+                       'chave_env = "CHAVE_GERAL"\npedidos_por_hora = 7\n'
+                       '[ia.unir]\nmodelo_chat = "forte"\ntempo_limite = 900\n'
+                       '[ia.arrumar]\nfornecedor = "claude-cli"\nmodelo_chat = "sonnet"\n')
+    u, a = c.ia.para("unir"), c.ia.para("arrumar")
+    assert (u.fornecedor, u.url, u.modelo_chat, u.tempo_limite, u.chave_env) == ("openai", "http://127.0.0.1:9/v1", "forte", 900, "CHAVE_GERAL")
+    assert (a.fornecedor, a.modelo_chat, a.tempo_limite) == ("claude-cli", "sonnet", 60)
+    assert u.pedidos_por_hora == a.pedidos_por_hora == 7                      # os limites por hora são os de [ia]
+
+
+def test_a_chave_de_ia_nao_vai_para_outro_endereco_nem_outro_fornecedor(tmp_path):
+    c = _cfg(tmp_path, '[ia]\nfornecedor = "openai"\nurl = "http://127.0.0.1:9/v1"\nmodelo_chat = "m"\nchave_env = "CHAVE_GERAL"\n'
+                       '[ia.unir]\nurl = "http://127.0.0.1:8/v1"\n'
+                       '[ia.arrumar]\nfornecedor = "anthropic"\n')
+    assert c.ia.para("unir").chave_env == "" and c.ia.para("unir").chave_ficheiro == ""
+    assert c.ia.para("arrumar").chave_env == "" and c.ia.para("arrumar").chave_ficheiro == ""
+
+
+@pytest.mark.parametrize("texto,parte", [
+    ('[ia.unir]\nfornecedor = "inventado"\n', "[ia.unir]"),
+    ('[ia.arrumar]\nfornecedor = "openai"\nmodelo_chat = "m"\n', "[ia.arrumar]"),          # openai sem url (o [ia] está desligado)
+    ('[ia.unir]\npropostas_por_hora = 3\n', "propostas_por_hora"),                          # os limites por hora são só de [ia]
+    ('[ia.unir]\ntempo_limite = "muito"\n', "tempo_limite"),
+    ('[ia.resumir]\nmodelo_chat = "m"\n', "[ia.resumir]"),                                  # tarefa que não existe (gralha)
+])
+def test_a_sub_tabela_e_validada_como_o_ia(tmp_path, texto, parte):
+    with pytest.raises(ConfigInvalida) as e:
+        _cfg(tmp_path, texto)
+    assert parte in str(e.value)
+
+
+def test_sem_sub_tabelas_as_tarefas_usam_o_proprio_ia(tmp_path):
+    c = _cfg(tmp_path, '[ia]\nfornecedor = "openai"\nurl = "http://127.0.0.1:9/v1"\nmodelo_chat = "m"\n')
+    for t in ("unir", "arrumar"):
+        assert c.ia.para(t) is c.ia
+    i = ia.IA(c.ia)
+    ia.definir(i)
+    assert ia.actual("unir") is i and ia.actual("arrumar") is i and ia.actual() is i
+
+
+def test_controlo_sem_sub_tabelas_o_arrumar_auto_e_o_estado_ficam_iguais(tmp_path):
+    """controlo (já era assim): só com [ia], o `arrumar --auto` classifica a Entrada com ela e o `estado` não ganha linhas novas."""
+    geral = OllamaFalso()
+    geral.resposta_chat = LIXO
+    try:
+        toml = _toml(tmp_path, geral)
+        esp = config.carregar(toml).espaco("t").criar()
+        esp.inbox.write_text(json.dumps({"t": T, "texto": "ola", "de": "web"}) + "\n", encoding="utf-8")
+        rc, out, err = _basalt(tmp_path, toml, "arrumar", "--auto")
+        assert rc == 0, out + err
+        assert len(geral.pedidos_chat) == 1 and geral.pedidos_chat[0]["model"] == "modelo-de-teste"
+        assert json.loads(esp.inbox.read_text(encoding="utf-8").splitlines()[0]).get("arquivado")
+        rc, out, err = _basalt(tmp_path, toml, "estado")
+        assert rc == 0 and " ia openai modelo-de-teste" in out, out + err
+        assert "ia.unir" not in out and "ia.arrumar" not in out
+    finally:
+        geral.parar()
+
+
+def test_arrumar_auto_classifica_a_entrada_com_a_ia_da_tarefa(tmp_path):
+    geral, barata = OllamaFalso(), OllamaFalso()
+    barata.resposta_chat = LIXO                       # a geral responde texto (não JSON): se fosse ela a decidir, a ideia ficava
+    try:
+        toml = _toml(tmp_path, geral, f'[ia.arrumar]\nurl = "{barata.url_chat}"\nmodelo_chat = "modelo-barato"\n')
+        esp = config.carregar(toml).espaco("t").criar()
+        esp.inbox.write_text(json.dumps({"t": T, "texto": "ola", "de": "web"}) + "\n", encoding="utf-8")
+        rc, out, err = _basalt(tmp_path, toml, "arrumar", "--auto")
+        assert rc == 0, out + err
+        assert len(barata.pedidos_chat) == 1 and geral.pedidos_chat == [], \
+            f"a Entrada foi à IA errada (geral {len(geral.pedidos_chat)}, [ia.arrumar] {len(barata.pedidos_chat)})\n{out}{err}"
+        assert barata.pedidos_chat[0]["model"] == "modelo-barato"
+        reg = json.loads(esp.inbox.read_text(encoding="utf-8").splitlines()[0])
+        assert reg.get("arquivado") and reg["auto"]["acao"] == "lixo", reg
+    finally:
+        geral.parar(); barata.parar()
+
+
+def test_o_estado_diz_que_ia_usa_cada_tarefa(tmp_path):
+    toml = _toml(tmp_path, None, '[ia]\nfornecedor = "openai"\nurl = "http://127.0.0.1:9/v1"\nmodelo_chat = "barato"\n'
+                                 '[ia.unir]\nfornecedor = "claude-cli"\nmodelo_chat = "sonnet"\n')
+    rc, out, err = _basalt(tmp_path, toml, "estado")
+    assert rc == 0, out + err
+    linhas = out.splitlines()
+    assert any("ia.unir" in l and "claude-cli" in l and "sonnet" in l for l in linhas), out
+    assert any("ia.arrumar" in l and "openai" in l and "barato" in l for l in linhas), out
+
+
+def test_o_botao_unir_usa_a_ia_de_unir_mesmo_com_o_ia_desligado(servidor_local, monkeypatch):
+    forte = OllamaFalso(); forte.resposta_chat = BOA
+    monkeypatch.setattr(web, "_reindexar", lambda esp=None: None)
+    try:
+        s = servidor_local(modo="cabecalho", extra=f'[ia]\nfornecedor = "nenhum"\n'
+                                                    f'[ia.unir]\nfornecedor = "openai"\nurl = "{forte.url_chat}"\nmodelo_chat = "modelo-forte"\n')
+        esp = s.espaco("t").criar()
+        real = esp.real
+        for pasta in (real, esp.copia):                    # na memória e na cópia (só na memória ficava «retida»)
+            (pasta / "nota_a.md").write_text(A); (pasta / "nota_b.md").write_text(B)
+        _git(real, "init", "-q"); _git(real, "add", "-A"); _git(real, "commit", "-q", "-m", "inicio")
+        r = s.pedido("POST", "/api/unir", {"manter": "nota_a", "fundir": "nota_b"})
+        assert r.codigo == 202, r.corpo
+        jid, fim = r.json["job"], time.time() + 20
+        while time.time() < fim:
+            j = s.get(f"/api/unir?job={jid}").json
+            if j["estado"] in ("feita", "recusada", "falhou"):
+                break
+            time.sleep(0.05)
+        assert j["estado"] == "feita", j
+        assert len(forte.pedidos_chat) == 1 and forte.pedidos_chat[0]["model"] == "modelo-forte"
+        tarefas = s.get("/api/eu").json["ia"].get("tarefas", {})          # o diagnóstico da página diz qual está em uso
+        assert (tarefas["unir"]["chat"], tarefas["unir"]["modelo"]) == ("openai", "modelo-forte"), tarefas
+        assert tarefas["arrumar"]["chat"] == "nenhum", tarefas
+    finally:
+        forte.parar()
+
+
+def test_controlo_sem_ia_nenhuma_o_botao_unir_continua_a_dizer_que_esta_desligada(memoria):
+    """controlo: [ia] desligado e sem [ia.unir] → 503 como antes (e a mensagem continua a falar de [ia])."""
+    ia.definir(ia.IA(IAConfig(fornecedor="nenhum")))
+    cod, r = web.iniciar_fusao("nota_a", "nota_b")
+    assert cod == 503 and r["ia"] is False and "[ia]" in r["erro"]
+
+
+def test_arrumar_auto_funde_com_a_ia_de_unir_e_se_ela_falha_so_liga(memoria, tmp_path, monkeypatch):
+    """a decisão (unir) é da IA de [ia.arrumar]/[ia]; a fusão é da de [ia.unir]. Se esta não responde, o par fica ligado
+    (nada a meio) e a fusão não vai parar à IA geral."""
+    geral, forte = OllamaFalso(), OllamaFalso()
+    forte.em_baixo = True
+    try:
+        c = _cfg(tmp_path, f'[ia]\nfornecedor = "openai"\nurl = "{geral.url_chat}"\nmodelo_chat = "barato"\n'
+                           f'[ia.unir]\nurl = "{forte.url_chat}"\nmodelo_chat = "forte"\n')
+        ia.definir(ia.IA(c.ia))
+        real = memoria.real
+        (real / "nota_a.md").write_text(A); (real / "nota_b.md").write_text(B)
+        velho = time.time() - 86400
+        for n in ("nota_a", "nota_b"):
+            os.utime(real / f"{n}.md", (velho, velho))
+        _git(real, "init", "-q"); _git(real, "add", "-A"); _git(real, "commit", "-q", "-m", "inicio")
+        monkeypatch.setattr(auto_arrumar.arr, "duplicados", lambda *a, **k: [(0.97, "nota_a", "nota_b")])
+        monkeypatch.setattr(auto_arrumar, "decidir", lambda a, b: {"acao": "unir", "manter": "nota_a", "confianca": 0.95, "motivo": "iguais"})
+        correr = subprocess.run                    # o reindexar no fim fica de fora (o git das notas corre a sério)
+        monkeypatch.setattr(subprocess, "run", lambda args, *a, **k: subprocess.CompletedProcess(args, 0, "", "")
+                            if "basalt.sig" in args else correr(args, *a, **k))
+        monkeypatch.setattr(auto_arrumar, "SIMULAR", False)
+        auto_arrumar._correr()
+        assert geral.pedidos_chat == [], "a fusão foi pedida à IA geral, não à de [ia.unir]"
+        ultimo = json.loads((memoria.esp.auto_arrumar / "ultimo.json").read_text())
+        f = ultimo["feitos"][0]
+        assert f["acao"] == "ligar" and "não uni" in f["motivo"], f
+        assert (real / "nota_b.md").exists() and "[[nota_b]]" in (real / "nota_a.md").read_text()
+    finally:
+        geral.parar(); forte.parar()

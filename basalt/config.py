@@ -16,7 +16,7 @@ import os
 import threading
 import tomllib
 import urllib.parse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as _substituir
 from pathlib import Path
 
 from . import caminhos
@@ -25,6 +25,10 @@ ENV_CONFIG = "BASALT_CONFIG"
 LOCAIS = ("./basalt.toml", "~/.config/basalt/basalt.toml", "/etc/basalt/basalt.toml")
 ESPACO_OMISSAO = "principal"
 FORNECEDORES = ("nenhum", "openai", "anthropic", "claude-cli")
+# IA por tarefa: [ia.unir] (o botão Unir e as fusões do `arrumar --auto`) e [ia.arrumar] (classificar a Entrada e decidir os pares
+# parecidos). Cada uma sobrepõe só estes campos de [ia]; o resto (limites por hora, texto máximo, embeddings) é sempre o de [ia].
+TAREFAS_IA = ("unir", "arrumar")
+CAMPOS_TAREFA = ("fornecedor", "url", "modelo_chat", "chave_env", "chave_ficheiro", "tempo_limite")
 MODOS_AUTH = ("cabecalho", "senha", "aberto")
 IDIOMAS = ("pt", "en", "auto")
 
@@ -68,10 +72,48 @@ class IAConfig:
     embeddings_url: str = ""            # openai: …/v1 (usa /embeddings) · ollama: http://host:11434 (usa /api/embeddings)
     embeddings_modelo: str = "nomic-embed-text"
     embeddings_chave_env: str = ""      # "" = a mesma do chat
+    tarefas: dict = field(default_factory=dict)   # [ia.unir], [ia.arrumar]… tal como vêm do toml (só em [ia])
+    seccao: str = "ia"                  # de onde vem esta configuração, para as mensagens ("ia" ou "ia.unir"…)
+    proprios: frozenset = frozenset()   # os campos que a tarefa declarou ela própria (o resto veio de [ia])
 
     def embeddings_activos(self) -> bool:
         f = self.embeddings_fornecedor or ("openai" if self.fornecedor == "openai" else "nenhum")
         return f != "nenhum"
+
+    def para(self, tarefa: str) -> "IAConfig":
+        """a configuração de IA para uma tarefa: [ia] com o que [ia.<tarefa>] declarar por cima. Sem a sub-tabela é o próprio
+        [ia] (o mesmo objecto). Regras da herança — a chave de [ia] nunca vai parar a outro sítio sem se pedir:
+          · outro fornecedor → só herda o tempo_limite (url, modelo e chave são os da sub-tabela);
+          · o mesmo fornecedor → herda tudo, mas a chave só se o url também for o mesmo;
+          · declarar chave_env sem chave_ficheiro (ou o contrário) tira a outra.
+        Com valores maus (só possível com validar=False) fica o herdado: quem valida é o `validar()`."""
+        t = self.tarefas.get(tarefa)
+        if not isinstance(t, dict):
+            return self
+        d = {k: t[k] for k in CAMPOS_TAREFA if k in t}
+        for k in ("fornecedor", "url", "modelo_chat", "chave_env", "chave_ficheiro"):
+            if k in d and not isinstance(d[k], str):
+                d.pop(k)
+        if "tempo_limite" in d:
+            try:
+                d["tempo_limite"] = int(d["tempo_limite"])
+                if isinstance(t["tempo_limite"], bool) or d["tempo_limite"] <= 0:
+                    raise ValueError
+            except (TypeError, ValueError):
+                d.pop("tempo_limite")
+        forn = d.get("fornecedor", self.fornecedor)
+        novo = {"fornecedor": forn, "tempo_limite": d.get("tempo_limite", self.tempo_limite)}
+        if forn == self.fornecedor:
+            novo["url"], novo["modelo_chat"] = d.get("url", self.url), d.get("modelo_chat", self.modelo_chat)
+            mesmo_sitio = novo["url"].rstrip("/") == self.url.rstrip("/")
+            herda = mesmo_sitio and not ({"chave_env", "chave_ficheiro"} & set(d))
+            novo["chave_env"] = d.get("chave_env", self.chave_env if herda else "")
+            novo["chave_ficheiro"] = d.get("chave_ficheiro", self.chave_ficheiro if herda else "")
+        else:
+            novo.update(url=d.get("url", ""), modelo_chat=d.get("modelo_chat", ""),
+                        chave_env=d.get("chave_env", ""), chave_ficheiro=d.get("chave_ficheiro", ""))
+        return _substituir(self, **novo, tarefas={}, seccao=f"ia.{tarefa}", proprios=frozenset(d),
+                                   embeddings_fornecedor="nenhum")
 
 
 @dataclass
@@ -152,6 +194,25 @@ class Config:
             raise ConfigInvalida(f"[ia] fornecedor tem de ser um de {FORNECEDORES}, não {self.ia.fornecedor!r}")
         if self.ia.fornecedor == "openai" and not self.ia.url:
             raise ConfigInvalida("[ia] fornecedor openai precisa de url (ex.: http://127.0.0.1:11434/v1)")
+        for nome, t in self.ia.tarefas.items():          # [ia.unir], [ia.arrumar]: as mesmas regras de [ia]
+            if nome not in TAREFAS_IA:
+                raise ConfigInvalida(f"[ia] não conheço a secção [ia.{nome}]: as tarefas com IA própria são "
+                                     + ", ".join(f"[ia.{x}]" for x in TAREFAS_IA) + " (e [ia.embeddings] para a pesquisa)")
+            for k in t:
+                if k not in CAMPOS_TAREFA:
+                    raise ConfigInvalida(f"[ia.{nome}] {k}: aqui só se pode mudar " + ", ".join(CAMPOS_TAREFA)
+                                         + " (os limites por hora e o resto são os de [ia], para todas as tarefas)")
+            for k in ("fornecedor", "url", "modelo_chat", "chave_env", "chave_ficheiro"):
+                if k in t and not isinstance(t[k], str):
+                    raise ConfigInvalida(f"[ia.{nome}] {k} tem de ser texto entre aspas")
+            if "tempo_limite" in t and (isinstance(t["tempo_limite"], bool) or not isinstance(t["tempo_limite"], int)
+                                        or t["tempo_limite"] <= 0):
+                raise ConfigInvalida(f"[ia.{nome}] tempo_limite tem de ser um número inteiro de segundos, não {t['tempo_limite']!r}")
+            c = self.ia.para(nome)
+            if c.fornecedor not in FORNECEDORES:
+                raise ConfigInvalida(f"[ia.{nome}] fornecedor tem de ser um de {FORNECEDORES}, não {c.fornecedor!r}")
+            if c.fornecedor == "openai" and not c.url:
+                raise ConfigInvalida(f"[ia.{nome}] fornecedor openai precisa de url (ex.: http://127.0.0.1:11434/v1)")
         if self.auth.modo == "aberto" and self.escutar not in ("127.0.0.1", "::1", "localhost"):
             raise ConfigInvalida("[auth] modo aberto só com escutar = 127.0.0.1 — qualquer pessoa na rede entraria")
         vistos = set()
@@ -425,6 +486,7 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
         embeddings_url=amb.get("BASALT_EMB_URL") or amb.get("EMB_URL") or e.get("url", ""),
         embeddings_modelo=amb.get("BASALT_EMB_MODELO") or e.get("modelo", "nomic-embed-text"),
         embeddings_chave_env=e.get("chave_env", ""),
+        tarefas={k: dict(v) for k, v in i.items() if isinstance(v, dict) and k != "embeddings"},
     )
     if cfg.ia.embeddings_url and not cfg.ia.embeddings_fornecedor:    # compatibilidade: EMB_URL do Ollama (…/api/embeddings)
         cfg.ia.embeddings_fornecedor = "ollama" if "/api/" in cfg.ia.embeddings_url or ":11434" in cfg.ia.embeddings_url else "openai"

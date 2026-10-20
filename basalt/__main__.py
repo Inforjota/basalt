@@ -323,8 +323,8 @@ def cmd_arrumar(a):
         if a.auto:
             # ronda 9 (achado M6 da ronda 2): o timer nocturno faz o mesmo que o servidor numa volta do vigia — a Entrada (web.processar_entrada) —
             # e mais a arrumação das notas parecidas, o índice e as categorias, pelas MESMAS funções. Com --simular não escreve nada.
-            if not ia_mod.actual().chat_activo:
-                print(f"[{esp.nome}] a arrumação automática precisa de uma IA ([ia] fornecedor); só o relatório.", file=sys.stderr)
+            if not ia_mod.actual("arrumar").chat_activo:
+                print(f"[{esp.nome}] a arrumação automática precisa de uma IA ([ia] ou [ia.arrumar] fornecedor); só o relatório.", file=sys.stderr)
             else:
                 if cfg.entrada.automatica:
                     _arrumar_entrada(esp, bool(a.simular), entrada_mod)
@@ -396,6 +396,10 @@ def cmd_estado(a):
     cfg = _cfg(a)
     print(f"basalt {__version__} · config {_caminho_config(a)}\n dados {cfg.dados} · escuta {config.endereco(cfg.escutar, cfg.porta)} · auth {cfg.auth.modo} · git {'sim' if cfg.git else 'não'}")
     print(f" ia {cfg.ia.fornecedor} {cfg.ia.modelo_chat or ''} · embeddings {cfg.ia.embeddings_fornecedor or 'nenhum'} {cfg.ia.embeddings_modelo or ''}".rstrip())
+    if cfg.ia.tarefas:                    # ronda 12: [ia.unir]/[ia.arrumar] — qual IA cada tarefa usa
+        for t in config.TAREFAS_IA:
+            c = cfg.ia.para(t)
+            print(f"  ia.{t:8} {c.fornecedor} {c.modelo_chat or ''}".rstrip() + ("" if c is not cfg.ia else "  (a de [ia])"))
     for esp in _espacos(cfg, a):
         n = len(caminhos.notas(esp.real)) if esp.real.exists() else 0
         c = len(caminhos.notas(esp.copia)) if esp.copia.exists() else 0

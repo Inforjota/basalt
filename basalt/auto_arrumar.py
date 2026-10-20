@@ -84,7 +84,7 @@ NOTA B: {b} ({len(tb)} caracteres) — {desc(tb)}
 {corpo(tb)[:1800]}"""
     for tent in range(2):
         try:
-            d = _ia.actual().chat_json(prompt, tempo=600)      # PORTE: antes um modelo local fixo por HTTP; agora a IA de [ia]
+            d = _ia.actual("arrumar").chat_json(prompt, tempo=600)   # PORTE: antes um modelo local fixo; agora [ia.arrumar] ou [ia]
             if isinstance(d, dict) and d.get("acao") in ("unir", "arquivar", "ligar", "deixar") and d.get("manter") in (a, b):
                 d["confianca"] = float(d.get("confianca", 0))
                 return d
@@ -168,8 +168,8 @@ def main(argv=None):
         return print(__doc__)
     try:
         config.definir_processo(config.espaco_de_processo())
-        if not _ia.actual().chat_activo:
-            return print("auto_arrumar precisa de uma IA: defina [ia] fornecedor no basalt.toml. Nada feito.", file=sys.stderr)
+        if not _ia.actual("arrumar").chat_activo:
+            return print("auto_arrumar precisa de uma IA: defina [ia] fornecedor (ou [ia.arrumar]) no basalt.toml. Nada feito.", file=sys.stderr)
         _correr()
     except config.ConfigInvalida as e:
         sys.exit(f"configuração inválida: {e}")
@@ -209,8 +209,16 @@ def _correr():
         if SIMULAR:
             feitos.append({"acao": acao, "notas": [manter, outra], "motivo": motivo}); continue
         commit, msg = None, ""
+        m = None
+        if acao == "unir":                    # ronda 12: a fusão é da IA de [ia.unir]; se ela está desligada ou não responde, liga-se
+            if not _ia.actual("unir").chat_activo:
+                acao, motivo = "ligar", f"{motivo} (não uni: a IA de fundir está desligada — [ia.unir] fornecedor)"
+            else:
+                try:
+                    m = unir.fundir_llm(ta, tb, manter, outra)
+                except (_ia.IAIndisponivel, ValueError) as e:
+                    acao, motivo = "ligar", f"{motivo} (não uni: a IA não fundiu — {str(e)[:160]})"
         if acao == "unir":
-            m = unir.fundir_llm(ta, tb, manter, outra)
             ok, porque, est = unir.validar(ta, tb, m, manter, outra)
             if ok and est.get("cobertura") == 1.0:
                 try:

@@ -66,7 +66,8 @@ Regras (obrigatórias):
 {b}
 """
     # PORTE: antes `claude -p` com o modelo lido de uma ferramenta local; agora a IA configurada em [ia] (basalt.ia)
-    return _ia.actual().chat(prompt, tempo=600).strip() + "\n"
+    # ronda 12: a IA da tarefa «unir» — [ia.unir] por cima de [ia] (um modelo forte só para fundir, se se quiser)
+    return _ia.actual("unir").chat(prompt, tempo=600).strip() + "\n"
 
 
 def validar(a, b, m, manter, fundir):
