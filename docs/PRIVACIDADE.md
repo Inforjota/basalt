@@ -32,6 +32,7 @@ No browser de cada utilizador (para funcionar sem internet):
 | respostas da API (texto das notas) | cache do service worker | idem |
 | anexos já vistos | cache HTTP do browser | o browser decide; antes de mostrar um, pergunta sempre ao servidor se ainda pode |
 | fila sem internet de uma conta que saiu (e edições abertas com ela que o separador já não pôde gravar, porque entretanto entrou outra conta) | IndexedDB, guardada à parte em nome dessa conta | até essa conta voltar a entrar no mesmo browser (aí é enviada) ou se limparem os dados do site |
+| edições sem internet de que não se sabe a conta (de uma versão anterior da página, ou feitas sem sessão iniciada) | IndexedDB, guardadas à parte | até quem está no browser as enviar em seu nome ou se limparem os dados do site; a página avisa, mostra-as e deixa descarregá-las; «Apagar cópia deste aparelho» não as apaga |
 
 A tranca da cópia no browser depende de respostas do servidor (sessão expirada, conta removida). Um dispositivo que nunca mais
 se liga continua a poder ler a cópia que tem. Em computadores partilhados, diz aos utilizadores para usarem «Terminar sessão».

@@ -78,4 +78,6 @@ fontes_de_confianca = ["web", "terminal", "cli", "mcp"]
 # "Diversos" = "nada acima encaixa"
 
 # [fontes_extra]                   # opcional: comandos que imprimem JSON [{"fonte","ref","titulo","texto"}] para entrar no índice
+#                                  # (aparecem na procura e abrem-se na página só para ler; um texto longo pode vir em pedaços
+#                                  #  com a ref «doc#0», «doc#1»… e o mesmo título — a página mostra-os juntos, pela ordem)
 # comandos = ["/usr/local/bin/as-minhas-tarefas"]

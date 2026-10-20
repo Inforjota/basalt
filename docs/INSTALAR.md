@@ -213,6 +213,14 @@ python3 -m basalt entrada                                            # sem texto
 Uma fonte que não esteja em `[entrada] fontes_de_confianca` grava na mesma, mas a ideia fica na Entrada à espera de aprovação
 (o comando avisa). As categorias de `[fontes_extra]` (`<fonte>:<ref>` em `categorias.json`) mantêm-se quando o `arrumar` refaz
 as categorias; só saem as de notas apagadas e as que a fonte deixou de dar ao índice.
+**Edições feitas sem internet numa versão anterior da página.** Se uma pessoa tinha edições por enviar quando a página
+mudou de versão, e não se sabe de que conta eram, elas não sobem sozinhas: ficam guardadas à parte no browser e a página
+mostra «Há N edições guardadas neste aparelho que não chegaram a ser enviadas». Daí pode vê-las, enviá-las em seu nome (com
+a versão de base que tinham: se a nota mudou entretanto, fica um conflito para resolver, nunca por cima) ou descarregá-las
+(`.md`/`.zip`, sem rede). Esconder o aviso não apaga nada; o Início continua a mostrar quantas são.
+
+**Voltar a uma versão anterior.** A página de uma versão anterior não conhece o que esta guardou à parte: não o mostra, e o
+«Apagar cópia deste aparelho» dela apaga-o. Antes de recuar, pede a quem tem esse aviso que envie ou descarregue as edições.
 
 ## 8. Só com um portátil
 

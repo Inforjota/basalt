@@ -23,6 +23,24 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   regras: corte aos 4000 caracteres, password em claro → código de saída 2 e nada gravado, fonte fora de
   `[entrada] fontes_de_confianca` → fica à espera de aprovação (com aviso). `-` lê o texto do stdin; sem texto lista as ideias por
   arrumar. Um texto que comece por `-` vai depois de `--` (`basalt entrada --de bot -- "-urgente"`). Quem tem um bot ou um script a escrever directamente no ficheiro deve passar a usar este comando (`docs/INSTALAR.md` § 7).
+- **As edições por enviar de uma versão anterior da página já não ficam escondidas:** a página anterior não gravava de que
+  conta era a cópia sem internet; ao abrir esta versão, o que estava na fila ficava guardado à parte (para não subir em nome
+  de outra conta) e não se via em lado nenhum. Agora aparece um aviso «Há N edições guardadas neste aparelho que não chegaram
+  a ser enviadas» com **Ver** (a lista, sem enviar nada), **Enviar em meu nome** (sobem como uma gravação normal, com a mesma
+  versão de base: se a nota mudou entretanto fica um conflito para resolveres e a tua versão guardada em
+  `offline-versoes/`, nunca por cima), **Descarregar** (`.md`, ou `.zip` com várias, feito na página, sem rede) e
+  **Esconder aviso** (nada se apaga: o Início continua a mostrar «Edições guardadas à parte neste aparelho (N)»).
+  O mesmo vale para o que ficou na fila depois de «Terminar sessão» (antes perdia-se quando entrava uma conta).
+  As edições de outra conta conhecida continuam a voltar só quando ela entrar no mesmo browser; o Início diz quantas são,
+  nunca o texto. «Apagar cópia deste aparelho» não as apaga.
+- **Os resultados de `[fontes_extra]` abrem-se, só para ler:** na procura, nas citações e nas fontes da pergunta, um texto
+  vindo de um comando externo abre-se numa vista com o título, a fonte e «só leitura», todos os pedaços que o índice tem
+  dessa referência pela ordem, sem editar, apagar nem unir (antes não se abria). Usa o mesmo filtro da procura: um pedaço com
+  uma password ou chave em claro não se mostra (só se diz quantos ficaram de fora) e uma referência só com pedaços desses não
+  se abre. Novo `python -m basalt.sig fonte FONTE REF [--json]` e `GET /api/fonte?fonte=…&ref=…`; `sig pergunta --json`
+  passa a dizer a `fonte` de cada excerto. Os comandos de `[fontes_extra]` não mudam.
+- Se voltares a uma versão anterior do Basalt depois de abrir esta: o que ficou guardado à parte não se vê na página anterior,
+  e o «Apagar cópia deste aparelho» dela apaga-o. Envia ou descarrega primeiro (ver [INSTALAR.md § 7](docs/INSTALAR.md)).
 
 ### Segurança: passwords, notas apagadas e cópia sem internet (19/10/2026)
 - **Passwords só de letras entre aspas, crases ou com uma observação a seguir:** `senha: "minhapalavracomplicada"`,
