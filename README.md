@@ -58,6 +58,7 @@ python3 -m basalt indexar                                          # (re)constr�
 python3 -m basalt importar ~/O-meu-cofre --simular                # trazer um cofre Obsidian (primeiro só ver o que faria)
 python3 -m basalt exportar ~/cofre-exportado                       # levar a memória para uma pasta (abre-se no Obsidian)
 python3 -m basalt arrumar --auto                                   # Entrada → notas, ligações, categorias (o que o timer corre de noite; --simular só mostra)
+python3 -m basalt entrada "comprar velas" --de bot               # guardar uma ideia na Entrada a partir de outro programa (o mesmo trinco da página)
 ```
 
 ## Os teus agentes de IA

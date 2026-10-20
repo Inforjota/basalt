@@ -4,6 +4,23 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Actualizar sem perder nada (20/10/2026)
+- **As categorias das fontes externas já não se perdem:** o `arrumar` (e `python -m basalt.categorias`) reescrevia o
+  `categorias.json` só com as notas do espaço e as chaves `<fonte>:<ref>` de `[fontes_extra]` caíam. Agora mantêm-se: com o índice,
+  ficam as que a fonte ainda lá tem (e as de fontes que o índice não conhece); sem índice, ficam todas as que têm `<fonte>:`. As de
+  notas apagadas continuam a sair. As fontes externas não são categorizadas pela IA (só preservadas).
+- **Uma IA por tarefa:** `[ia.unir]` (fundir notas: o botão Unir e o `arrumar --auto`) e `[ia.arrumar]` (classificar a Entrada e as
+  notas parecidas), opcionais, mudam `fornecedor`, `url`, `modelo_chat`, `chave_env`, `chave_ficheiro` e `tempo_limite`; o resto vem
+  de `[ia]`. Validadas como `[ia]` (uma secção ou um campo desconhecido é recusado no arranque). A chave de `[ia]` só passa para a
+  tarefa com o mesmo fornecedor e o mesmo url. Os limites por hora continuam os de `[ia]`. `basalt estado` e a página (`/api/eu`)
+  dizem que IA cada tarefa usa. Se a fusão falhar no `arrumar --auto` (IA de fundir desligada ou em baixo), as notas ficam ligadas
+  em vez de fundidas. Sem as sub-tabelas tudo fica como estava.
+- **`basalt entrada "texto" [--de FONTE]`:** guarda uma ideia na Entrada a partir de outro programa pelo mesmo trinco da página
+  (um programa que acrescentasse linhas ao `entrada.jsonl` à mão perdia-as se a página o reescrevesse no mesmo instante). As mesmas
+  regras: corte aos 4000 caracteres, password em claro → código de saída 2 e nada gravado, fonte fora de
+  `[entrada] fontes_de_confianca` → fica à espera de aprovação (com aviso). `-` lê o texto do stdin; sem texto lista as ideias por
+  arrumar. Quem tem um bot ou um script a escrever directamente no ficheiro deve passar a usar este comando (`docs/INSTALAR.md` § 7).
+
 ### Segurança: passwords, notas apagadas e cópia sem internet (19/10/2026)
 - **Passwords só de letras entre aspas, crases ou com uma observação a seguir:** `senha: "minhapalavracomplicada"`,
   `` senha: `minhaSenhaSecreta` ``, `senha: minhapalavrasecreta (router)` ou `senha: minhapalavrasecreta; utilizador: ana`

@@ -178,6 +178,14 @@ O `basalt/basalt.toml.exemplo` já aponta ao Ollama local. Qualquer API compatí
 Sem IA nenhuma: a pesquisa é por palavras (BM25), a Entrada arruma-se à mão, o editor não tem os botões de IA. Tudo o resto
 funciona.
 
+**Uma IA por tarefa (opcional).** `[ia.unir]` (fundir notas: o botão Unir e o `arrumar --auto`) e `[ia.arrumar]` (classificar:
+a Entrada e as notas parecidas) podem usar outro fornecedor ou modelo — por exemplo um modelo local barato para classificar e um
+mais forte para fundir. Cada uma só muda o que declara (`fornecedor`, `url`, `modelo_chat`, `chave_env`, `chave_ficheiro`,
+`tempo_limite`); o resto vem de `[ia]`. A chave de `[ia]` só passa para a tarefa se o fornecedor e o url forem os mesmos (a
+chave de um serviço nunca vai para outro endereço). Os limites por hora continuam os de `[ia]`. `basalt estado` mostra a IA de
+cada tarefa; `[ia.unir] fornecedor = "nenhum"` desliga só a fusão (o `arrumar --auto` passa a ligar as notas parecidas em vez
+de as fundir).
+
 ## 6. Cópias de segurança
 
 Copia `<dados>` inteiro (notas + git + índice + sessões). O índice reconstrói-se com `basalt indexar`; as notas são
@@ -187,6 +195,21 @@ ficheiros Markdown com histórico git — `git -C <dados>/<espaco>/memoria log` 
 
 `git pull` e reiniciar o serviço (systemd: voltar a copiar `basalt/` para `/opt/basalt`; Docker: `docker compose build`).
 As versões seguem SemVer; o [CHANGELOG](../CHANGELOG.md) diz o que muda e o que é preciso fazer.
+
+**Programas que escrevem na Entrada** (um bot de mensagens, um atalho, um script antigo) devem usar o comando, não acrescentar
+linhas ao `entrada.jsonl` à mão: a página reescreve esse ficheiro quando arquivas ou arrumas uma ideia, e uma linha acrescentada
+nesse instante perdia-se. O comando espera pelo mesmo trinco da página e segue as mesmas regras (corte aos 4000 caracteres,
+password em claro → recusa com código de saída 2, nada fica gravado):
+
+```bash
+python3 -m basalt --config ~/basalt-dados/basalt.toml entrada "comprar velas" --de telegram -u ana@exemplo.pt
+printf '%s' "$TEXTO" | python3 -m basalt entrada - --de telegram     # «-»: o texto vem do stdin (não aparece na lista de processos)
+python3 -m basalt entrada                                            # sem texto: lista as ideias por arrumar (--json)
+```
+
+Uma fonte que não esteja em `[entrada] fontes_de_confianca` grava na mesma, mas a ideia fica na Entrada à espera de aprovação
+(o comando avisa). As categorias de `[fontes_extra]` (`<fonte>:<ref>` em `categorias.json`) mantêm-se quando o `arrumar` refaz
+as categorias; só saem as de notas apagadas e as que a fonte deixou de dar ao índice.
 
 ## 8. Só com um portátil
 

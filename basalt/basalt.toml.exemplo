@@ -54,6 +54,16 @@ fornecedor = "ollama"              # ollama (http://host:11434, /api/embeddings)
 url = "http://127.0.0.1:11434"
 modelo = "nomic-embed-text"
 
+# [ia.unir]                        # opcional: outra IA só para FUNDIR notas (o botão Unir e o `arrumar --auto`) — p. ex. uma mais forte
+# fornecedor = "claude-cli"        # pode mudar: fornecedor, url, modelo_chat, chave_env, chave_ficheiro, tempo_limite; o resto vem de [ia]
+# modelo_chat = "sonnet"
+# tempo_limite = 600               # segundos; sem ele, o tempo de cada pedido fica o de sempre
+# [ia.arrumar]                     # opcional: outra IA só para CLASSIFICAR (a Entrada e as notas parecidas) — p. ex. uma mais barata
+# url = "http://127.0.0.1:11434/v1"
+# modelo_chat = "qwen2.5:3b"
+# (a chave de [ia] só passa para a tarefa se o fornecedor E o url forem os mesmos; senão declara chave_env/chave_ficheiro aqui.
+#  Os limites por hora são os de [ia], para todas. As categorias, o editor e a pergunta com fontes usam sempre [ia].)
+
 [entrada]
 automatica = true                  # ideias de fontes de confiança são arrumadas sozinhas (com Desfazer)
 fontes_de_confianca = ["web", "terminal", "cli", "mcp"]
