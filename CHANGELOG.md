@@ -4,6 +4,17 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Correcções da ronda 13c (20/10/2026)
+- **Uma nota em que o `[segredos] verificador` falha sempre já não trava a sincronização das outras:** com «no máximo uma
+  chamada falhada por ciclo» (ronda 13) e a ordem das notas sempre igual, as que vinham a seguir a ela ficavam adiadas em
+  todos os ciclos e nunca chegavam à memória. Agora a nota que fez o verificador falhar vai para o fim do ciclo seguinte e as
+  outras verificam-se primeiro (continua a ser uma chamada falhada por ciclo, com o seu ALERTA).
+- **Categorias das fontes externas:** uma ref sem `#` (a página `repo`, com o seu título) que chega depois da `repo#12` da
+  mesma base ganha categoria — ficava sem ela para sempre, tomada por uma nota partida já feita.
+- **`basalt utilizador senha`/`novo` dizem quando o corte das IAs ficou e a gravação não:** se o `basalt.toml` não se
+  conseguir gravar depois de as ligações da conta já estarem cortadas na base (é a direcção segura e assim fica), o aviso
+  diz que ficaram cortadas e que o resto não mudou — antes dizia só «não mexi no basalt.toml».
+
 ### Correcções da ronda 13 (20/10/2026)
 - **Mudar a senha só diz que correu bem com o corte das IAs já gravado:** na página e com `basalt utilizador senha`/`novo`,
   as ligações e os tokens pessoais da conta revogam-se na base antes da resposta (a CLI fá-lo antes de mexer no `basalt.toml`;
