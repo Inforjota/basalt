@@ -4,6 +4,23 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Segurança, ronda 13 (OAuth) (20/10/2026)
+- **Uma ligação ao Claude/ChatGPT não volta a valer quando a conta reaparece:** apagar uma conta (ou mudar-lhe o espaço ou a
+  senha) revoga de vez as ligações e os tokens pessoais dela, gravado na base. Recriar a conta com o mesmo email já não os
+  ressuscita: é preciso ligar de novo. Também vale para quem apaga a conta com o Basalt parado (o arranque seguinte revoga).
+- **Um endereço retirado de `redirects_extra` deixa logo de receber ligações:** os pedidos que já estavam abertos para esse
+  endereço deixam de mostrar a página de consentimento e não recebem código (antes só os pedidos novos eram recusados).
+- **Uma conta já não consegue encher a base das ligações das outras:** cada ligação renova no máximo 60 vezes por hora (a
+  seguinte responde «tenta depois», sem perder a ligação), cada conta tem no máximo 50 ligações activas (a 51.ª pede para
+  desligar alguma em 🔌 «Ligar a tua IA»), os tokens antigos de cada ligação são apagados a cada renovação e as ligações
+  revogadas antigas deixam de se acumular.
+- **Os tokens pessoais da senha antiga já não ocupam a quota de 20:** depois de mudar a senha, a lista vazia já não responde
+  «já tens 20 tokens».
+- **Com o `basalt.toml` estragado, a IA já não pensa que perdeu a ligação:** a renovação responde «indisponível, tenta depois»
+  (503) em vez de «autorização inválida»; depois de corrigires o ficheiro, a ligação continua a funcionar sem a refazer.
+- **Proxy com login (nginx):** o exemplo de `docs/INSTALAR.md` § 4 leva agora `auth_request off;` nas rotas que a nuvem da IA
+  chama; sem isso, um login definido no bloco `server` continuava a aplicar-se a elas.
+
 ### Actualizar sem perder nada (20/10/2026)
 - **As categorias das fontes externas já não se perdem:** o `arrumar` (e `python -m basalt.categorias`) reescrevia o
   `categorias.json` só com as notas do espaço e as chaves `<fonte>:<ref>` de `[fontes_extra]` caíam. Agora mantêm-se: com o índice,
