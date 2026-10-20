@@ -2,11 +2,14 @@
 // quando não há rede, nunca esconde uma sessão expirada atrás de dados velhos.
 "use strict";
 
-var CACHE_VERSAO = "basalt-v13";      // sobe de versão quando a lógica de cache muda
+var CACHE_VERSAO = "basalt-v14";      // sobe de versão quando a lógica de cache muda
 // ronda 9 (achado 2 da ronda 7): a página só volta a ligar a cópia com um service worker que fale este protocolo (trinco partilhado
 // e geração gravada em cada entrada). Um SW antigo (v8, sem gerações) ainda a controlar a página não responde → não religa.
 // Protocolo 4 (ronda 9, achado G1 da ronda 2): uma cache da API por dono — um SW de protocolo 3 ainda tinha a cache comum.
-var PROTOCOLO = 4;
+// Protocolo 5 (ronda 13): a época da cópia (ver EPOCA). Uma página aberta de protocolo 4 recarrega quando este SW a passa a
+// controlar (o código dela aceitava respostas revogadas a meio); se não recarregar (alterações por gravar no editor), já não
+// recebe a cópia da API deste SW: só se serve a um pedido com «X-Basalt-Protocolo: 5» — sem rede, ela cai na sua IndexedDB.
+var PROTOCOLO = 5;
 // «Apagar cópia deste aparelho» cria esta cache-marca (não começa por "basalt-", por isso sobrevive à limpeza
 // do activate) — enquanto existir, nenhuma resposta da API volta a ser guardada neste aparelho.
 var MARCA_DESLIGADA = "basaltcfg-copia-desligada";
@@ -17,13 +20,21 @@ var MARCA_DESLIGADA = "basaltcfg-copia-desligada";
 var MARCA_TRANCADA = "basaltcfg-copia-trancada";
 // lápides — quando uma nota dá 404/410 fica aqui a hora. Uma resposta 200 que tenha PARTIDO antes dessa hora (pedido atrasado)
 // já não entra na cache. Não começa por "basalt-": sobrevive ao activate. Ronda 11: cada 404/410 escreve a SUA entrada
-// («/__lapide/<URL codificado>/<hora>») e a lápide que vale é a maior; a entrada antiga (chave = o URL) continua a escrever-se
-// e a ler-se (ver marcarApagada).
+// («/__lapide/<URL codificado>/<hora>») e a lápide que vale é a maior. Ronda 13: a entrada antiga (chave = o URL) só se lê
+// (as de antes contam como chão); já não se escreve (ver marcarApagada).
 var MARCA_APAGADAS = "basaltcfg-apagadas";
 // ronda 7 (geração): «apagar a cópia» (na página) muda esta marca ANTES de pôr a de desligada. Um pedido que partiu antes
 // disso compara-a ao guardar: se mudou, a cópia foi apagada (e talvez religada) enquanto ele corria e a resposta dele é de
 // antes — não entra. Antes só se via a marca de desligada no instante de guardar: apagar+religar a meio deixava passar.
 var MARCA_GERACAO = "basaltcfg-copia-geracao";
+// ronda 13 (época da cópia): uma resposta da cópia já LIDA (a entrada, ou o corpo na página) não se revoga apagando a cache — um 404,
+// um 401 ou «apagar a cópia» que acabassem no meio deixavam-na ser entregue na mesma. Quem revoga muda a época ANTES de mexer
+// (EPOCA em memória, já, sem esperar; e a marca persistente «/__epoca», para a página e os outros SW) e, no fim, avisa cada
+// página e espera que ela confirme (avisarPaginas). Quem entrega compara a época de quando começou com a de agora, sem nenhum
+// await entre a comparação e a entrega — se mudou, volta a ver (a 2.ª vez desiste).
+var MARCA_EPOCA = "basaltcfg-epoca";
+var EPOCA = 0;
+var AVISO_MS = 1000;            // quanto se espera pela confirmação de cada página (uma página antiga não responde)
 var LAPIDE_DIAS = 30;
 // ronda 6 (achado G5 da ronda 4): o relógio pode andar PARA TRÁS (acerto NTP, mudança de hora) — as horas com que se ordenam
 // pedidos, trancas e lápides vêm daqui e nunca descem: cada uma é pelo menos 1 ms acima da última vista (também das já
@@ -94,7 +105,8 @@ var CACHE_VENDOR = CACHE_VERSAO + "-vendor";   // /static/vendor/ (mermaid, kate
 
 var CASCA_APP = ["/", "/index.html"];
 
-var API_EM_CACHE = ["/api/notas", "/api/nota", "/api/indice", "/api/categorias"];
+// ronda 13: e a vista só de leitura de uma fonte externa (as mesmas regras: lápide no 404/410, tranca no 401, época)
+var API_EM_CACHE = ["/api/notas", "/api/nota", "/api/indice", "/api/categorias", "/api/fonte"];
 
 // ronda 9 (achado G1 da ronda 2): a cache da API é uma POR DONO (a conta + espaço da cópia, que a página manda em X-Basalt-Dono).
 // Dois separadores de contas diferentes no mesmo browser nunca se servem um ao outro: o pedido de A só lê a cache de A.
@@ -119,10 +131,61 @@ async function apagarCachesApi() {
   } catch (e) {}
 }
 
+// ronda 13 (época da cópia): a persistente — "" = nunca mudou; na dúvida (a cache falhou) um valor que nunca é igual (não se entrega)
+async function lerEpoca() {
+  try {
+    if (!(await caches.has(MARCA_EPOCA))) return "";
+    var r = await (await caches.open(MARCA_EPOCA)).match("/__epoca");
+    return r ? await r.text() : "";
+  } catch (e) {
+    return "?" + Math.random();
+  }
+}
+// a de memória muda JÁ (na chamada, antes de qualquer await de quem chama); a persistente a seguir (hora.ficha: nunca se repete)
+function mudarEpoca() {
+  EPOCA++;
+  return caches.open(MARCA_EPOCA)
+    .then(function (c) { return c.put("/__epoca", new Response(agora() + "." + ficha())); })
+    .catch(function () {});
+}
+// cada página (também as que este SW ainda não controla) recebe {tipo:"revogada"} e responde pelo canal; espera-se pela resposta
+// de todas, até AVISO_MS cada (uma página de antes desta ronda, ou parada, não responde). Quando isto acaba, nenhuma página que
+// tenha respondido entrega uma resposta da cópia lida antes: a época dela já mudou.
+async function avisarPaginas() {
+  try {
+    var lista = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    await Promise.all(lista.map(function (cliente) {
+      return new Promise(function (feito) {
+        var relogio = setTimeout(feito, AVISO_MS);
+        try {
+          var canal = new MessageChannel();
+          canal.port1.onmessage = function () { clearTimeout(relogio); feito(); };
+          cliente.postMessage({ tipo: "revogada" }, [canal.port2]);
+        } catch (e) {
+          clearTimeout(relogio);
+          feito();
+        }
+      });
+    }));
+  } catch (e) {}
+}
+async function revogada() {
+  await mudarEpoca();
+  await avisarPaginas();
+}
+
 // ronda 9 (achado 2): a página pergunta o protocolo antes de religar a cópia (MessageChannel)
+// ronda 13: e avisa quando revogou a cópia ela própria (trancou, apagou a cópia, mudou de conta) — muda a época, avisa as outras
+// páginas e só então responde
 self.addEventListener("message", function (event) {
   var d = event && event.data;
   if (d && d.tipo === "protocolo" && event.ports && event.ports[0]) event.ports[0].postMessage({ protocolo: PROTOCOLO, versao: CACHE_VERSAO });
+  if (d && d.tipo === "revogar") {
+    var fim = revogada().catch(function () {}).then(function () {
+      if (event.ports && event.ports[0]) event.ports[0].postMessage({ ok: true });
+    });
+    if (event.waitUntil) event.waitUntil(fim);
+  }
 });
 
 self.addEventListener("install", function (event) {
@@ -193,9 +256,15 @@ async function tratarVendor(pedido) {
 
 // Devolve a resposta da cache com um cabeçalho extra, para a página saber
 // que está a mostrar dados antigos e avisar discretamente o utilizador.
-function marcarComoCache(resposta) {
+// ronda 13: uma resposta da cópia da API leva também o protocolo e a época com que foi entregue (a página volta a ler a época
+// depois de ler o corpo e compara-a com esta)
+function marcarComoCache(resposta, epoca) {
   var cabecalhos = new Headers(resposta.headers);
   cabecalhos.set("X-Basalt-From-Cache", "1");
+  if (epoca !== undefined) {
+    cabecalhos.set("X-Basalt-Protocolo", String(PROTOCOLO));
+    cabecalhos.set("X-Basalt-Epoca", epoca);
+  }
   return new Response(resposta.body, {
     status: resposta.status,
     statusText: resposta.statusText,
@@ -299,23 +368,44 @@ function mesmaEntrada(a, b) {
     return a.headers.get(h) === b.headers.get(h);
   });
 }
+// ronda 13 (achado 1 da revisão externa r10): a entrada lida na última releitura é uma Response já em mão — um 404 pelo
+// disjuntor que acabasse (lápide + apagar) com essa leitura a meio, ou que pusesse a lápide depois das verificações e apagasse a
+// seguir, deixava-a ser entregue na mesma. Agora cada volta guarda a época ao começar (a de memória, que um 404/401/troca de conta
+// deste SW muda logo ao chegar, e a persistente, que a página muda antes de trancar ou apagar), relê a persistente antes da
+// releitura da entrada (que continua a ser a última leitura) e, DEPOIS dela, só entrega se nenhuma mudou — entre essa comparação e
+// o return não há await. Mudou → outra volta (a 2.ª desiste). A resposta leva a época lida (X-Basalt-Epoca): a página compara-a
+// com a que lê depois do corpo, e assim o que o SW (ou outro separador) revogar até ela entregar também conta.
+// E só se serve a um pedido de uma página deste protocolo.
+var MUDOU = {};
 async function daCache(pedido) {
   var dono = donoDoPedido(pedido);
   if (!dono) return null;
-  var r = await comTrinco("shared", async function () {
-    if (await semCopia()) return null;
-    var g = await geracaoDaCopia();
-    var e = await caches.match(pedido, { cacheName: cacheApiDe(dono) });
-    if (!e || e.headers.get("X-Basalt-Geracao") !== g || e.headers.get("X-Basalt-Dono") !== dono) return null;
-    if (await apagadaDepois(pedido, Number(e.headers.get("X-Basalt-Inicio")) || 0)) return null;
-    if ((await semCopia()) || (await geracaoDaCopia()) !== g) return null;
-    var e2 = await caches.match(pedido, { cacheName: cacheApiDe(dono) });   // ronda 11: o ÚLTIMO await — nada depois disto
-    if (!mesmaEntrada(e, e2)) return null;
-    return marcarComoCache(e2);
-  });
-  return r.ok ? r.valor : null;
+  var prot = (pedido.headers && pedido.headers.get && pedido.headers.get("X-Basalt-Protocolo")) || "";
+  if (prot !== String(PROTOCOLO)) return null;
+  for (var volta = 0; volta < 2; volta++) {
+    var e0 = EPOCA, p0 = await lerEpoca();
+    var r = await comTrinco("shared", async function () {
+      if (await semCopia()) return null;
+      var g = await geracaoDaCopia();
+      var e = await caches.match(pedido, { cacheName: cacheApiDe(dono) });
+      if (!e || e.headers.get("X-Basalt-Geracao") !== g || e.headers.get("X-Basalt-Dono") !== dono) return null;
+      if (await apagadaDepois(pedido, Number(e.headers.get("X-Basalt-Inicio")) || 0)) return null;
+      if ((await semCopia()) || (await geracaoDaCopia()) !== g) return null;
+      var p1 = await lerEpoca();                                               // ronda 13: a época persistente, antes da releitura
+      var e2 = await caches.match(pedido, { cacheName: cacheApiDe(dono) });   // ronda 11: a entrada ainda lá está, igual — o ÚLTIMO await
+      if (!mesmaEntrada(e, e2)) return null;
+      if (EPOCA !== e0 || p1 !== p0) return MUDOU;                           // ronda 13: e nada mudou entretanto (sem await até ao return)
+      return marcarComoCache(e2, p1);
+    });
+    if (!r.ok) return null;
+    if (r.valor !== MUDOU) return r.valor;
+  }
+  return null;
 }
+// ronda 13: trancar, tirar uma nota e mudar de conta mudam a época ao começar (antes de qualquer await: EPOCA++ já na chamada) e
+// avisam as páginas no fim (revogada), depois de largar o trinco
 async function trancar() {
+  await mudarEpoca();
   var fazer = async function () {
     try {                                                        // 1.º a marca (entrada própria, com a hora), depois apagar
       await trancas();                                           // ronda 6 G5: vê as trancas já postas — a nova fica acima de todas
@@ -328,6 +418,7 @@ async function trancar() {
   };
   var r = await comTrinco("exclusive", fazer);
   if (!r.ok) await fazer();                                      // ronda 9: trinco preso → tranca-se na mesma (só acrescenta)
+  await revogada();
 }
 // destranca SÓ as entradas que já existiam quando o pedido partiu. Apaga-se entrada a entrada, pela chave —
 // nunca a cache inteira: uma tranca posta no meio fica. ronda 6 G5: «já existia» é estar na fotografia das chaves tirada ao
@@ -378,8 +469,10 @@ async function lapideDe(c, url) {
 }
 // ronda 11 (lápide que recuava): ler-o-máximo-e-escrever na MESMA chave deixava um 404 mais antigo, suspenso entre ler e escrever
 // (pelo disjuntor do trinco, dois 404 correm sem trinco), escrever a sua hora por cima da de um 404 mais novo — e um 200 entre os
-// dois ficava guardado e servia-se sem rede. Agora 1.º a entrada própria deste 404 (só acrescenta: nada a faz recuar), depois a
-// entrada antiga com o máximo visto (para quem só lê essa), e por fim a poda.
+// dois ficava guardado e servia-se sem rede. Agora 1.º a entrada própria deste 404 (só acrescenta: nada a faz recuar) e por fim
+// a poda. Ronda 13 (achado 5 da revisão externa do porte): a entrada antiga (chave = o URL) também se reescrevia aqui com o máximo
+// visto — e recuava da mesma maneira (um 404 de 10 suspenso escrevia 10 por cima dos 30). Já não se escreve: as por instante
+// bastam a este SW, e uma entrada antiga de antes continua a ler-se como chão (lapideDe) até a poda dos 30 dias a tirar.
 async function marcarApagada(pedido, inicio) {
   try {
     var c = await caches.open(lojaLapides(donoDoPedido(pedido))), q = agora(), real = Date.now();   // ronda 7: a idade conta-se no relógio real
@@ -388,8 +481,6 @@ async function marcarApagada(pedido, inicio) {
     var marca = inicio || q, prefixo = prefixoLapide(pedido.url);
     viuInstante(marca);
     await c.put(prefixo + marca, new Response(String(marca)));
-    marca = Math.max(marca, await lapideDe(c, pedido.url));
-    await c.put(pedido.url, new Response(String(marca)));
     // poda (só aqui, num 404 — raro): saem as lápides com mais de LAPIDE_DIAS e, desta nota, as por instante abaixo da maior
     // por instante vista (a maior fica sempre; quem a vir mais alta não tira a dela, por isso a maior de todas nunca sai)
     var chaves = await c.keys(), daNota = 0;
@@ -475,6 +566,7 @@ async function aceitar(pedido, corpo, resp, inicio, foto) {
 // ronda 9 (achado G1 da ronda 2): tira da cache do dono do pedido; sem dono, só a lápide (que vale para todas).
 async function tirarNota(pedido, inicio) {
   var dono = donoDoPedido(pedido);
+  await mudarEpoca();                                              // ronda 13: antes de tudo (ver trancar)
   var fazer = async function () {
     try {
       if (!dono) { await marcarApagada(pedido, inicio); return true; }
@@ -492,6 +584,7 @@ async function tirarNota(pedido, inicio) {
   };
   var r = await comTrinco("exclusive", fazer);
   if (!r.ok) await fazer();
+  await revogada();
 }
 
 // o redireccionamento para o login vira um 401 de verdade (antes era Response.error(), que a página lia como
@@ -511,6 +604,7 @@ function respostaLogin() {
 // partido no meio, ainda com a conta anterior, também não fica). O pedido segue para a rede tal e qual.
 // ronda 9: debaixo do trinco (nada a meio de um «aceitar»); trinco preso → faz-se na mesma (só tira dados).
 async function mudouDeConta() {
+  await mudarEpoca();                                              // ronda 13: antes de tudo (ver trancar)
   var fazer = async function () {
     try {
       await (await caches.open(MARCA_GERACAO)).put("/__geracao", new Response("conta-" + agora() + "-" + Math.random().toString(36).slice(2, 10)));
@@ -519,6 +613,7 @@ async function mudouDeConta() {
   };
   var r = await comTrinco("exclusive", fazer);
   if (!r.ok) await fazer();
+  await revogada();
 }
 async function tratarSaidaEntrada(pedido) {
   await mudouDeConta();

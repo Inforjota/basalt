@@ -3,6 +3,7 @@
 //   node sw_ambiente.js '<json>'   com {"passos": [...], "caches": {"nome": ["url", ...]}, "evento": "activate"}
 // Cada passo: {"url": "/api/nota?nome=a", "rede": "ok|rede|401|403|404|410|login|html|500|502|503|504",
 //              "metodo": "GET", "modo": "cors|navigate", "dono": "d-a", "eco": "d-b"|""}.
+// ronda 13: e leva X-Basalt-Protocolo = `protocolo` do passo ("5" por omissão; "" = sem — uma página de antes).
 // ronda 9: o pedido leva X-Basalt-Dono = `dono` do passo (ou o de cfg.dono, ou "d-teste"; "" = sem cabeçalho) e a resposta
 // do servidor traz o eco desse dono — ou `eco` se o passo o disser ("" = sem eco).
 // A resposta «ok» traz {"versao": <nº do passo>} — assim vê-se se o que chegou é a cópia guardada ou a da rede.
@@ -147,8 +148,9 @@ async function pedir(p, trabalhos) {
   const url = new URL(p.url, ORIGEM).href;
   const metodo = p.metodo || "GET";
   const dono = p.dono !== undefined ? p.dono : (cfg.dono !== undefined ? cfg.dono : "d-teste");
+  const protocolo = p.protocolo !== undefined ? p.protocolo : "5";   // ronda 13: a página de agora fala o protocolo 5 ("" = sem)
   const pedido = p.modo === "navigate" ? { url, method: metodo, mode: "navigate" }
-    : new Request(url, { method: metodo, headers: dono ? { "X-Basalt-Dono": dono } : {} });
+    : new Request(url, { method: metodo, headers: Object.assign(dono ? { "X-Basalt-Dono": dono } : {}, protocolo ? { "X-Basalt-Protocolo": protocolo } : {}) });
   let resp = null;
   const ev = { request: pedido, respondWith: (x) => { resp = x; }, waitUntil: (x) => { trabalhos.push(x); } };
   ouvintes.fetch(ev);

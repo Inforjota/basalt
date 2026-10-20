@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 from pathlib import Path
+from urllib.parse import quote
 
 import pytest
 
@@ -20,6 +21,14 @@ VER = re.search(r'CACHE_VERSAO\s*=\s*"(basalt-v\d+)"', _SW.read_text(encoding="u
 DONO = "d-teste"                  # o dono que o sw_ambiente.js põe nos pedidos por omissão
 API = VER + "-api-" + DONO        # ronda 9: uma cache da API por dono (antes: VER + "-api", comum)
 NOTA = "/api/nota?nome=barcos"
+ORIGEM = "https://basalt.teste"   # a origem do sw_ambiente.js
+
+
+def tem_lapide(caches, url=NOTA, dono=DONO):
+    """Há lápide da nota na loja do dono: a entrada antiga (chave = o URL; até à ronda 12) ou uma por instante
+    («/__lapide/<URL codificado>/<hora>»; ronda 13: só estas se escrevem)."""
+    prefixo = "/__lapide/" + quote(ORIGEM + url, safe="") + "/"
+    return any(k == url or k.startswith(prefixo) for k in caches.get("basaltcfg-apagadas-" + dono, []))
 
 
 def sw(passos, **cfg):
@@ -191,6 +200,6 @@ class TestTrancaELapides:
 
     def test_um_410_deixa_lapide_e_uma_resposta_boa_mais_nova_volta_a_guardar(self):
         r = sw([{"url": NOTA, "rede": "410"}, {"url": NOTA, "rede": "ok"}, {"url": NOTA, "rede": "rede"}])
-        assert NOTA in r["caches"].get("basaltcfg-apagadas-" + DONO, []), r["caches"]
+        assert tem_lapide(r["caches"]), r["caches"]
         assert r["passos"][2]["status"] == 200 and r["passos"][2]["deCache"], r["passos"]
 

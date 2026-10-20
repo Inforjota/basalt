@@ -7,6 +7,7 @@ G2  a lápide de uma nota RECUAVA: com um 200 (de 20) a guardar e o trinco preso
 G3  daCache() via a lápide e ainda fazia mais leituras (marcas, geração) antes de entregar: um 404 ou um 401 pelo disjuntor nesse
     intervalo tirava a nota da cache e ela era entregue na mesma. Agora a última leitura é a da própria entrada.
 Poda (menor): as entradas por instante de uma nota não se acumulam — só saem as que têm outra MAIOR da mesma nota.
+Ronda 13: a entrada antiga da lápide (chave = o URL) já não se escreve — `unica` passa a None (a antiga ainda se lê).
 """
 import json
 import os
@@ -44,7 +45,7 @@ def poda():
 
 
 def test_versao_da_cache_subiu_e_o_activate_tira_as_da_v12():
-    assert VER == "basalt-v13", VER
+    assert int(VER.rsplit("v", 1)[1]) >= 13, VER                 # ronda 13: v14 (o test_ronda13_sw.py confere a versão exacta)
     r = sw([], evento="activate", caches={"basalt-v12-app": ["/"], "basalt-v12-vendor": ["/static/vendor/x.js"],
                                           "basalt-v12-api-d-a": ["/api/notas"], "basalt-v12-api": ["/api/notas"],
                                           "basaltcfg-apagadas-d-a": ["/api/nota?nome=x"]})
@@ -91,11 +92,11 @@ def test_g3b_404_401_ou_apagar_a_copia_antes_de_qualquer_leitura_nada_se_entrega
 
 def test_poda_so_tira_as_lapides_por_instante_dominadas(poda):
     s = poda["seguidas"]
-    assert s["por_instante"] == [50] and s["lapide"] == 50 and s["unica"] == 50, f"cinco 404 seguidos (10…50): {s}"
+    assert s["por_instante"] == [50] and s["lapide"] == 50 and s["unica"] in (50, None), f"cinco 404 seguidos (10…50): {s}"
     assert len(s["outra"]) == 1, f"a lápide de outra nota saiu ou duplicou: {s['outra']}"
     p = poda["suspensa"]
     assert p["parou"], p
-    assert p["por_instante"] == [70] and p["lapide"] == 70 and p["unica"] == 70, f"poda de 60 suspensa enquanto 70 corria: {p}"
+    assert p["por_instante"] == [70] and p["lapide"] == 70 and p["unica"] in (70, None), f"poda de 60 suspensa enquanto 70 corria: {p}"
 
 
 def test_controlo_poda_nota_recriada_serve_se_e_lapides_velhas_saem(poda):
