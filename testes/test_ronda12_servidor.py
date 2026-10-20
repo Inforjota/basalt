@@ -279,3 +279,128 @@ def test_arrumar_auto_funde_com_a_ia_de_unir_e_se_ela_falha_so_liga(memoria, tmp
         assert (real / "nota_b.md").exists() and "[[nota_b]]" in (real / "nota_a.md").read_text()
     finally:
         geral.parar(); forte.parar()
+
+
+# ═════════════════════════ E — `python -m basalt entrada` (o mesmo trinco da página) ═════════════════════════
+def _espaco(toml):
+    return config.carregar(toml).espaco("t").criar()
+
+
+def _regs(esp):
+    return [json.loads(l) for l in esp.inbox.read_text(encoding="utf-8").splitlines() if l.strip()] if esp.inbox.exists() else []
+
+
+def test_entrada_pela_linha_de_comandos_guarda_com_a_fonte(tmp_path):
+    toml = _toml(tmp_path)
+    esp = _espaco(toml)
+    rc, out, err = _basalt(tmp_path, toml, "entrada", "comprar velas para os barcos", "--de", "bot")
+    assert rc == 0, out + err
+    regs = _regs(esp)
+    assert [(r["texto"], r["de"], r["arquivado"]) for r in regs] == [("comprar velas para os barcos", "bot", False)], regs
+    assert "guardado" in out
+    assert "confiança" in err and "bot" in err, "uma fonte fora de [entrada] fontes_de_confianca devia avisar que a ideia fica à espera"
+
+
+def test_entrada_sem_de_e_do_terminal_e_nao_avisa(tmp_path):
+    toml = _toml(tmp_path)
+    esp = _espaco(toml)
+    rc, out, err = _basalt(tmp_path, toml, "entrada", "ideia", "solta")
+    assert rc == 0, out + err
+    assert [(r["texto"], r["de"]) for r in _regs(esp)] == [("ideia solta", "terminal")]
+    assert "confiança" not in err
+
+
+def test_entrada_le_o_texto_do_stdin_com_hifen(tmp_path):
+    """com «-» o texto vem do stdin (não aparece na lista de processos) — é o que um bot deve usar."""
+    toml = _toml(tmp_path)
+    esp = _espaco(toml)
+    rc, out, err = _basalt(tmp_path, toml, "entrada", "-", "--de", "telegram", entrada_txt="linha um\nlinha dois\n")
+    assert rc == 0, out + err
+    assert [(r["texto"], r["de"]) for r in _regs(esp)] == [("linha um\nlinha dois", "telegram")]
+
+
+def test_entrada_com_segredo_e_recusada_e_nao_escreve(tmp_path):
+    toml = _toml(tmp_path)
+    esp = _espaco(toml)
+    rc, out, err = _basalt(tmp_path, toml, "entrada", "a chave é sk-ant-" + "a" * 30, "--de", "bot")
+    assert rc == 2 and MOTIVO in err, (rc, out, err)
+    assert _regs(esp) == []
+
+
+def test_entrada_vazia_e_recusada(tmp_path):
+    toml = _toml(tmp_path)
+    esp = _espaco(toml)
+    rc, out, err = _basalt(tmp_path, toml, "entrada", "-", entrada_txt="   \n")
+    assert rc != 0 and "vazi" in err, (rc, out, err)
+    assert _regs(esp) == []
+
+
+def test_entrada_sem_texto_lista_as_ideias_por_arrumar(tmp_path):
+    toml = _toml(tmp_path)
+    esp = _espaco(toml)
+    esp.inbox.write_text(json.dumps({"t": T, "texto": "uma ideia antiga", "de": "web"}) + "\n", encoding="utf-8")
+    rc, out, err = _basalt(tmp_path, toml, "entrada")
+    assert rc == 0 and "1 por arrumar" in out and "uma ideia antiga" in out, out + err
+
+
+def _a_espera_do_trinco(proc, lock: Path, segundos=20):
+    """espera até o processo `proc` estar BLOQUEADO no flock de `lock` (/proc/locks: «->» = pedido à espera). Sem /proc/locks
+    (outro sistema) espera 3 s. Devolve False se o processo acabou antes."""
+    proc_locks = Path("/proc/locks")
+    if not proc_locks.exists():
+        time.sleep(3)
+        return proc.poll() is None
+    ino, pid = os.stat(lock).st_ino, proc.pid
+    fim = time.time() + segundos
+    while time.time() < fim and proc.poll() is None:
+        for l in proc_locks.read_text().splitlines():
+            p = l.split()
+            if "->" in p and str(pid) in p and any(x.endswith(f":{ino}") for x in p):
+                return True
+        time.sleep(0.02)
+    return False
+
+
+def _corrida(tmp_path, monkeypatch, escritor_de_fora):
+    """a página (aqui, no processo do teste) reescreve a Entrada (arquivar a ideia T) enquanto um programa de fora guarda uma ideia
+    nova. `escritor_de_fora(esp)` corre ENTRE a página ler a Entrada e a página gravar a fotografia — o pior momento."""
+    toml = _toml(tmp_path)
+    esp = _espaco(toml)
+    esp.inbox.write_text(json.dumps({"t": T, "texto": "ideia que a página arquiva", "de": "web"}) + "\n", encoding="utf-8")
+    original = entrada._escrever
+
+    def escrever_a_meio(p, regs):
+        escritor_de_fora(esp, toml)
+        return original(p, regs)
+    monkeypatch.setattr(entrada, "_escrever", escrever_a_meio)
+    with config.dentro(esp):
+        assert entrada.mudar(T, lambda r: dict(r, arquivado=True)) is not None
+    return esp
+
+
+def test_controlo_escrever_directamente_no_ficheiro_perde_a_ideia_numa_corrida(tmp_path, monkeypatch):
+    """controlo (o problema que o comando resolve): um append directo, sem o trinco, no meio da reescrita da página, desaparece."""
+    def directo(esp, toml):
+        with open(esp.inbox, "a", encoding="utf-8") as f:
+            f.write(json.dumps({"t": "2026-10-08T10:00:01", "texto": "escrita directa", "de": "bot", "arquivado": False}) + "\n")
+    esp = _corrida(tmp_path, monkeypatch, directo)
+    assert "escrita directa" not in esp.inbox.read_text(encoding="utf-8")
+
+
+def test_pelo_comando_a_ideia_nao_se_perde_numa_corrida_com_a_pagina(tmp_path, monkeypatch):
+    procs = []
+
+    def pelo_comando(esp, toml):
+        p = subprocess.Popen([sys.executable, "-m", "basalt", "--config", str(toml), "entrada", "ideia de fora", "--de", "bot"],
+                             cwd=RAIZ, env=_env_limpo(tmp_path), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        procs.append(p)
+        bloqueado = _a_espera_do_trinco(p, esp.inbox.with_name(".entrada.lock"))
+        procs.append(bloqueado)
+    esp = _corrida(tmp_path, monkeypatch, pelo_comando)
+    p, bloqueado = procs
+    out, err = p.communicate(timeout=60)
+    assert p.returncode == 0, out + err
+    assert bloqueado, "o comando não esperou pelo trinco da Entrada (escreveu sem ele ou acabou antes)"
+    regs = _regs(esp)
+    assert [r["texto"] for r in regs] == ["ideia que a página arquiva", "ideia de fora"], regs
+    assert regs[0]["arquivado"] and not regs[1]["arquivado"]

@@ -8,6 +8,7 @@
   pergunta     resposta com fontes (precisa de IA)
   sincronizar  memória ↔ cópia editável, nos dois sentidos (CAS)
   arrumar      Entrada → notas, ligações, categorias
+  entrada      guardar uma ideia na Entrada (o mesmo trinco e as mesmas regras da página) · sem texto: listá-las
   importar     trazer um cofre Obsidian / pasta de Markdown (nunca sobrepõe)
   exportar     copiar a memória para uma pasta (abre-se no Obsidian)
   mcp          servidor MCP por stdio (Claude Code, Codex, Cursor…)
@@ -359,6 +360,46 @@ def _um_espaco(cfg, a):
     return esp[0].criar()
 
 
+ENTRADA_MAX = 4000                          # o mesmo corte da página (/api/guarda)
+
+
+def cmd_entrada(a):
+    """guardar uma ideia na Entrada a partir de outro programa (um bot, um script, um atalho) PELO MESMO CAMINHO da página: o trinco da
+    Entrada (sem ele, uma linha acrescentada enquanto a página reescreve o ficheiro perdia-se), o mesmo corte, a mesma recusa de
+    passwords em claro. «-» lê o texto do stdin (não fica na lista de processos). Sem texto, lista as ideias por arrumar."""
+    from . import sig
+    from .segredos import SegredoEmClaro
+    cfg = _cfg(a)
+    esp = _um_espaco(cfg, a)
+    with config.dentro(esp):
+        if not a.texto:
+            return sig.entrada(a.json)
+        t = (sys.stdin.read() if a.texto == ["-"] else " ".join(a.texto)).strip()
+        if not t:
+            _falha("texto vazio — nada para guardar")
+        if len(t) > ENTRADA_MAX:
+            print(f"aviso: o texto tinha {len(t)} caracteres; guardei os primeiros {ENTRADA_MAX} (o mesmo limite da página).", file=sys.stderr)
+            t = t[:ENTRADA_MAX]
+        de = (a.de or "terminal").strip() or "terminal"
+        try:
+            sig.guardar(t, de)
+        except SegredoEmClaro as e:
+            print(e, file=sys.stderr)
+            sys.exit(2)
+        if de not in cfg.entrada.fontes_de_confianca and not _pode_entrar_sozinha(esp, f"desconhecido:{de}"):
+            print(f"aviso: «{de}» não é uma fonte de confiança ([entrada] fontes_de_confianca do basalt.toml): a ideia fica na Entrada "
+                  "à espera de ser aprovada na página.", file=sys.stderr)
+
+
+def _pode_entrar_sozinha(esp, autor):
+    """a mesma regra da página (web.pode_auto) sem carregar a página: entrada-permissoes.json {"auto": [...]}."""
+    import json
+    try:
+        return autor in json.loads(Path(esp.permissoes_entrada).read_text(encoding="utf-8")).get("auto", [])
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def cmd_importar(a):
     from . import obsidian
     cfg = _cfg(a)
@@ -436,6 +477,11 @@ def main(argv=None):
     for nome, fn in (("procurar", cmd_procurar), ("pergunta", cmd_pergunta)):
         p = sub.add_parser(nome); p.add_argument("termo", nargs="+"); p.add_argument("-n", type=int, default=8)
         p.add_argument("--json", action="store_true"); p.add_argument("--utilizador", "-u", default=""); p.set_defaults(fn=fn)
+    p = sub.add_parser("entrada", help="guardar uma ideia na Entrada (com o trinco da página) · sem texto: listá-las")
+    p.add_argument("texto", nargs="*", help="o texto da ideia; «-» lê-o do stdin")
+    p.add_argument("--de", default="terminal", help="de onde vem (omissão: terminal); fora de [entrada] fontes_de_confianca fica à espera de aprovação")
+    p.add_argument("--json", action="store_true", help="sem texto: a lista em JSON")
+    p.add_argument("--utilizador", "-u", default=""); p.set_defaults(fn=cmd_entrada)
     p = sub.add_parser("importar", help="trazer um cofre Obsidian (ou pasta de Markdown) para o espaço; nunca sobrepõe")
     p.add_argument("pasta"); p.add_argument("--simular", action="store_true", help="só dizer o que faria"); p.add_argument("--utilizador", "-u", default=""); p.set_defaults(fn=cmd_importar)
     p = sub.add_parser("exportar", help="copiar a memória para uma pasta (abre-se no Obsidian)")
