@@ -10,7 +10,7 @@ from pathlib import Path
 from . import caminhos, cas, config
 from . import ia as _ia
 from .duasvias import SEGREDO_RX     # PORTE: era uma cópia do mesmo padrão; agora há um só
-from .segredos import tem_segredo_texto
+from .segredos import VerificacaoFalhou, tem_segredo_nota, tem_segredo_texto
 
 LIG_RX = re.compile(r"\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
 
@@ -47,7 +47,8 @@ def tem_facto(x, m):
 
 def fundir_llm(a, b, manter, fundir):
     # ronda 8 (notas retidas): uma nota com segredo em claro nunca vai à IA; ronda 9 (achado G6 da ronda 2): nem os nomes (vão no prompt)
-    if tem_segredo_texto(a) or tem_segredo_texto(b) or tem_segredo_texto(manter) or tem_segredo_texto(fundir):
+    # ronda 13b: as notas pelo guarda comum (com o [segredos] verificador; se ele falhar, VerificacaoFalhou, um ValueError)
+    if tem_segredo_nota(a) or tem_segredo_nota(b) or tem_segredo_texto(manter) or tem_segredo_texto(fundir):
         raise ValueError("uma das notas tem o que parece uma password ou chave em claro — não a mando à IA")
     prompt = f"""Tens duas notas da memória de trabalho do utilizador que tratam do mesmo assunto. Funde-as numa SÓ nota.
 
@@ -77,8 +78,12 @@ def validar(a, b, m, manter, fundir):
     fm = re.match(r"^---\n(.*?)\n---\n", m, flags=re.S)
     if not fm or not re.search(rf"^name:\s*\"?{re.escape(manter)}\"?\s*$", fm.group(1), re.M):
         return False, f"o frontmatter não tem name: {manter}", {}
-    if SEGREDO_RX.search(m):
-        return False, "o resultado tem o que parece um segredo", {}
+    # ronda 13b: o resultado passa pelo guarda comum (chaves, passwords em claro e o [segredos] verificador) — era só SEGREDO_RX
+    try:
+        if tem_segredo_nota(m):
+            return False, "o resultado tem o que parece um segredo (uma chave ou password em claro)", {}
+    except VerificacaoFalhou:
+        return False, "não consegui verificar o resultado com o [segredos] verificador", {}
     lig_falta = (ligacoes(a) | ligacoes(b)) - {manter, fundir} - ligacoes(m)
     if lig_falta:
         return False, f"perdeu ligações: {', '.join(sorted(lig_falta)[:6])}", {}
@@ -185,6 +190,16 @@ def _recuar(cas, trocas, falhas):
     return avisos
 
 
+def _sem_segredo(m):
+    """RuntimeError se o texto a gravar tem um segredo pelo guarda comum, ou se o verificador não respondeu."""
+    try:
+        seg = tem_segredo_nota(m)
+    except VerificacaoFalhou as e:
+        raise RuntimeError("não consegui verificar a nota unida com o [segredos] verificador — não gravei nada") from e
+    if seg:
+        raise RuntimeError("a nota unida tem o que parece uma password ou chave em claro — não gravei nada")
+
+
 @contextlib.contextmanager
 def trinco(pasta):
     """o trinco das fusões (o botão Unir e o auto-arrumar): `.basalt-unir.lock` ao lado da memória, aberto SEM seguir ligações
@@ -210,6 +225,7 @@ def aplicar(real, manter, fundir, m, a=None, b=None):
     Antes: write_text()/unlink() às cegas depois da verificação — uma gravação feita nesse instante perdia-se."""
     real = Path(real)
     with trinco(real.parent):
+        _sem_segredo(m)                                    # ronda 13b: mesmo que quem chama não tenha validado
         pa, pb = real / f"{manter}.md", real / f"{fundir}.md"
         bruto_a, bruto_b = caminhos.ler(pa), caminhos.ler(pb)       # os bytes reais: é o hash DELES que o CAS confere
         if a is None:
