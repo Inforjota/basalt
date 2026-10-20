@@ -44,6 +44,38 @@ def test_mudar_senha_revoga_sessoes_e_ias_e_mantem_este_browser(srv):
     assert not list(s.toml.parent.glob(".basalt.toml.*"))   # sem temporários deixados para trás
 
 
+
+def test_mudar_senha_e_repor_o_toml_antigo_nao_ressuscita_as_ias(srv):
+    """ronda 13 + «Mudar a senha»: a revogação fica gravada na base. Repor uma cópia antiga do basalt.toml (com o hash da
+    senha antiga) deixava a «impressão» igual à de antes — e as ligações das IAs e o token pessoal voltavam a valer."""
+    import os, time
+    s = srv()
+    cid, t, cookie = tokens(s)
+    st, p, _ = s.pedir("POST", "/api/ligacoes/token", {"nome": "Codex"}, _esc(s, cookie))
+    assert st == 201
+    antigo = s.toml.read_text(encoding="utf-8")
+    assert _mudar(s, cookie)[0] == 200
+    s.toml.write_text(antigo, encoding="utf-8")                                     # alguém repõe a cópia de ontem
+    os.utime(s.toml, (time.time() + 7, time.time() + 7))
+    assert s.entrar()                                                                # a senha antiga vale outra vez…
+    assert mcp(s, t["access_token"])[0] == 401, "o acesso antigo da IA voltou a valer com o toml reposto"
+    assert renovar(s, cid, t["refresh_token"])[0] == 400, "a renovação antiga voltou a valer com o toml reposto"
+    assert mcp(s, p["token"])[0] == 401, "o token pessoal antigo voltou a valer com o toml reposto"
+
+
+def test_controlo_mudar_senha_e_ligar_de_novo(srv):
+    """controlo: depois de mudar a senha, uma ligação NOVA (novo «Permitir», com a sessão nova deste browser) funciona."""
+    from test_oauth import fluxo, trocar
+    s = srv()
+    _, _, cookie = tokens(s)
+    st, _, cab = _mudar(s, cookie)
+    assert st == 200
+    novo = cab["set-cookie"].split(";", 1)[0]
+    cid, v, cod, _ = fluxo(s, cookie=novo)
+    st, t2, _ = trocar(s, cid, v, cod)
+    assert st == 200, t2
+    assert mcp(s, t2["access_token"])[0] == 200
+
 @pytest.mark.parametrize("atual,nova,motivo", [
     ("senha errada", NOVA, "actual está errada"),
     (SENHA, "curta", "8 caracteres"),
