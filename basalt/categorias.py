@@ -5,8 +5,10 @@ Uma IA de chat (se houver, [ia]) + regras seguras pelo nome da nota. NÃO escrev
 A lista e as regras são do utilizador: [categorias] do basalt.toml (`lista` = nome → definição para a IA; `regras` = pares
 [regex pelo nome da nota, categoria]). Sem isso usam-se as de origem (DEF/REGRAS, genéricas). Sem chat configurado só
 valem as regras (e «Diversos» para o resto).
+As categorias das fontes externas («fonte:ref», de [fontes_extra] ou de uma instalação anterior) não se recalculam aqui mas
+também não se perdem: ficam enquanto a fonte as tiver no índice (sem índice, ou de uma fonte que ele não conhece, ficam sempre).
   python -m basalt.categorias            (re)categoriza o que mudou
-  python -m basalt.categorias --tudo     refaz todas
+  python -m basalt.categorias --tudo     refaz todas as notas
   python -m basalt.categorias --teste    testa as regras e a validação (sem rede)
 """
 import hashlib, json, re, sys
@@ -18,6 +20,7 @@ from .ia import IAIndisponivel, actual as ia
 
 PASTA = Via("real")        # PORTE: antes 3 memórias de projectos fixas (com prefixo de projecto); agora só as notas do espaço
 SAIDA = Via("categorias")
+SEMANTICA = Via("semantica")
 # PORTE: a lista e as regras de origem eram do dono da memória; estas são genéricas (e substituíveis em [categorias])
 DEF = {
     "Trabalho": "projectos, clientes, propostas, reuniões, tarefas, planos, contratos",
@@ -94,9 +97,52 @@ def campo(t, nome):
     return m.group(1) if m else ""
 
 
+def _externas_no_indice():
+    """(chaves «fonte:ref» que o índice tem de fontes que não são notas, fontes que ele conhece) — None sem índice (ou vazio,
+    ou ilegível): aí não há como saber o que uma fonte externa ainda tem."""
+    p = Path(SEMANTICA)
+    if not p.exists():
+        return None
+    try:
+        import sqlite3
+        c = sqlite3.connect(p.resolve().as_uri() + "?mode=ro", uri=True)
+        try:
+            if not c.execute("SELECT count(*) FROM pedaco").fetchone()[0]:
+                return None
+            linhas = c.execute("SELECT DISTINCT fonte, ref FROM pedaco WHERE fonte != 'nota'").fetchall()
+        finally:
+            c.close()
+    except Exception:
+        return None
+    chaves, fontes = set(), set()
+    for f, ref in linhas:
+        r = str(ref).split("#")[0]                  # «projecto:x#0» (pedaços) e «decisao-1» (um pedaço só) dão «projecto:x» e «agenda:decisao-1»
+        chaves.add(r if r.startswith(f"{f}:") else f"{f}:{r}")
+        fontes.add(str(f))
+    return chaves, fontes
+
+
+def _externas_que_ficam(antes: dict) -> dict:
+    """ronda 12: as categorias das fontes externas que se mantêm — as que a fonte ainda tem no índice; sem índice, ou de uma fonte
+    que o índice não conhece (uma instalação anterior, uma fonte desligada por agora), ficam todas. Só uma nota do espaço que já
+    não existe perde a categoria (essas não têm «:» no nome)."""
+    ext = {k: v for k, v in antes.items() if ":" in k}
+    ind = _externas_no_indice()
+    if ind is None:
+        return ext
+    chaves, fontes = ind
+    return {k: v for k, v in ext.items() if k in chaves or k.split(":", 1)[0] not in fontes}
+
+
 def main(tudo=False):
     saida = Path(SAIDA)
-    antes = json.loads(saida.read_text()) if saida.exists() and not tudo else {}
+    try:
+        antes_todo = json.loads(saida.read_text()) if saida.exists() else {}
+    except ValueError:
+        antes_todo = {}
+    antes_todo = antes_todo if isinstance(antes_todo, dict) else {}
+    antes = antes_todo if not tudo else {}            # --tudo recategoriza as notas; as fontes externas ficam na mesma
+    externas = _externas_que_ficam(antes_todo)
     novo, feitos = {}, 0
     for p, t in retidas.notas(PASTA, ignora=("MEMORY.md", "index.md", "CONFIG.md")):   # ronda 8 (notas retidas): uma nota retida não vai ao modelo
         nome = p.stem
@@ -110,13 +156,18 @@ def main(tudo=False):
         novo[nome] = {"cats": cats, "hash": h}; feitos += 1
         if feitos % 20 == 0:
             print(f"  … {feitos}", file=sys.stderr, flush=True)
+    notas = len(novo)
+    for k, v in externas.items():
+        novo.setdefault(k, v)
     saida.parent.mkdir(parents=True, exist_ok=True)
     tmp = saida.with_suffix(".tmp"); tmp.write_text(json.dumps(novo, ensure_ascii=False, indent=0)); tmp.replace(saida)
     conta = {}
     for v in novo.values():
-        for c in v["cats"]:
+        for c in v.get("cats", []):
             conta[c] = conta.get(c, 0) + 1
-    print(f"{len(novo)} notas · {feitos} (re)categorizadas · " + ", ".join(f"{k} {v}" for k, v in sorted(conta.items(), key=lambda x: -x[1])))
+    print(f"{notas} notas · {feitos} (re)categorizadas · "
+          + (f"{len(externas)} de fontes externas mantidas · " if externas else "")
+          + ", ".join(f"{k} {v}" for k, v in sorted(conta.items(), key=lambda x: -x[1])))
 
 
 def _teste():
