@@ -192,9 +192,12 @@ def _categorizar_externas(pedacos, ja: dict) -> dict:
         por_base.setdefault(_chave(f, r.split("#")[0]), set()).add(_chave(f, r))
     for k, (titulo, trechos) in _itens_externos(pedacos).items():
         # ronda 13b: a chave sem «#» de antes («pedidos:repo») só vale para o item se ele é o único com essa base no índice — senão
-        # tapava o «repo#13» para sempre; e uma nota partida já está feita se o seu pedaço único de antes tinha a chave exacta
+        # tapava o «repo#13» para sempre; e uma nota partida já está feita se o seu pedaço único de antes tinha a chave exacta.
+        # ronda 13c: só se é mesmo uma nota partida — uma ref REAL sem «#» («repo», a página, com o seu título) tem a sua própria
+        # chave em por_base e não fica feita pela do «repo#12» que chegou antes (ficava sem categoria para sempre)
         base = k.split("#")[0]
-        if k in ja or (base in ja and por_base.get(base) == {k}) or ("#" not in k and any(x in ja for x in por_base.get(k, ()))):
+        if k in ja or (base in ja and por_base.get(base) == {k}) or (
+                "#" not in k and k not in por_base.get(k, ()) and any(x in ja for x in por_base.get(k, ()))):
             continue
         corpo = "\n".join(trechos)
         if tem_segredo_texto(k) or tem_segredo_texto(titulo) or tem_segredo_texto(corpo):
