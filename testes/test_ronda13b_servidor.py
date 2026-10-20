@@ -12,7 +12,7 @@ import time
 import pytest
 
 from conftest import FM, RAIZ, esperar_porta, porta_livre, toml_de
-from test_ronda13_servidor import verificador  # noqa: F401 (a fixture)
+from test_ronda13_servidor import _cats, _cats_lidas, _por_no_indice, com_notas, verificador  # noqa: F401 (as fixtures)
 from test_unir import A, B, BOA, git
 
 
@@ -171,3 +171,32 @@ def test_o_arranque_atende_com_o_verificador_preso(tmp_path, verificador):
     finally:
         p.terminate()
         p.wait(10)
+
+
+# ═════════════════════════ #7 — as refs com «#» das fontes externas ficam com a chave exacta ═════════════════════════
+def test_ref_com_cardinal_sozinha_fica_com_a_chave_exacta_e_a_seguinte_tambem_ganha(com_notas):
+    from basalt import categorias
+    _por_no_indice(com_notas.esp, [("pedidos", "repo#12", "Pedido 12", "a")])
+    categorias.main()
+    d = _cats_lidas(com_notas)
+    assert "pedidos:repo#12" in d and "pedidos:repo" not in d, sorted(d)
+    _por_no_indice(com_notas.esp, [("pedidos", "repo#13", "Pedido 13", "b")])          # chega o seguinte, noutra indexação
+    categorias.main()
+    assert {"pedidos:repo#12", "pedidos:repo#13"} <= set(_cats_lidas(com_notas)), sorted(_cats_lidas(com_notas))
+
+
+def test_chave_sem_cardinal_de_antes_nao_tapa_as_refs_novas(com_notas):
+    from basalt import categorias
+    _por_no_indice(com_notas.esp, [("pedidos", "repo#12", "Pedido 12", "a"), ("pedidos", "repo#13", "Pedido 13", "b")])
+    _cats(com_notas, {"nota_viva": ["Trabalho"], "pedidos:repo": ["Pessoal"]})       # o que a ronda 13 gravava com o #12 sozinho
+    categorias.main()
+    assert {"pedidos:repo#12", "pedidos:repo#13"} <= set(_cats_lidas(com_notas)), sorted(_cats_lidas(com_notas))
+
+
+def test_controlo_chave_sem_cardinal_de_antes_vale_para_o_item_unico(com_notas):
+    from basalt import categorias
+    _por_no_indice(com_notas.esp, [("pedidos", "repo#12", "Pedido 12", "a")])
+    _cats(com_notas, {"nota_viva": ["Trabalho"], "pedidos:repo": ["Pessoal"]})
+    categorias.main()
+    d = _cats_lidas(com_notas)
+    assert d["pedidos:repo"]["cats"] == ["Pessoal"] and "pedidos:repo#12" not in d, sorted(d)

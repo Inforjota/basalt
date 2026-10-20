@@ -132,14 +132,16 @@ def _chave(fonte, ref):
 def _itens_externos(pedacos):
     """{chave: (titulo, [trechos])} — um item por coisa da fonte. Os pedaços «ref#N» de uma mesma ref com o MESMO título são
     uma nota partida (como no `basalt.sig fonte`) e contam como um item só, com a chave da ref sem «#»; «repo#12» e «repo#13»
-    com títulos diferentes são coisas diferentes e ficam com a ref exacta (ronda 13)."""
-    titulos = {}
+    com títulos diferentes são coisas diferentes e ficam com a ref exacta (ronda 13). Ronda 13b: só há nota partida com 2+ pedaços —
+    um «repo#12» sozinho fica com a ref exacta (antes ganhava a chave «pedidos:repo», que depois tapava o «repo#13»)."""
+    titulos, refs = {}, {}
     for f, r, t, _ in pedacos:
         titulos.setdefault((f, r.split("#")[0]), set()).add(t)
+        refs.setdefault((f, r.split("#")[0]), set()).add(r)
     itens = {}
     for f, r, t, x in pedacos:
         base, cardinal, suf = r.partition("#")
-        partida = cardinal and suf.isdigit() and len(titulos[(f, base)]) == 1
+        partida = cardinal and suf.isdigit() and len(titulos[(f, base)]) == 1 and len(refs[(f, base)]) > 1
         k = _chave(f, base if partida else r)
         itens.setdefault(k, (t, []))[1].append(x)
     return itens
@@ -185,8 +187,14 @@ def _categorizar_externas(pedacos, ja: dict) -> dict:
     ou no texto não vai ao modelo nem ganha categoria."""
     from .segredos import tem_segredo_texto
     novo, pedidos = {}, 0
+    por_base = {}                        # chave da ref sem «#» → as chaves exactas que o índice tem com essa base
+    for f, r, _, _ in pedacos:
+        por_base.setdefault(_chave(f, r.split("#")[0]), set()).add(_chave(f, r))
     for k, (titulo, trechos) in _itens_externos(pedacos).items():
-        if k in ja or k.split("#")[0] in ja:
+        # ronda 13b: a chave sem «#» de antes («pedidos:repo») só vale para o item se ele é o único com essa base no índice — senão
+        # tapava o «repo#13» para sempre; e uma nota partida já está feita se o seu pedaço único de antes tinha a chave exacta
+        base = k.split("#")[0]
+        if k in ja or (base in ja and por_base.get(base) == {k}) or ("#" not in k and any(x in ja for x in por_base.get(k, ()))):
             continue
         corpo = "\n".join(trechos)
         if tem_segredo_texto(k) or tem_segredo_texto(titulo) or tem_segredo_texto(corpo):
