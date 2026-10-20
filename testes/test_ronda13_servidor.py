@@ -491,3 +491,31 @@ def test_o_traceback_do_servidor_nao_leva_a_chave_da_mensagem(capfd):
         classe.handle_error(None, None, ("127.0.0.1", 1))
     saida = capfd.readouterr()
     assert CHAVE_FICTICIA not in saida.out + saida.err and "falhou ao abrir" in saida.out + saida.err, saida
+
+
+@pytest.mark.parametrize("nome", ["router senha=Tr0ub4dor&3.md", "senha: Xk9mPq2vLw.md"])
+def test_o_relatorio_da_importacao_nao_mostra_a_password_do_nome(tmp_path, nome):
+    cofre = tmp_path / "cofre"
+    cofre.mkdir()
+    (cofre / "limpa.md").write_text("O barco sai às 8h.\n", encoding="utf-8")
+    (cofre / nome).symlink_to(cofre / "limpa.md")
+    toml = tmp_path / "basalt.toml"
+    toml.write_text(toml_de(0, tmp_path / "raiz"), encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("BASALT_")}
+    r = subprocess.run([sys.executable, "-m", "basalt", "importar", "--simular", str(cofre)], cwd=RAIZ, capture_output=True,
+                       text=True, timeout=60, env=dict(env, BASALT_CONFIG=str(toml), HOME=str(tmp_path)))
+    assert r.returncode == 0, r.stderr
+    assert "1 saltadas" in r.stdout and "Tr0ub4dor" not in r.stdout + r.stderr and "Xk9mPq2vLw" not in r.stdout + r.stderr, r.stdout
+
+
+def test_controlo_o_relatorio_da_importacao_continua_a_dizer_porque(tmp_path):
+    cofre = tmp_path / "cofre"
+    cofre.mkdir()
+    (cofre / "limpa.md").write_text("O barco sai às 8h.\n", encoding="utf-8")
+    (cofre / "atalho.md").symlink_to(cofre / "limpa.md")
+    toml = tmp_path / "basalt.toml"
+    toml.write_text(toml_de(0, tmp_path / "raiz"), encoding="utf-8")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("BASALT_")}
+    r = subprocess.run([sys.executable, "-m", "basalt", "importar", "--simular", str(cofre)], cwd=RAIZ, capture_output=True,
+                       text=True, timeout=60, env=dict(env, BASALT_CONFIG=str(toml), HOME=str(tmp_path)))
+    assert "atalho.md: é uma ligação simbólica" in r.stdout, r.stdout + r.stderr
