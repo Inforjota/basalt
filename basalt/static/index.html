@@ -143,6 +143,8 @@ ul,ol{margin:.4em 0; padding-left:1.4em}
   .tabbar-link .tab-label{display:none}
   .tabbar-link .tab-icon{font-size:1.25rem}
 }
+  .brand{max-width:1.35em; overflow:hidden; white-space:nowrap}
+}
 
 /* ---------- generic components ---------- */
 .view-heading{display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:14px; flex-wrap:wrap}
@@ -632,6 +634,12 @@ pre.pendentes-texto{
 /* ronda 12: um resultado de uma fonte externa ([fontes_extra]), só para ler */
 .fonte-cab{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-bottom:10px}
 .fonte-cab .badge-origem{font-size:.8rem; padding:3px 10px}
+/* ronda 13 (pendente b): o texto veio da cópia deste aparelho (sem rede) */
+.badge-copia{background:color-mix(in srgb, var(--warning) 22%, transparent); color:var(--warning)}
+/* ronda 13 (pendentes a e c): edições de outra conta (só quantas, com Descarregar) e a pré-visualização antes de enviar */
+.pendentes-conta{display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin-top:6px}
+.pendentes-conta-btn{min-height:30px; padding:3px 10px; font-size:.8rem}
+pre.pendentes-previsao{max-height:120px}
 .fonte-pedacos{display:flex; flex-direction:column; gap:12px; margin-top:12px}
 pre.fonte-texto{
   white-space:pre-wrap; word-break:break-word; margin:0; font-family:inherit; font-size:.95rem; line-height:1.55;
@@ -1025,6 +1033,7 @@ const EN = {
   "esta nota foi aberta com outra conta, e entretanto entrou outra neste browser — não gravei em nome da conta nova.": "this note was opened with another account, and a different one has signed in on this browser since — I didn't save on behalf of the new account.",
   "entrou outra conta neste browser desde que abriste esta nota — não gravei em nome dela. A tua edição ficou guardada neste aparelho, à parte, em nome da conta com que a abriste, e sobe quando essa conta voltar a entrar.": "another account signed in on this browser since you opened this note — I didn't save on its behalf. Your edit was kept on this device, set aside under the account you opened it with, and will upload when that account signs in again.",
   "entrou outra conta neste browser desde que abriste esta nota — não gravei em nome dela, nem guardei (não sei de que conta era). Copia o teu texto.": "another account signed in on this browser since you opened this note — I didn't save on its behalf, nor keep it (I don't know which account it belonged to). Copy your text.",
+  "a cópia deste aparelho foi apagada entretanto — não guardei esta edição nela. Copia o teu texto.": "this device's copy was deleted in the meantime — I didn't save this edit in it. Copy your text.",
   "recarregar": "reload",
   "copiado.": "Copied.",
   "copiado (modo alternativo).": "Copied (compatibility mode).",
@@ -1252,7 +1261,7 @@ const EN = {
   "1 edição de outra conta deste browser está guardada à parte: sobe quando essa conta voltar a entrar aqui.": "1 edit from another account in this browser is kept aside: it is sent when that account signs in here again.",
   "{n} edições de outras contas deste browser estão guardadas à parte: sobem quando essas contas voltarem a entrar aqui.": "{n} edits from other accounts in this browser are kept aside: they are sent when those accounts sign in here again.",
   "Edições por enviar": "Unsent edits",
-  "Há edições guardadas neste aparelho que não chegaram a ser enviadas e que não se sabe de que conta são. Vê-as, envia-as em teu nome (um conflito fica para resolveres na nota, nunca por cima), descarrega-as ou esconde o aviso (continuam no Início).": "Some edits saved on this device were never sent and it is not known which account they belong to. View them, send them as you (a conflict is left for you to resolve in the note, never overwritten), download them or hide the notice (they stay listed on Home).",
+  "Há edições guardadas neste aparelho que não chegaram a ser enviadas e que não se sabe de que conta são. Descarrega-as (não envia nada) ou esconde o aviso. Para as ver ou enviar em teu nome, abre a lista no Início: enviar pede confirmação, com o início de cada uma (um conflito fica para resolveres na nota, nunca por cima).": "Some edits saved on this device were never sent and it is not known which account they belong to. Download them (nothing is sent) or hide the notice. To view them or send them as you, open the list on Home: sending asks for confirmation, showing the start of each one (a conflict is left for you to resolve in the note, never overwritten).",
   "Edições que ficaram neste aparelho sem chegar ao servidor e de que não se sabe a conta (de uma versão anterior desta página, por exemplo). Abre a lista para as ver, descarregar ou enviar em teu nome.": "Edits that stayed on this device without reaching the server and whose account is unknown (from an earlier version of this page, for example). Open the list to view, download or send them as you.",
   "Fonte externa": "External source",
   "Fonte": "Source",
@@ -1260,7 +1269,22 @@ const EN = {
   "Texto que a fonte externa «{fonte}» trouxe para a pesquisa ({ref}). Não é uma nota: lê-se aqui e muda-se na origem.": "Text that the external source “{fonte}” brought into search ({ref}). It is not a note: read it here and change it at its origin.",
   "1 pedaço deste texto não se mostra: parece ter uma password ou chave em claro.": "1 part of this text is not shown: it seems to hold a password or key in plain text.",
   "{n} pedaços deste texto não se mostram: parecem ter uma password ou chave em claro.": "{n} parts of this text are not shown: they seem to hold a password or key in plain text.",
-  "Este texto não é uma nota: veio de uma fonte externa configurada no servidor e está aqui só para leres. Para o mudar, muda-o na origem; aparece mudado depois da próxima indexação.": "This text is not a note: it came from an external source set up on the server and is here only for reading. To change it, change it at its origin; the change shows after the next indexing."
+  "Este texto não é uma nota: veio de uma fonte externa configurada no servidor e está aqui só para leres. Para o mudar, muda-o na origem; aparece mudado depois da próxima indexação.": "This text is not a note: it came from an external source set up on the server and is here only for reading. To change it, change it at its origin; the change shows after the next indexing.",
+  "conta {id}": "account {id}",
+  "1 edição de outra conta ({conta})": "1 edit from another account ({conta})",
+  "{n} edições de outra conta ({conta})": "{n} edits from another account ({conta})",
+  "(sem texto)": "(no text)",
+  "Enviar esta edição em teu nome?": "Send this edit as you?",
+  "Enviar estas {n} edições em teu nome?": "Send these {n} edits as you?",
+  "Não se sabe de que conta são. Se as enviares, entram na fila da tua conta e sobem para o servidor em teu nome (um conflito fica para resolveres na nota). Confirma pelo início de cada uma que são tuas:": "It is not known which account they belong to. If you send them, they join your account's queue and are uploaded to the server as you (a conflict is left for you to resolve in the note). Check from the start of each one that they are yours:",
+  "Voltar": "Back",
+  "Confirmar e enviar": "Confirm and send",
+  "Edições de outra conta": "Edits from another account",
+  "São edições de outra conta ({conta}). Descarregar para este aparelho?": "These are edits from another account ({conta}). Download them to this device?",
+  "Descarregar não as envia nem as apaga: continuam guardadas à parte e sobem quando essa conta voltar a entrar aqui.": "Downloading neither sends nor deletes them: they stay kept aside and are sent when that account signs in here again.",
+  "já não há edições dessa conta guardadas neste aparelho.": "there are no longer any edits from that account saved on this device.",
+  "cópia de {data}": "copy from {data}",
+  "cópia deste aparelho": "copy on this device"
 };
 function t(s){ return IDIOMA === "en" && Object.prototype.hasOwnProperty.call(EN, s) ? EN[s] : s; }
 function tf(s, vars){ return t(s).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)); }
@@ -1353,11 +1377,12 @@ async function handleRes(res){
   return data;
 }
 
-async function apiGet(path, repetido){
+async function apiGet(path, repetido, outraVolta){
   // ronda 9 (achado G1 da ronda 2): o dono vai sempre no pedido (o da cópia, mesmo por confirmar) — com rede, confirma-se antes
   // quem está no browser; sem isto a página arrancava com o dono gravado de outra conta e levava «outra conta» em ciclo
   if(!DONO_OK && !OUTRA_CONTA && navigator.onLine){ try{ await verificarDono(); }catch(e){} }
   var res, bloqAntes = BLOQUEIO_ID, geracaoAntes = GERACAO_COPIA;   // ronda 7: a geração com que este pedido partiu
+  var epocaMem = EPOCA_MEM, epocaLocal = lerLocal("basalt-copia-epoca");   // ronda 13: a época com que partiu (ver lerEpocaCopia)
   var trancasAntes = COPIA_BLOQUEADA ? chavesDe(await trancasNaMarca()) : null;   // ronda 6 G5: as trancas que JÁ existiam ao partir (só importa se está trancada)
   var inicio = agora();
   try{ res = await fetch(path, {credentials:"same-origin", headers: cabecalhoDono()}); }   // ronda 8: o dono da cópia
@@ -1365,6 +1390,9 @@ async function apiGet(path, repetido){
   var doSw = res.headers && res.headers.get && res.headers.get("X-Basalt-Inicio");   // ronda 6 G5: a hora (monótona) com que o service worker viu partir este pedido
   if(doSw){ viuInstante(doSw); inicio = Number(doSw) || inicio; }
   var daCache = !!(res.headers && res.headers.get && res.headers.get("X-Basalt-From-Cache") === "1");
+  // ronda 13 (achado 4 do porte / 3 da r10): só a cópia de um service worker do MESMO protocolo (que manda a época com que a
+  // entregou); a de um service worker de antes é como não haver rede
+  if(daCache && res.headers.get("X-Basalt-Protocolo") !== String(PROTOCOLO_COPIA)) return apiGetFalhaRede(path);
   if(!daCache) await reagirResposta(res, path, bloqAntes, inicio, trancasAntes, geracaoAntes);
   else if(await copiaTrancadaAqui()) throw erroCopiaTrancada();   // a página consulta a SUA tranca antes de aceitar cópia do service worker
   // ronda 9 (achado G1 da ronda 2): uma cópia do service worker só vale se for do dono desta cópia (um SW antigo, de cache comum,
@@ -1380,12 +1408,23 @@ async function apiGet(path, repetido){
   if(await copiaTrancadaAqui()) throw erroCopiaTrancada();
   if(!DONO || DONO !== donoAntes || OUTRA_CONTA) return apiGetFalhaRede(path);
   if(await copiaApagadaDesde(geracaoAntes)) throw erroLeituraCopiaApagada();
+  // ronda 13 (achados 1A/1B do porte, 2 da r10): as verificações de cima não vêem o que só o service worker revogou (um 404 que pôs
+  // a lápide e apagou a entrada, um 401 que trancou) enquanto o corpo se lia ou a geração se relia. A época persistente é o
+  // ÚLTIMO await: o que a mudar depois disto acaba depois da entrega.
+  var epocaAgora = await lerEpocaCopia();
   // ronda 11: as verificações de cima também esperam (a marca do service worker, a geração na IndexedDB) — um 401 que tranca a
   // cópia, «apagar a cópia» ou outra conta, neste separador ou noutro, pode chegar AÍ. A decisão final toma-se aqui, só com o
   // que já está em memória: daqui até ao return não há mais nenhum await.
   if(COPIA_BLOQUEADA || lerLocal("basalt-copia-bloqueada")) throw erroCopiaTrancada();
   if(!DONO || DONO !== donoAntes || OUTRA_CONTA) return apiGetFalhaRede(path);
   if(COPIA_DESLIGADA || GERACAO_COPIA !== geracaoAntes) throw erroLeituraCopiaApagada();
+  // ronda 13: a época mudou desde que o pedido partiu (aviso do service worker, outro separador, este) ou já não é a com que o
+  // service worker entregou — esta resposta pode estar revogada e não se entrega. Pede-se outra vez (o service worker decide já
+  // com o estado novo); à 2.ª, como sem rede (a cópia da IndexedDB, com as guardas dela)
+  if(EPOCA_MEM !== epocaMem || lerLocal("basalt-copia-epoca") !== epocaLocal || epocaAgora !== (res.headers.get("X-Basalt-Epoca") || "")){
+    return outraVolta ? apiGetFalhaRede(path) : apiGet(path, repetido, true);
+  }
+  if(COPIA_DE && dados && typeof dados === "object") COPIA_DE.set(dados, Number(doSw) || 0);   // pendente b: «cópia de <data>»
   return dados;
 }
 /* ronda 9 (achado 3 da ronda 8): uma resposta da cópia do service worker que chega DEPOIS de «apagar a cópia» (o SW pode tê-la lido
@@ -1508,6 +1547,9 @@ var DONO = "", DONO_OK = false, OUTRA_CONTA = false, DONO_A_VERIFICAR = null, OU
 function cabecalhoDono(h){
   h = h || {};
   if(DONO) h["X-Basalt-Dono"] = DONO;
+  // ronda 13: o protocolo desta página — o service worker só serve a cópia a quem o diz (uma página antiga, que não recarregou
+  // quando ele mudou, já não a recebe)
+  if(PROTOCOLO_COPIA) h["X-Basalt-Protocolo"] = String(PROTOCOLO_COPIA);
   return h;
 }
 function erroSemDono(){
@@ -1564,6 +1606,7 @@ async function bloquearCopiaLocal(){
   var q = agora(), id = q.toString(36) + "-" + Math.random().toString(36).slice(2, 8);   // ronda 6 G5: hora monótona
   COPIA_BLOQUEADA = true; BLOQUEIO_ID = id;
   gravarLocal("basalt-copia-bloqueada", id);                 // os outros separadores sabem pelo evento «storage»
+  await comecarRevogacao();                                  // ronda 13: a época primeiro (ver lerEpocaCopia), depois o resto
 
   try{ await idbPut("meta", {chave:"bloqueada", valor:true, id:id}); }catch(e){}
   var fazer = async function(){
@@ -1576,6 +1619,7 @@ async function bloquearCopiaLocal(){
   };
   var r = await comTrincoCopia("exclusive", fazer);          // ronda 9: sem ninguém a guardar no meio
   if(!r.ok) await fazer();                                  // trancar nunca fica por fazer: ocupado, faz-se na mesma
+  await acabarRevogacao();                                  // ronda 13: e as outras páginas e o service worker sabem
 }
 /* as trancas que o service worker (ou outro separador) deixou na cache-marca: [{chave, quando}] */
 async function trancasNaMarca(){
@@ -1671,6 +1715,8 @@ async function marcaPersistente(chave){
   try{ var m = await idbGet("meta", chave); return m && m.valor ? (m.id || "antigo") : ""; }catch(e){ return ""; }
 }
 window.addEventListener("storage", function(e){
+  // ronda 13: trancar, apagar a cópia, a geração e a época noutro separador — o que este tinha a meio da cópia já não se entrega
+  if(e.key === null || ["basalt-copia-epoca", "basalt-copia-bloqueada", "basalt-copia-desligada", "basalt-copia-geracao"].indexOf(e.key) !== -1) EPOCA_MEM++;
   if(e.key === "basalt-copia-bloqueada"){
     BLOQUEIO_ID = e.newValue || ""; COPIA_BLOQUEADA = !!BLOQUEIO_ID;
   }else if(e.key === "basalt-copia-desligada"){
@@ -1683,6 +1729,63 @@ window.addEventListener("storage", function(e){
     if(gNova > GERACAO_COPIA) GERACAO_COPIA = gNova;
   }
 });
+
+/* ronda 13 (achados 1A/1B do porte, 2 da revisão externa r10): a ÉPOCA da cópia. Quem revoga a cópia — trancar, apagar a cópia,
+   mudar de conta (nesta página ou noutro separador) e o service worker ao receber um 401/404/410 — muda-a ANTES de qualquer
+   operação destrutiva: EPOCA_MEM (memória deste separador, já, sem esperar), «basalt-copia-epoca» (localStorage: os outros
+   separadores sabem pelo evento «storage») e «/__epoca» na cache «basaltcfg-epoca» (a mesma que o service worker muda e manda em
+   X-Basalt-Epoca com cada resposta da cópia). O service worker avisa as páginas ({tipo:"revogada"}) e só acaba depois de elas
+   responderem. O apiGet() lê a época persistente como ÚLTIMO await e só entrega uma resposta da cópia se nenhuma das três mudou
+   desde que o pedido partiu, e se a persistente ainda é a com que o service worker a entregou: uma revogação que ainda não
+   tinha mudado a época quando se leu acaba depois da entrega. */
+var MARCA_EPOCA = "basaltcfg-epoca";
+var EPOCA_MEM = 0;
+var AVISO_SW_MS = 1500;      // o service worker espera até 1 s por cada página que avisa — um pouco mais
+async function lerEpocaCopia(){
+  if(!("caches" in window)) return "";
+  try{
+    if(!(await caches.has(MARCA_EPOCA))) return "";
+    var r = await (await caches.open(MARCA_EPOCA)).match("/__epoca");
+    return r ? await r.text() : "";
+  }catch(e){ return "?" + Math.random(); }                   // na dúvida, um valor que nunca é igual (não se entrega)
+}
+async function comecarRevogacao(){
+  EPOCA_MEM++;                                               // já, antes de qualquer await de quem chama
+  var marca = agora() + "." + ficha();                      // hora.ficha: nunca se repete
+  gravarLocal("basalt-copia-epoca", marca);
+  if("caches" in window){ try{ await (await caches.open(MARCA_EPOCA)).put("/__epoca", new Response(marca)); }catch(e){} }
+}
+// no fim: muda outra vez (o que se leu durante a revogação também não vale) e pede ao service worker que avise as páginas e
+// mude a dele — espera pela resposta, até AVISO_SW_MS (um service worker de antes não responde)
+async function acabarRevogacao(){
+  await comecarRevogacao();
+  if(!("serviceWorker" in navigator)) return;
+  try{
+    var sw = navigator.serviceWorker.controller;
+    if(!sw){ var reg = await navigator.serviceWorker.getRegistration(); sw = reg && reg.active; }
+    if(!sw) return;
+    await new Promise(function(feito){
+      var relogio = setTimeout(feito, AVISO_SW_MS);
+      try{
+        var canal = new MessageChannel();
+        canal.port1.onmessage = function(){ clearTimeout(relogio); feito(); };
+        sw.postMessage({tipo:"revogar"}, [canal.port2]);
+      }catch(e){ clearTimeout(relogio); feito(); }
+    });
+  }catch(e){}
+}
+if("serviceWorker" in navigator){
+  try{
+    navigator.serviceWorker.addEventListener("message", function(e){
+      if(!e.data || e.data.tipo !== "revogada") return;
+      EPOCA_MEM++;                                           // antes de responder: o service worker só acaba depois disto
+      try{ if(e.ports && e.ports[0]) e.ports[0].postMessage({ok:true}); }catch(err){}
+    });
+    if(navigator.serviceWorker.startMessages) navigator.serviceWorker.startMessages();
+  }catch(e){}
+}
+// ronda 13 (pendente b): os dados que vieram da cópia do service worker → a hora a que essa cópia foi buscada («cópia de <data>»)
+var COPIA_DE = (typeof WeakMap === "function") ? new WeakMap() : null;
 
 function fmtHoraCurta(ms){
   if(!ms) return "";
@@ -2026,6 +2129,7 @@ function guardarPacoteLocal(notas, gerado, geracao, bloqAntes, inicio){
    Sem guardadoEm (cópias de antes desta versão) sai, como antes. */
 function marcarApagadaAqui(nome, inicio, geracao){
   if(inicio == null) inicio = agora();
+  EPOCA_MEM++;                                               // ronda 13: o que este separador tinha a meio da cópia já não se entrega
   return transacao(["notas", "meta"], function(tx, saida){
     seGeracaoIgual(tx, saida, geracao, function(){
       var meta = tx.objectStore("meta"), notas = tx.objectStore("notas"), n = notas.get(nome);
@@ -2082,11 +2186,22 @@ function verificarDono(){
       if(!eu || typeof eu.dono !== "string" || !eu.dono) return;
       await trocarDono(eu.dono);
       DONO_OK = (DONO === eu.dono);
+      if(DONO_OK && typeof eu.email === "string" && eu.email) await guardarContaDaCopia(eu.dono, eu.email);   // ronda 13 (pendente a)
       atualizarAvisoPendentes();                             // ronda 12 (A): o que ficou à parte (ex.: de uma versão anterior) vê-se
     }catch(e){}
   })();
   DONO_A_VERIFICAR.then(function(){ DONO_A_VERIFICAR = null; });
   return DONO_A_VERIFICAR;
+}
+/* ronda 13 (pendente a): o email da conta dona da cópia («meta.conta»), só se a cópia ainda for dela — é o que se diz quando o que
+   ela deixar por enviar ficar à parte («São edições de outra conta (<email>)») */
+function guardarContaDaCopia(dono, email){
+  return transacao(["meta"], function(tx){
+    var meta = tx.objectStore("meta"), gd = meta.get("dono");
+    gd.onsuccess = function(){
+      if(gd.result && gd.result.valor === dono) meta.put({chave: "conta", valor: {dono: dono, email: email}});
+    };
+  }).catch(function(){});
 }
 async function donoConfirmado(){
   if(OUTRA_CONTA) return false;
@@ -2127,12 +2242,14 @@ async function trocarDono(novo){
           var chaveAntigo = (semDono || antigo === "") ? "?" : antigo;
           var gg = meta.get("geracao");
           gg.onsuccess = function(){
+            var gk = meta.get("conta");                      // ronda 13 (pendente a): o email da conta antiga, para o dizer
             var gv = chaveAntigo ? meta.get("pendentes-de:" + chaveAntigo) : null;
             function guardarAntigo(){
               if(chaveAntigo && (gf.result.length || gc.result.length)){
-                var ja = gv && gv.result;
+                var ja = gv && gv.result, cta = gk.readyState === "done" ? gk.result : null;
                 meta.put({chave:"pendentes-de:" + chaveAntigo, fila: juntarPorNome(ja && ja.fila, gf.result),
-                          conflitos: juntarPorNome(ja && ja.conflitos, gc.result)});
+                          conflitos: juntarPorNome(ja && ja.conflitos, gc.result),
+                          conta: (cta && cta.valor && cta.valor.dono === antigo && cta.valor.email) || (ja && ja.conta) || null});
               }
               var gn = novo ? meta.get("pendentes-de:" + novo) : null;
               function arrumar(){
@@ -2162,12 +2279,14 @@ async function trocarDono(novo){
   DONO = novo;                                               // logo a seguir à transacção: os escritores deste separador comparam com isto
   if(!r || !r.mudou) return r;
   if(r.geracao > GERACAO_COPIA){ GERACAO_COPIA = r.geracao; gravarLocal("basalt-copia-geracao", String(r.geracao)); }
+  await comecarRevogacao();                                  // ronda 13: a época antes das caches do service worker
   if(PACOTE_CONTROLO){ try{ PACOTE_CONTROLO.abort(); }catch(e){} }
   if("caches" in window){
     // 1.º a geração do service worker (um pedido que partiu antes não guarda nada), depois as caches da API fora
     try{ await (await caches.open(MARCA_GERACAO)).put("/__geracao", new Response(String(GERACAO_COPIA) + "-" + Math.random().toString(36).slice(2, 10))); }catch(e){}
   }
   await apagarCachesApi();
+  await acabarRevogacao();                                   // ronda 13
   OFFLINE_ESTADO.quando = null;
   atualizarIndicador();
   atualizarContadorFila();
@@ -2191,9 +2310,14 @@ window.basaltAntesDeSair = async function(){
    não é escrita por cima e a versão sem rede fica guardada no servidor) · Descarregar (.md, ou .zip com várias, feito aqui, sem
    rede) · Esconder aviso (os dados ficam; voltam a ver-se no Início). Nada se apaga.
    As de outra conta conhecida («pendentes-de:<outra>») sobem sozinhas quando ela voltar a entrar: aqui só se diz quantas são,
-   nunca o texto (são de outra pessoa). */
+   nunca o texto (são de outra pessoa).
+   Ronda 13 (pendentes a e c): o aviso mostra só a contagem + Descarregar + Esconder aviso. «Enviar em meu nome» fica na lista (no
+   Início) e pede confirmação explícita com a pré-visualização de cada edição (título + primeiras linhas) — e só entra na fila
+   o que se viu nessa confirmação. As de outra conta conhecida podem descarregar-se (feito aqui, sem rede) depois de confirmar
+   «São edições de outra conta (<conta>). Descarregar para este aparelho?» — nunca se enviam em nome de quem está. */
 var PENDENTES_SEM_DONO = "pendentes-de:?", PENDENTES_ESCONDIDO = "pendentes-escondido";
-var PENDENTES_ULTIMO = {itens: [], outras: 0, assinatura: ""};
+var PENDENTES_ULTIMO = {itens: [], outras: 0, contas: [], assinatura: ""};
+var PENDENTES_CONFIRMACAO = null;                            // ronda 13 (c): {chaves, dono} do que se viu ao confirmar o envio
 var A_ENVIAR_PENDENTES = false;
 function itensPendentes(v){
   var out = [];
@@ -2205,18 +2329,29 @@ function itensPendentes(v){
   });
   return out;
 }
+function chavePendente(tipo, i){ return tipo + ":" + i.nome + ":" + (i.rev || i.quando || ""); }
 function assinaturaPendentes(itens){
-  return itens.map(function(i){ return i.tipo + ":" + i.nome + ":" + (i.rev || i.quando || ""); }).sort().join("|");
+  return itens.map(function(i){ return chavePendente(i.tipo, i); }).sort().join("|");
+}
+/* ronda 13 (a): como se diz de que conta são — o email guardado com elas, ou o início do identificador */
+function nomeContaPendentes(v){
+  if(v && typeof v.conta === "string" && v.conta) return v.conta;
+  var id = String((v && v.chave) || "").slice("pendentes-de:".length);
+  return tf("conta {id}", {id: id.slice(0, 8) || "?"});
 }
 function lerPendentesAParte(){
   return abrirDB().then(function(db){
     return new Promise(function(resolve, reject){
-      var tx = db.transaction("meta", "readonly"), meta = tx.objectStore("meta"), r = {semDono: null, outras: 0, escondido: null};
+      var tx = db.transaction("meta", "readonly"), meta = tx.objectStore("meta"), r = {semDono: null, outras: 0, contas: [], escondido: null};
       var ga = meta.getAll(IDBKeyRange.bound("pendentes-de:", "pendentes-de:￿"));
       ga.onsuccess = function(){
         (ga.result || []).forEach(function(v){
           if(v.chave === PENDENTES_SEM_DONO) r.semDono = v;
-          else if(v.chave !== "pendentes-de:" + DONO) r.outras += (v.fila || []).length + (v.conflitos || []).length;
+          else if(v.chave !== "pendentes-de:" + DONO){
+            var n = (v.fila || []).length + (v.conflitos || []).length;
+            r.outras += n;
+            if(n) r.contas.push({chave: v.chave, conta: nomeContaPendentes(v), n: n});   // ronda 13 (a): só o nome e quantas
+          }
         });
       };
       var ge = meta.get(PENDENTES_ESCONDIDO);
@@ -2233,17 +2368,21 @@ async function atualizarAvisoPendentes(){
   try{ r = await lerPendentesAParte(); }catch(e){ return 0; }
   var podeVer = !!DONO && !COPIA_BLOQUEADA && !OUTRA_CONTA;
   var itens = podeVer ? itensPendentes(r.semDono) : [], assinatura = assinaturaPendentes(itens), esc = r.escondido;
-  PENDENTES_ULTIMO = {itens: itens, outras: podeVer ? r.outras : 0, assinatura: assinatura};
+  PENDENTES_ULTIMO = {itens: itens, outras: podeVer ? r.outras : 0, contas: podeVer ? r.contas : [], assinatura: assinatura};
   // «esconder» vale para ESTE conjunto e esta conta: chega outra edição (ou entra outra conta) e o aviso volta
   var escondido = !!(esc && esc.dono === DONO && esc.assinatura === assinatura);
   mostrarAvisoPendentes(escondido ? 0 : itens.length);
   preencherPendentesInicio();
   return itens.length;
 }
-function accaoPendentes(a){
+function accaoPendentes(a, botao){
+  var chave = botao && botao.getAttribute ? botao.getAttribute("data-chave") : null;
   if(a === "ver") abrirPendentesModal();
-  else if(a === "enviar") enviarPendentesEmMeuNome();
+  else if(a === "enviar") confirmarEnvioPendentes();                       // ronda 13 (c): primeiro a pré-visualização
+  else if(a === "confirmar-enviar") enviarPendentesEmMeuNome(PENDENTES_CONFIRMACAO);
   else if(a === "descarregar") descarregarPendentes();
+  else if(a === "descarregar-outra") confirmarDescarregarOutra(chave);     // ronda 13 (a)
+  else if(a === "confirmar-descarregar-outra") descarregarPendentesDeOutra(chave);
   else if(a === "esconder") esconderAvisoPendentes();
   else if(a === "fechar") fecharPendentesModal();
 }
@@ -2256,15 +2395,14 @@ function mostrarAvisoPendentes(n){
     el.setAttribute("role", "status");
     el.addEventListener("click", function(e){
       var b = e.target && e.target.closest ? e.target.closest("[data-pendentes]") : null;
-      if(b) accaoPendentes(b.getAttribute("data-pendentes"));
+      if(b) accaoPendentes(b.getAttribute("data-pendentes"), b);
     });
     document.body.appendChild(el);
   }
+  // ronda 13 (c): por omissão só a contagem + Descarregar + Esconder aviso (ver e enviar ficam na lista, no Início)
   el.innerHTML = "<p>" + escapeHtml(n === 1 ? t("Há 1 edição guardada neste aparelho que não chegou a ser enviada.")
                                            : tf("Há {n} edições guardadas neste aparelho que não chegaram a ser enviadas.", {n: n})) + "</p>" +
     '<div class="pendentes-accoes">' +
-      '<button type="button" class="btn" data-pendentes="ver">' + t("Ver") + "</button>" +
-      '<button type="button" class="btn btn-primary" data-pendentes="enviar">' + t("Enviar em meu nome") + "</button>" +
       '<button type="button" class="btn" data-pendentes="descarregar">' + t("Descarregar") + "</button>" +
       '<button type="button" class="btn" data-pendentes="esconder">' + t("Esconder aviso") + "</button>" +
     "</div>";
@@ -2274,16 +2412,27 @@ function textoOutrasContas(n){
   return n === 1 ? t("1 edição de outra conta deste browser está guardada à parte: sobe quando essa conta voltar a entrar aqui.")
                  : tf("{n} edições de outras contas deste browser estão guardadas à parte: sobem quando essas contas voltarem a entrar aqui.", {n: n});
 }
+/* ronda 13 (a): uma linha por conta conhecida, com quantas são e «Descarregar» (que pede confirmação) — nunca o texto */
+function htmlContasPendentes(contas){
+  return (contas || []).map(function(c){
+    return '<span class="pendentes-conta">' +
+      escapeHtml(c.n === 1 ? tf("1 edição de outra conta ({conta})", {conta: c.conta}) : tf("{n} edições de outra conta ({conta})", {n: c.n, conta: c.conta})) +
+      ' <button type="button" class="btn pendentes-conta-btn" data-pendentes="descarregar-outra" data-chave="' + escapeHtml(c.chave) + '">' + t("Descarregar") + "</button></span>";
+  }).join("");
+}
 function preencherPendentesInicio(){
   var el = document.getElementById("pendentes-inicio");
   if(!el) return;
   var p = PENDENTES_ULTIMO, n = (p.itens || []).length, partes = [];
   if(n) partes.push('<a href="#" id="pendentes-link">' + escapeHtml(tf("Edições guardadas à parte neste aparelho ({n})", {n: n})) + "</a>");
-  if(p.outras) partes.push(escapeHtml(textoOutrasContas(p.outras)));
+  if(p.outras) partes.push(escapeHtml(textoOutrasContas(p.outras)) + htmlContasPendentes(p.contas));
   el.innerHTML = partes.join("<br>");
   el.hidden = !partes.length;
   var a = el.querySelector("#pendentes-link");
   if(a) a.addEventListener("click", function(e){ e.preventDefault(); abrirPendentesModal(); });
+  el.querySelectorAll("[data-pendentes]").forEach(function(b){
+    b.addEventListener("click", function(e){ e.preventDefault(); accaoPendentes(b.getAttribute("data-pendentes"), b); });
+  });
 }
 function fecharPendentesModal(){
   var root = document.getElementById("modal-root");
@@ -2307,30 +2456,102 @@ function abrirPendentesModal(){
         '<p class="dim-note">' + t("Ficaram de uma versão anterior desta página (ou de quando não havia sessão iniciada) e não se sabe de que conta eram, por isso não foram enviadas sozinhas. Nada foi apagado. Ver ou descarregar não envia nada.") + "</p>" +
         (itens.length ? '<ul class="pendentes-lista">' + lista + "</ul>"
                       : '<p class="dim-note">' + t("Não há edições de conta desconhecida guardadas neste aparelho.") + "</p>") +
-        (p.outras ? '<p class="dim-note">' + escapeHtml(textoOutrasContas(p.outras)) + "</p>" : "") +
+        (p.outras ? '<p class="dim-note">' + escapeHtml(textoOutrasContas(p.outras)) + "</p>" + htmlContasPendentes(p.contas) : "") +
         '<div class="modal-actions pendentes-accoes">' +
           (itens.length ? '<button type="button" class="btn" data-pendentes="descarregar">' + t("Descarregar") + "</button>" +
                           '<button type="button" class="btn btn-primary" data-pendentes="enviar">' + t("Enviar em meu nome") + "</button>" : "") +
           '<button type="button" class="btn" data-pendentes="fechar">' + t("Fechar") + "</button>" +
         "</div></div></div>";
+  ligarPendentesModal(root);
+}
+function ligarPendentesModal(root){
   var fundo = root.querySelector("#pendentes-backdrop");
   fundo.addEventListener("click", function(e){
     if(e.target === fundo){ fecharPendentesModal(); return; }
     var b = e.target && e.target.closest ? e.target.closest("[data-pendentes]") : null;
-    if(b) accaoPendentes(b.getAttribute("data-pendentes"));
+    if(b) accaoPendentes(b.getAttribute("data-pendentes"), b);
   });
+}
+function mostrarPendentesModal(titulo, corpo, botoes){
+  var root = document.getElementById("modal-root");
+  if(!root) return null;
+  root.innerHTML =
+    '<div class="modal-backdrop" id="pendentes-backdrop">' +
+      '<div class="modal pendentes-modal" role="dialog" aria-modal="true" aria-labelledby="pendentes-titulo">' +
+        '<h2 id="pendentes-titulo">' + titulo + "</h2>" + corpo +
+        '<div class="modal-actions pendentes-accoes">' + botoes + "</div></div></div>";
+  ligarPendentesModal(root);
+  return root;
+}
+/* ronda 13 (c): o início de cada edição — o título (o «# …» da 1.ª linha, depois do cabeçalho «---» se houver; senão o nome da
+   nota) e as primeiras linhas com texto */
+function previsaoPendente(i){
+  var linhas = String(i.texto == null ? "" : i.texto).split("\n"), k = 0;
+  if(linhas.length && linhas[0].trim() === "---"){
+    for(k = 1; k < linhas.length && linhas[k].trim() !== "---"; k++){}
+    k++;
+  }
+  linhas = linhas.slice(k).map(function(l){ return l.replace(/\s+$/, ""); }).filter(function(l){ return l.trim(); });
+  var titulo = "";
+  if(linhas.length && /^#{1,6}\s+/.test(linhas[0])){ titulo = linhas[0].replace(/^#{1,6}\s+/, "").trim(); linhas = linhas.slice(1); }
+  var inicio = linhas.slice(0, 3).join("\n");
+  if(inicio.length > 280) inicio = inicio.slice(0, 280) + "…";
+  else if(linhas.length > 3) inicio += "\n…";
+  return {titulo: titulo || i.nome, nome: i.nome, inicio: inicio};
+}
+function confirmarEnvioPendentes(){
+  if(COPIA_DESLIGADA){ showToast(t("a cópia deste aparelho está desligada: volta a ligá-la no Início para enviar estas edições (descarregar funciona sempre).")); return; }
+  var itens = PENDENTES_ULTIMO.itens || [];
+  if(!itens.length){ showToast(t("não havia nada para enviar.")); return; }
+  var chaves = {};
+  itens.forEach(function(i){ chaves[chavePendente(i.tipo, i)] = true; });
+  PENDENTES_CONFIRMACAO = {chaves: chaves, dono: DONO};
+  var lista = itens.map(function(i){
+    var pv = previsaoPendente(i), conf = i.tipo === "conflito";
+    return '<li class="pendentes-item"><div class="pendentes-cab"><strong>' + escapeHtml(pv.titulo) + "</strong>" +
+      (pv.titulo !== pv.nome ? ' <span class="dim-note">' + escapeHtml(pv.nome) + "</span>" : "") +
+      ' <span class="badge ' + (conf ? "badge-readonly" : "badge-porenviar") + '">' + (conf ? t("conflito por resolver") : t("por enviar")) + "</span>" +
+      '</div><pre class="pendentes-texto pendentes-previsao">' + escapeHtml(pv.inicio || t("(sem texto)")) + "</pre></li>";
+  }).join("");
+  mostrarPendentesModal(itens.length === 1 ? t("Enviar esta edição em teu nome?") : tf("Enviar estas {n} edições em teu nome?", {n: itens.length}),
+    '<p class="dim-note">' + t("Não se sabe de que conta são. Se as enviares, entram na fila da tua conta e sobem para o servidor em teu nome (um conflito fica para resolveres na nota). Confirma pelo início de cada uma que são tuas:") + "</p>" +
+    '<ul class="pendentes-lista">' + lista + "</ul>",
+    '<button type="button" class="btn" data-pendentes="ver">' + t("Voltar") + "</button>" +
+    '<button type="button" class="btn btn-primary" data-pendentes="confirmar-enviar">' + t("Confirmar e enviar") + "</button>");
+}
+/* ronda 13 (a): descarregar o que outra conta (conhecida) deixou à parte — só depois de confirmar, e sem nunca o mostrar aqui */
+function confirmarDescarregarOutra(chave){
+  var c = (PENDENTES_ULTIMO.contas || []).filter(function(x){ return x.chave === chave; })[0];
+  if(!c) return;
+  mostrarPendentesModal(t("Edições de outra conta"),
+    "<p>" + escapeHtml(tf("São edições de outra conta ({conta}). Descarregar para este aparelho?", {conta: c.conta})) + "</p>" +
+    '<p class="dim-note">' + t("Descarregar não as envia nem as apaga: continuam guardadas à parte e sobem quando essa conta voltar a entrar aqui.") + "</p>",
+    '<button type="button" class="btn" data-pendentes="fechar">' + t("Cancelar") + "</button>" +
+    '<button type="button" class="btn btn-primary" data-pendentes="confirmar-descarregar-outra" data-chave="' + escapeHtml(c.chave) + '">' + t("Descarregar") + "</button>");
+}
+async function descarregarPendentesDeOutra(chave){
+  fecharPendentesModal();
+  if(!chave || chave === PENDENTES_SEM_DONO || chave === "pendentes-de:" + DONO || chave.indexOf("pendentes-de:") !== 0) return;
+  var v = null;
+  try{ v = await idbGet("meta", chave); }catch(e){}
+  var itens = itensPendentes(v);
+  if(!itens.length){ showToast(t("já não há edições dessa conta guardadas neste aparelho.")); atualizarAvisoPendentes(); return; }
+  descarregarItensPendentes(itens, "basalt-edicoes-de-outra-conta-");
 }
 /* «Enviar em meu nome»: passam para a fila (e os conflitos para a loja dos conflitos) DESTA conta, numa só transacção com a
    cópia ligada, a mesma geração e o mesmo dono — e sobem pelo caminho normal (sincronizarFila), com a base que a página
    anterior guardou. Uma nota que já tem outra alteração por enviar ou por resolver não é tocada: essa edição fica à parte. */
-async function enviarPendentesEmMeuNome(){
+async function enviarPendentesEmMeuNome(confirmacao){
   if(A_ENVIAR_PENDENTES) return;
+  // ronda 13 (c): sem a confirmação (com a pré-visualização) desta conta, nada entra na fila
+  if(!confirmacao || !confirmacao.chaves || confirmacao.dono !== DONO){ confirmarEnvioPendentes(); return; }
   if(COPIA_DESLIGADA){ showToast(t("a cópia deste aparelho está desligada: volta a ligá-la no Início para enviar estas edições (descarregar funciona sempre).")); return; }
   if(!navigator.onLine){ showToast(t("precisa de rede para enviar — podes descarregar as edições sem rede.")); return; }
   A_ENVIAR_PENDENTES = true;
   try{
     if(!(await donoConfirmado())){ showToast(t("ainda não sei de que conta é este browser — não enviei nada; tenta outra vez daqui a pouco.")); return; }
-    var dono = DONO, geracao = await geracaoActual(), r;
+    if(DONO !== confirmacao.dono){ showToast(t("não enviei: a cópia deste aparelho mudou entretanto (entrou outra conta ou a cópia foi apagada). Recarrega a página.")); return; }
+    var dono = DONO, geracao = await geracaoActual(), vistas = confirmacao.chaves, r;
     try{
       r = await transacao(["fila", "conflitos", "notas", "meta"], function(tx, saida){
         var meta = tx.objectStore("meta"), fila = tx.objectStore("fila"), confl = tx.objectStore("conflitos"), notas = tx.objectStore("notas");
@@ -2347,7 +2568,7 @@ async function enviarPendentesEmMeuNome(){
                 var ocupado = {}, restoF = [], restoC = [];
                 (gfk.result || []).concat(gck.result || []).forEach(function(k){ ocupado[k] = true; });
                 (v.fila || []).forEach(function(i){
-                  if(!i || typeof i.nome !== "string" || ocupado[i.nome]){ restoF.push(i); return; }
+                  if(!i || typeof i.nome !== "string" || ocupado[i.nome] || !vistas[chavePendente("fila", i)]){ restoF.push(i); return; }
                   ocupado[i.nome] = true;
                   var item = {nome: i.nome, base_texto: i.base_texto, texto: i.texto, quando: i.quando || Date.now(), rev: i.rev || novaRevisao()};
                   fila.put(item);
@@ -2359,7 +2580,7 @@ async function enviarPendentesEmMeuNome(){
                   };
                 });
                 (v.conflitos || []).forEach(function(c){
-                  if(!c || typeof c.nome !== "string" || ocupado[c.nome]){ restoC.push(c); return; }
+                  if(!c || typeof c.nome !== "string" || ocupado[c.nome] || !vistas[chavePendente("conflito", c)]){ restoC.push(c); return; }
                   ocupado[c.nome] = true;
                   confl.put(c);
                   saida.valor.conflitos++;
@@ -2377,6 +2598,7 @@ async function enviarPendentesEmMeuNome(){
       showToast(t("não enviei: a cópia deste aparelho mudou entretanto (entrou outra conta ou a cópia foi apagada). Recarrega a página."));
       return;
     }
+    PENDENTES_CONFIRMACAO = null;
     await atualizarContadorFila();
     await atualizarAvisoPendentes();
     fecharPendentesModal();
@@ -2447,6 +2669,9 @@ function descarregarBlob(blob, nome){
 function descarregarPendentes(){
   var itens = PENDENTES_ULTIMO.itens || [];
   if(!itens.length) return;
+  descarregarItensPendentes(itens, "basalt-edicoes-por-enviar-");
+}
+function descarregarItensPendentes(itens, prefixo){
   var usados = {}, ficheiros = itens.map(function(i){
     var base = nomeFicheiroSeguro(i.nome) + (i.tipo === "conflito" ? " (" + t("conflito") + ")" : ""), nome = base + ".md", k = 2;
     while(usados[nome.toLowerCase()]){ nome = base + " (" + k + ").md"; k++; }
@@ -2458,7 +2683,7 @@ function descarregarPendentes(){
     return;
   }
   var d = new Date(), dois = function(x){ return (x < 10 ? "0" : "") + x; };
-  descarregarBlob(zipSemCompressao(ficheiros), "basalt-edicoes-por-enviar-" + d.getFullYear() + "-" + dois(d.getMonth() + 1) + "-" + dois(d.getDate()) + ".zip");
+  descarregarBlob(zipSemCompressao(ficheiros), prefixo + d.getFullYear() + "-" + dois(d.getMonth() + 1) + "-" + dois(d.getDate()) + ".zip");
 }
 async function esconderAvisoPendentes(){
   try{ await idbPut("meta", {chave: PENDENTES_ESCONDIDO, valor: {assinatura: PENDENTES_ULTIMO.assinatura, dono: DONO}}); }catch(e){}
@@ -2544,8 +2769,11 @@ function guardarEdicaoOffline(nome, baseTexto, texto, geracao, dono){
    (abriu sem rede com a cópia de A, e entretanto B entrou), NUNCA sobe nem fica na cópia de B. Fica à parte em
    «pendentes-de:A» — como o resto do que A tinha por enviar (trocarDono) — e sobe em nome de A quando A voltar a entrar.
    Se a cópia voltou entretanto a ser de A (outro separador), vai directa para a fila dela. Sem dono conhecido (""): não se guarda
-   (não se sabe de quem é) — o texto fica no editor, com o botão de copiar. */
-function guardarEdicaoDeOutraConta(dono, nome, baseTexto, texto){
+   (não se sabe de quem é) — o texto fica no editor, com o botão de copiar.
+   Ronda 13 (achado 3 da revisão externa r4): a fila da cópia de A só com as guardas dos outros escritores da fila — a cópia
+   ligada e a MESMA geração (`geracao`, a de quando se começou a gravar) lidas dentro desta transacção. Se A apagou a cópia
+   entretanto (ou a apagou e religou), devolve "desligada" e nada se escreve. */
+function guardarEdicaoDeOutraConta(dono, nome, baseTexto, texto, geracao){
   if(!dono) return Promise.resolve("sem-dono");
   return transacao(["fila", "meta"], function(tx, saida){
     var meta = tx.objectStore("meta"), gd = meta.get("dono");
@@ -2557,15 +2785,23 @@ function guardarEdicaoDeOutraConta(dono, nome, baseTexto, texto){
         return i;
       }
       if(actual === dono){                                   // a cópia é outra vez de A: fila normal dela
-        var fila = tx.objectStore("fila"), gf = fila.get(nome);
-        gf.onsuccess = function(){ fila.put(item(gf.result)); saida.valor = "fila"; };
+        seCopiaLigada(tx, saida, function(){                 // ronda 13 (r4-3): com a cópia apagada, não
+          var gg = meta.get("geracao");
+          gg.onsuccess = function(){
+            var gv = (gg.result && Number(gg.result.valor)) || 0;
+            if(gv > GERACAO_COPIA) GERACAO_COPIA = gv;
+            if(geracao != null && (gv !== geracao || GERACAO_COPIA !== geracao)){ saida.valor = "desligada"; return; }
+            var fila = tx.objectStore("fila"), gf = fila.get(nome);
+            gf.onsuccess = function(){ fila.put(item(gf.result)); saida.valor = "fila"; };
+          };
+        });
         return;
       }
       var gp = meta.get("pendentes-de:" + dono);
       gp.onsuccess = function(){
         var ja = gp.result || {chave: "pendentes-de:" + dono, fila: [], conflitos: []};
         var antes = (ja.fila || []).filter(function(i){ return i.nome === nome; })[0];
-        meta.put({chave: "pendentes-de:" + dono, fila: juntarPorNome(ja.fila, [item(antes)]), conflitos: ja.conflitos || []});
+        meta.put({chave: "pendentes-de:" + dono, fila: juntarPorNome(ja.fila, [item(antes)]), conflitos: ja.conflitos || [], conta: ja.conta || null});
       };
     };
   });
@@ -2803,6 +3039,30 @@ async function notasDaCopia(){
     throw erroCopiaNaoVerificada();
   return r.notas;
 }
+/* ronda 13 (achado 2 da revisão externa r4): o que a vista da nota põe por cima do texto do servidor — a edição por enviar e o
+   conflito por resolver — lê-se com as guardas de notasDaCopia(): numa SÓ transacção que confirma a cópia ligada, não trancada,
+   na geração `g` e em nome de `dono` (a conta com que a nota foi lida). Antes eram dois idbGet() soltos: entre eles e a
+   verificação do dono, outro separador podia trocar a cópia para B — e a vista de A mostrava a fila ou o conflito de B.
+   Falha = nada por cima (fica o texto do servidor), nunca o que é de outra conta. */
+async function filaEConflitoDaCopia(nome, dono, g){
+  var nada = {fila: null, conflito: null};
+  if(COPIA_DESLIGADA || OUTRA_CONTA) return nada;
+  var r = await transacao(["fila", "conflitos", "meta"], function(tx, saida){
+    seCopiaLigada(tx, saida, function(){ seGeracaoIgual(tx, saida, g, function(){
+      var b = tx.objectStore("meta").get("bloqueada");
+      b.onsuccess = function(){
+        if(b.result && b.result.valor){ saida.valor = "trancada"; return; }
+        var c = tx.objectStore("conflitos").get(nome);
+        c.onsuccess = function(){
+          var f = tx.objectStore("fila").get(nome);
+          f.onsuccess = function(){ saida.valor = {fila: f.result || null, conflito: c.result || null}; };
+        };
+      };
+    }, dono); });
+  }).catch(function(){ return null; });
+  if(!r || typeof r !== "object" || DONO !== dono || GERACAO_COPIA !== g || COPIA_DESLIGADA || OUTRA_CONTA || COPIA_BLOQUEADA) return nada;
+  return r;
+}
 function escaparRegex(s){ return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
 function offlineListaNotas(){
@@ -2958,6 +3218,7 @@ async function desligarCopiaLocal(){
   gravarLocal("basalt-copia-desligada", "1");
   gravarLocal("basalt-copia-geracao", String(GERACAO_COPIA));   // ronda 6 G6: os outros separadores sobem a geração por aqui
   if(PACOTE_CONTROLO){ try{ PACOTE_CONTROLO.abort(); }catch(e){} }
+  await comecarRevogacao();                                  // ronda 13: a época antes de apagar (ver lerEpocaCopia)
   // marca + limpeza numa SÓ transacção (um pacote de outro separador não entra no meio)
   // ronda 6 (achado G6 da ronda 4): a geração fica também em «meta», na mesma transacção, sempre acima da que lá estava — quem
   // escreve na cópia compara-a DENTRO da sua transacção (mesmo sem localStorage, ou com o pedido já em curso)
@@ -2992,12 +3253,13 @@ async function desligarCopiaLocal(){
     var r = await comTrincoCopia("exclusive", limpar);   // ronda 9: o service worker não guarda nada a meio
     if(!r.ok) await limpar();                            // apagar nunca fica por fazer
   }
+  await acabarRevogacao();                               // ronda 13
   OFFLINE_ESTADO.quando = null;
 }
 
 /* ronda 9 (achado 2 da ronda 7): a versão do protocolo da cópia que esta página espera do service worker. O SW activo (o que
    serve TODOS os separadores) responde a {tipo:"protocolo"}; um SW antigo não responde. */
-var PROTOCOLO_COPIA = 4;   // ronda 9: 4 = cache da API por dono
+var PROTOCOLO_COPIA = 5;   // ronda 9: 4 = cache da API por dono; ronda 13: 5 = época da cópia (X-Basalt-Epoca) e aviso «revogada»
 function perguntarProtocolo(sw, ms){
   return new Promise(function(resolve){
     var feito = false, canal;
@@ -3689,11 +3951,14 @@ function nomeParaAnexo(ficheiro){
   }
   return nome.replace(/[^A-Za-z0-9À-ɏ._ \-]+/g, "_").slice(0, 120);
 }
-async function enviarAnexo(ficheiro){
+async function enviarAnexo(ficheiro, opcoes){
   var nome = nomeParaAnexo(ficheiro);
   // ronda 9 (achado G2 da ronda 2): o envio ia sem dono — com outra conta entrada noutro separador, gravava no espaço dela
   if(!DONO_OK && !OUTRA_CONTA){ try{ await verificarDono(); }catch(e){} }
   if(!DONO) throw erroSemDono();
+  // ronda 13 (achado 1 da revisão externa r4): o anexo vai com a conta com que a edição foi ABERTA (como o PUT da nota) — se o
+  // separador passou entretanto a ser de outra (verificarDono acabou de a adoptar), não se envia, nem em nome da nova
+  if(opcoes && opcoes.dono !== undefined && DONO !== opcoes.dono) throw erroEdicaoDeOutraConta();
   var res;
   try{
     res = await fetch("/api/anexos?nome=" + encodeURIComponent(nome), {
@@ -3705,7 +3970,7 @@ async function enviarAnexo(ficheiro){
   if(ehOutraConta(res)) mostrarOutraConta();
   return handleRes(res);
 }
-function ligarAnexosNoEditor(alvo, obterEditor){
+function ligarAnexosNoEditor(alvo, obterEditor, dono){   // ronda 13: `dono` = a conta com que a edição foi aberta
   function tratar(e, lista){
     var fich = [], i;
     for(i = 0; i < lista.length; i++){ if(lista[i] && lista[i].size > 0) fich.push(lista[i]); }
@@ -3713,7 +3978,7 @@ function ligarAnexosNoEditor(alvo, obterEditor){
     e.preventDefault(); e.stopPropagation();
     if(!navigator.onLine){ showToast(t("precisa de rede para guardar anexos.")); return; }
     fich.forEach(function(f){
-      enviarAnexo(f).then(function(r){
+      enviarAnexo(f, dono !== undefined ? {dono: dono} : undefined).then(function(r){
         var ed = obterEditor();
         if(ed && r && r.nome) ed.inserirNoCursor("![[" + r.nome + "]]");
         showToast(tf("anexo guardado: {nome}", {nome: r.nome}));
@@ -4576,8 +4841,8 @@ async function montarNotasShell(main, alvoInicial){
     // ganha sempre à vista normal da nota (as duas versões lado a lado), online ou offline.
     var conflito = null, filaItem = null;
     var geracaoVista = await geracaoActual();          // ronda 9 (achado 5): ANTES de ler o conflito (na dúvida, os botões recusam)
-    try{ conflito = await idbGet("conflitos", alvo.nome); }catch(e){}
-    try{ filaItem = await idbGet("fila", alvo.nome); }catch(e){}
+    var porCima = await filaEConflitoDaCopia(alvo.nome, donoVista, geracaoVista);   // ronda 13 (r4-2): numa transacção, com as guardas
+    conflito = porCima.conflito; filaItem = porCima.fila;
     if(DONO !== donoVista){ abrir(alvo); return; }   // ronda 10 (G1): mudou de conta a meio da leitura — lê-se outra vez
     nota.dono = donoVista;                             // ronda 10 (G1): a edição fica presa a esta conta
     if(conflito){
@@ -5086,7 +5351,7 @@ function renderNotaCompleta(nota, centro, contexto){
     // (ex.: Escape a fechar a pesquisa, ou o seu próprio atalho Mod-s) o evento chega com
     // defaultPrevented=true e não fazemos nada — evita cancelar/gravar em duplicado.
     function ligarComandosComuns(alvo){
-      ligarAnexosNoEditor(alvo, function(){ return editorApi; });
+      ligarAnexosNoEditor(alvo, function(){ return editorApi; }, donoEdicao);   // ronda 13 (r4, achado 1)
       alvo.addEventListener("keydown", function(e){
         if(e.defaultPrevented) return;
         if(e.key === "Escape"){ cancelar(); return; }
@@ -5148,10 +5413,12 @@ function renderNotaCompleta(nota, centro, contexto){
     // ronda 10 (G1): entrou outra conta neste separador desde que a nota abriu — nada sobe em nome dela; a edição fica à parte
     // em nome da conta com que foi aberta (sobe quando ela voltar), e o texto continua no editor para copiar
     async function gravadaParaOutraConta(texto){
-      var r = await guardarEdicaoDeOutraConta(donoEdicao, nota.nome, baseTextoEdicao, texto).catch(function(){ return "erro"; });
+      var geracao = await geracaoActual();                   // ronda 13 (r4-3): a de agora — se mudar até à transacção, não se guarda
+      var r = await guardarEdicaoDeOutraConta(donoEdicao, nota.nome, baseTextoEdicao, texto, geracao).catch(function(){ return "erro"; });
       var guardou = (r === "pendente" || r === "fila");
       banner.innerHTML = '<div class="state-error"><p>⚠️ ' +
         (guardou ? t("entrou outra conta neste browser desde que abriste esta nota — não gravei em nome dela. A tua edição ficou guardada neste aparelho, à parte, em nome da conta com que a abriste, e sobe quando essa conta voltar a entrar.")
+         : r === "desligada" ? t("a cópia deste aparelho foi apagada entretanto — não guardei esta edição nela. Copia o teu texto.")
                  : t("entrou outra conta neste browser desde que abriste esta nota — não gravei em nome dela, nem guardei (não sei de que conta era). Copia o teu texto.")) +
         '</p><button id="ed-copiar-conta" class="btn" type="button">' + t("copiar o meu texto") + '</button></div>';
       banner.querySelector("#ed-copiar-conta").addEventListener("click", function(){
@@ -5322,6 +5589,9 @@ function renderNotaRow(n){
 function openNovaNotaModal(preenchido){
   // 25/09: preenchido = {desc, corpo} — usado pela Entrada («Criar nota com isto»), para pré-preencher
   // a descrição e o corpo da nota com a ideia; o utilizador só escolhe o nome. Sem argumento, comporta-se como antes.
+  // ronda 13 (achado 1 da revisão externa r4): a nota nova cria-se em nome da conta que estava neste separador quando o modal
+  // ABRIU — se entretanto passou a ser de outra, não se cria (nem em nome da nova). "" = ainda não se sabia: não se prende.
+  var donoModal = DONO;
   var root = document.getElementById("modal-root");
   root.innerHTML =
     '<div class="modal-backdrop" id="modal-backdrop">' +
@@ -5368,7 +5638,7 @@ function openNovaNotaModal(preenchido){
     geralErro.style.color = "var(--text-dim)";
     geralErro.textContent = t("a criar…");
     try{
-      await apiSend("POST", "/api/nota", {nome: nome, texto: texto});
+      await apiSend("POST", "/api/nota", {nome: nome, texto: texto}, donoModal ? {dono: donoModal} : undefined);
       ABRIR_EM_EDICAO = nome;
       NOTA_RECEM_CRIADA = nome;   // #41 fase 3b: só esta 1ª edição mostra o aviso de "nota parecida"
       if(NOTAS_SHELL){
@@ -5903,10 +6173,14 @@ async function viewFonte(main, fonteParte, refParte){
     var h1 = main.querySelector(".view-heading h1");
     if(h1) h1.textContent = d.titulo || ref;
     var varios = (d.pedacos || []).length > 1;
+    // ronda 13 (pendente b): sem rede vem da cópia do service worker (com as regras das notas) — diz-se de quando é
+    var copiaDe = COPIA_DE ? COPIA_DE.get(d) : undefined;
     body.innerHTML = '<div class="fonte-vista" id="fonte-vista" data-fonte="' + escapeHtml(d.fonte) + '" data-ref="' + escapeHtml(d.ref) + '">' +
       '<div class="fonte-cab">' +
         '<span class="badge badge-origem" title="' + escapeHtml(t("Fonte")) + '">' + escapeHtml(d.fonte) + '</span>' +
         '<span class="badge badge-readonly">' + t("só leitura") + '</span>' +
+        (copiaDe !== undefined ? '<span class="badge badge-copia" id="fonte-copia-de">' +
+          escapeHtml(copiaDe ? tf("cópia de {data}", {data: fmtDataCurta(new Date(copiaDe))}) : t("cópia deste aparelho")) + "</span>" : "") +
       '</div>' +
       '<p class="dim-note">' + escapeHtml(tf("Texto que a fonte externa «{fonte}» trouxe para a pesquisa ({ref}). Não é uma nota: lê-se aqui e muda-se na origem.", {fonte: d.fonte, ref: d.ref})) + '</p>' +
       '<div class="fonte-pedacos">' + (d.pedacos || []).map(function(p){
@@ -6519,7 +6793,7 @@ var AJUDA = {
       {sel: "#theme-toggle", nome: t("Tema"), texto: t("Alterna entre tema claro e escuro. Fica guardado neste aparelho.")},
       {sel: "#ligar-ia-btn", nome: t("Ligar a tua IA"), texto: t("Liga o Claude, o ChatGPT, o Claude Code ou o Codex às tuas notas, e vê ou revoga as ligações.")},
       {sel: "#ajuda-btn", nome: t("Ajuda"), texto: t("Esta ajuda — mostra o que cada coisa desta página faz.")},
-      {sel: "#pendentes-aviso", nome: t("Edições por enviar"), texto: t("Há edições guardadas neste aparelho que não chegaram a ser enviadas e que não se sabe de que conta são. Vê-as, envia-as em teu nome (um conflito fica para resolveres na nota, nunca por cima), descarrega-as ou esconde o aviso (continuam no Início).")}
+      {sel: "#pendentes-aviso", nome: t("Edições por enviar"), texto: t("Há edições guardadas neste aparelho que não chegaram a ser enviadas e que não se sabe de que conta são. Descarrega-as (não envia nada) ou esconde o aviso. Para as ver ou enviar em teu nome, abre a lista no Início: enviar pede confirmação, com o início de cada uma (um conflito fica para resolveres na nota, nunca por cima).")}
     ]),
   inicio: [
     {sel: ".cards-grid", nome: t("Números-resumo"), texto: t("Quantas notas tens, quantas ligações entre elas, quantas ideias por arrumar na Entrada e quantos pedaços de texto há para pesquisar.")},
