@@ -81,3 +81,12 @@ fontes_de_confianca = ["web", "terminal", "cli", "mcp"]
 #                                  # (aparecem na procura e abrem-se na página só para ler; um texto longo pode vir em pedaços
 #                                  #  com a ref «doc#0», «doc#1»… e o mesmo título — a página mostra-os juntos, pela ordem)
 # comandos = ["/usr/local/bin/as-minhas-tarefas"]
+
+# [segredos]                       # opcional: um verificador de segredos TEU, além do guarda que já vem no Basalt
+# verificador = ["/usr/local/bin/verificar-segredos", "--ficheiros"]
+#                                  # recebe só caminhos de ficheiros privados (0600, apagados no fim), nunca o texto; até 50 de
+#                                  # cada vez. Sai 0 = limpo, 1 = algum tem segredo, outra coisa = não se sabe → não se grava
+# tempo_limite = 30                # segundos por chamada; passado isto conta como «não se sabe»
+
+# [avisos]                         # opcional: cada ALERTA (sincronização, verificador…) corre também este comando, em fundo
+# comando = ["/usr/local/bin/notificar", "--titulo", "Basalt"]   # recebe a mensagem como último argumento (passwords tapadas)

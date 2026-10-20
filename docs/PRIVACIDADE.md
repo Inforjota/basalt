@@ -46,6 +46,11 @@ se liga continua a poder ler a cópia que tem. Em computadores partilhados, diz 
   que tens base legal e um contrato de subcontratação (art. 28.º RGPD) com o fornecedor.
 - **Agentes de IA por MCP**: o cliente (Claude Code, Cursor…) lê e escreve notas em nome do utilizador cujo token usa;
   o que ele faz com o texto é regido pelo fornecedor desse cliente.
+- **Verificador de segredos e avisos** (`[segredos] verificador`, `[avisos] comando`): são comandos teus, que correm na
+  máquina do servidor. O verificador recebe o texto das notas e ideias a verificar (em ficheiros temporários privados,
+  apagados no fim); o comando de avisos recebe só a mensagem do alerta, com o que pareça uma password ou chave tapado. Se
+  algum deles enviar alguma coisa para fora (um serviço de notificações, uma API), essa saída é tua e tem de entrar no aviso
+  aos utilizadores.
 
 ## Direitos das pessoas
 

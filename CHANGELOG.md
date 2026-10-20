@@ -21,6 +21,27 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 - **Proxy com login (nginx):** o exemplo de `docs/INSTALAR.md` § 4 leva agora `auth_request off;` nas rotas que a nuvem da IA
   chama; sem isso, um login definido no bloco `server` continuava a aplicar-se a elas.
 
+### Ronda 13 (servidor)
+- **O teu verificador de segredos:** com `[segredos] verificador` no `basalt.toml`, um comando teu também decide o que é
+  segredo — ao gravar pela página, pelo MCP ou pelo terminal, na Entrada, na sincronização, na importação, nos anexos de
+  texto e nas listas de notas retidas. Recebe só caminhos de ficheiros temporários privados, até 50 de cada vez. Se falhar ou
+  demorar, nada se grava: a página explica porquê e a sincronização tenta outra vez no ciclo seguinte. Desligado por omissão.
+- **Alertas onde os vês:** com `[avisos] comando`, cada alerta corre também um comando teu (uma notificação no telemóvel, um
+  email…), em fundo, com as passwords e chaves tapadas na mensagem. Desligado por omissão.
+- **Mais passwords reconhecidas, menos falsos alarmes:** uma password só de letras entre parênteses, chavetas ou colada ao
+  «;» seguinte já é recusada; uma linha terminada só em CR (notas antigas do Mac) já não deixa passar a data da linha de
+  baixo; «senha: desnecessária (já não usamos)» deixa de ser recusada; os tokens do OAuth contam como segredos.
+- **Fontes externas:** uma referência com um segredo não se abre pelos pedaços vizinhos; as categorias ficam presas à
+  referência exacta, uma fonte que respondeu vazia perde as dela e os itens novos passam a ser categorizados.
+- **Claude CLI sem as tuas chaves:** o `claude` corre com um ambiente mínimo; a chave só lhe chega se a tarefa a declarar.
+- **Registos sem segredos:** um erro a meio de um pedido ou o relatório da importação já não mostram chaves nem passwords
+  que estejam no caminho ou no nome de um ficheiro.
+- **Cada espaço com os seus dados:** a Entrada, os trabalhos do «Unir», as categorias, o índice da pesquisa, o registo da
+  sincronização e os trincos deixam de seguir ligações simbólicas — uma ligação posta na pasta de dados de uma conta já não
+  mostra nem altera os dados de outra.
+- **Documentação:** `docs/SEGURANCA.md` dizia que `/api/saude` era a única rota sem login; `POST /api/entrar` e
+  `POST /api/sair` (ambas com `X-Basalt: 1`) também são atendidas antes do login, e agora está escrito o que cada uma faz.
+
 ### Actualizar sem perder nada (20/10/2026)
 - **As categorias das fontes externas já não se perdem:** o `arrumar` (e `python -m basalt.categorias`) reescrevia o
   `categorias.json` só com as notas do espaço e as chaves `<fonte>:<ref>` de `[fontes_extra]` caíam. Agora mantêm-se: com o índice,

@@ -16,6 +16,18 @@
   chaves (Anthropic, OpenAI, GitHub, AWS, Telegram…) e passwords escritas à mão (`senha: …`, `password = …`), também
   entre aspas ou crases, a negrito ou com uma observação a seguir (`senha: "…" (router)`), e em notas com fins de linha
   do Windows (CR LF). Uma data ou uma hora só deixa de contar como password quando a frase fala da validade da própria senha.
+  Os tokens de acesso e de renovação do OAuth contam como segredos, como o token pessoal.
+- **O teu verificador de segredos, além deste.** Com `[segredos] verificador` no `basalt.toml`, um comando teu também decide,
+  em todos os caminhos de entrada e nas listas de notas retidas. Recebe só caminhos de ficheiros (privados, `0600`, numa
+  pasta temporária apagada no fim; o texto nunca vai como argumento), até 50 de cada vez, com um ambiente mínimo. Sai `0` =
+  limpo, `1` = há segredo (o Basalt divide o lote para saber qual), outra coisa ou passar o `tempo_limite` = não se sabe, e
+  aí **não se grava**: a página e a API respondem 503, a Entrada automática volta a tentar, a sincronização adia a nota
+  para o ciclo seguinte e as listas tratam como retido o que ainda não tinha sido verificado. As respostas `0`/`1` ficam em
+  memória pelo conteúdo, para não verificar duas vezes o mesmo texto.
+- **Alertas para onde os vês.** Cada `ALERTA:` (sincronização, verificador que falha…) sai no stderr e, com
+  `[avisos] comando`, corre também esse comando em fundo, com a mensagem como último argumento — a mesma do alerta, com o
+  que pareça uma password ou chave tapado —, um ambiente mínimo e um tempo limite curto. O registo do servidor tapa
+  também os tokens que apareçam nos caminhos e nas mensagens de erro.
 - **Notas retidas não saem para a IA.** Uma nota está retida quando tem um segredo em claro — no texto ou no nome do ficheiro
   — ou está em `excluidas.txt`. Fica de fora do índice e dos embeddings, da pergunta com fontes (que olha para a nota tal como
   está agora, não para o índice: uma nota que ganhou um segredo depois de indexada já não dá pedaços), das categorias, da
@@ -34,6 +46,9 @@
   ambiente): tudo o que está por baixo dela abre-se pasta a pasta com `O_NOFOLLOW`, e um ancestral que seja uma ligação recusa a
   leitura, a listagem e a escrita. As escritas CAS conferem a pasta imediatamente antes de trocar o ficheiro; trocar uma pasta
   por uma ligação nesse instante exige escrever na pasta de dados do próprio servidor — quem pode isso já tem as notas todas.
+  O mesmo vale para os ficheiros de dados de cada espaço: a Entrada e o seu trinco, os trabalhos do «Unir», as categorias,
+  a lista de exclusão, o registo e o trinco da sincronização e o índice da pesquisa não se lêem nem escrevem através de
+  uma ligação simbólica (o pedido falha em vez de mostrar os dados de outro espaço).
 - **Contas no mesmo browser.** A cópia local (IndexedDB) e a fila sem internet têm dono. Quando entra outra conta no mesmo
   browser, a cópia da anterior sai antes de chegar a nova, e a fila sem internet da anterior fica guardada à parte, em nome
   dela, até voltar a entrar. O servidor recusa (403, sem mexer em nada) um pedido que traga o dono de outra conta, por isso
@@ -47,9 +62,16 @@
   verificá-la depois de lido o corpo e decide no fim, sem mais esperas, se a cópia foi entretanto trancada, apagada ou
   passou para outra conta.
   Os agentes e scripts entram por token (`Authorization: Bearer`) e não precisam de dono; um script que use a sessão do browser
-  ou o cabeçalho do proxy tem de mandar o `X-Basalt-Dono` que `GET /api/eu` lhe der. A única rota da API sem login nem dono é
-  `GET /api/saude` (o healthcheck do Docker e da monitorização): responde `{"ok": true}` e mais nada — nenhum dado das notas,
-  das contas ou da configuração. Fora da API só são públicos a página de entrar, o manifesto e os ícones da PWA.
+  ou o cabeçalho do proxy tem de mandar o `X-Basalt-Dono` que `GET /api/eu` lhe der. Na API, só três pedidos são atendidos
+  antes do login e sem dono:
+  - `GET /api/saude` (o healthcheck do Docker e da monitorização): responde `{"ok": true}` e mais nada;
+  - `POST /api/entrar` (o formulário de entrada, só no modo `senha`): exige o cabeçalho `X-Basalt: 1`, tem um limite de
+    tentativas falhadas por IP e só devolve o cookie de sessão a quem acertar no e-mail e na senha;
+  - `POST /api/sair`: exige `X-Basalt: 1`, termina a sessão do cookie que vier no pedido (se for válido) e manda o browser
+    esquecê-lo — sem uma sessão válida não muda nada.
+
+  Nenhum dos três devolve dados das notas, das contas ou da configuração. Fora da API só são públicos a página de entrar, o
+  manifesto e os ícones da PWA.
 - **Revogar sem reiniciar.** O servidor relê os utilizadores do `basalt.toml` quando ele muda. Apagar um utilizador ou o hash
   do token MCP vale no pedido seguinte, para as sessões e para o `/mcp`. Cada sessão guarda uma impressão da senha com que
   abriu e só vale com ela: mudar a senha termina as sessões dessa conta, também se a mudares com o servidor parado.
