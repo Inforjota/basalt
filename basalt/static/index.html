@@ -1294,7 +1294,8 @@ const EN = {
   "Descarregar não as envia nem as apaga: continuam guardadas à parte e sobem quando essa conta voltar a entrar aqui.": "Downloading neither sends nor deletes them: they stay kept aside and are sent when that account signs in here again.",
   "já não há edições dessa conta guardadas neste aparelho.": "there are no longer any edits from that account saved on this device.",
   "cópia de {data}": "copy from {data}",
-  "cópia deste aparelho": "copy on this device"
+  "cópia deste aparelho": "copy on this device",
+  "a conta ou a cópia deste aparelho mudou enquanto se lia — não mostro o que se leu. Recarrega a página.": "the account or the copy on this device changed while reading — what was read is not shown. Reload the page."
 };
 function t(s){ return IDIOMA === "en" && Object.prototype.hasOwnProperty.call(EN, s) ? EN[s] : s; }
 function tf(s, vars){ return t(s).replace(/\{(\w+)\}/g, (m, k) => (k in vars ? String(vars[k]) : m)); }
@@ -1393,30 +1394,42 @@ async function apiGet(path, repetido, outraVolta){
   if(!DONO_OK && !OUTRA_CONTA && navigator.onLine){ try{ await verificarDono(); }catch(e){} }
   var res, bloqAntes = BLOQUEIO_ID, geracaoAntes = GERACAO_COPIA;   // ronda 7: a geração com que este pedido partiu
   var epocaMem = EPOCA_MEM, epocaLocal = lerLocal("basalt-copia-epoca");   // ronda 13: a época com que partiu (ver lerEpocaCopia)
+  var retrato = retratoCopia();                             // ronda 13b: o mesmo, para a verificação final (rede e cópia)
   var trancasAntes = COPIA_BLOQUEADA ? chavesDe(await trancasNaMarca()) : null;   // ronda 6 G5: as trancas que JÁ existiam ao partir (só importa se está trancada)
+  retrato.epoca = await lerEpocaCopia();                     // ronda 13b: a época persistente ao partir (outro separador sem localStorage)
+  if(retrato.epoca.charAt(0) === "?") retrato.epoca = null;  // a cache não se leu ao partir: compara-se só a memória e o localStorage
   var inicio = agora();
   try{ res = await fetch(path, {credentials:"same-origin", headers: cabecalhoDono()}); }   // ronda 8: o dono da cópia
-  catch(e){ return apiGetFalhaRede(path); }
+  catch(e){ return apiGetFalhaRede(path, retrato); }
   var doSw = res.headers && res.headers.get && res.headers.get("X-Basalt-Inicio");   // ronda 6 G5: a hora (monótona) com que o service worker viu partir este pedido
   if(doSw){ viuInstante(doSw); inicio = Number(doSw) || inicio; }
   var daCache = !!(res.headers && res.headers.get && res.headers.get("X-Basalt-From-Cache") === "1");
   // ronda 13 (achado 4 do porte / 3 da r10): só a cópia de um service worker do MESMO protocolo (que manda a época com que a
   // entregou); a de um service worker de antes é como não haver rede
-  if(daCache && res.headers.get("X-Basalt-Protocolo") !== String(PROTOCOLO_COPIA)) return apiGetFalhaRede(path);
+  if(daCache && res.headers.get("X-Basalt-Protocolo") !== String(PROTOCOLO_COPIA)) return apiGetFalhaRede(path, retrato);
   if(!daCache) await reagirResposta(res, path, bloqAntes, inicio, trancasAntes, geracaoAntes);
   else if(await copiaTrancadaAqui()) throw erroCopiaTrancada();   // a página consulta a SUA tranca antes de aceitar cópia do service worker
   // ronda 9 (achado G1 da ronda 2): uma cópia do service worker só vale se for do dono desta cópia (um SW antigo, de cache comum,
   // podia servir a de outra conta) — senão é como não haver rede
-  else if(!DONO || res.headers.get("X-Basalt-Dono") !== DONO) return apiGetFalhaRede(path);
+  else if(!DONO || res.headers.get("X-Basalt-Dono") !== DONO) return apiGetFalhaRede(path, retrato);
   else if(await copiaApagadaDesde(geracaoAntes)) throw erroLeituraCopiaApagada();   // ronda 9 (achado 3 da ronda 8)
   // ronda 9: 428 = o pedido foi sem dono (ainda não se sabia) — confirma-se e repete-se uma vez
   if(res.status === 428 && !repetido){ DONO_OK = false; try{ await verificarDono(); }catch(e){} if(DONO) return apiGet(path, true); }
-  if(!daCache) return handleRes(res);
+  if(!daCache){
+    // ronda 13b (achado 3 da r13): a resposta da REDE também só se entrega se a cópia ainda é a com que o pedido partiu — ler o
+    // corpo é um await, e mudar de conta, «Sair», trancar ou apagar a cópia podia acontecer aí: entregava-se o que era de A.
+    var dadosRede = await handleRes(res);                    // um erro (não 2xx) lança aqui, como antes
+    var epocaRede = await lerEpocaCopia();                   // o ÚLTIMO await (ver lerEpocaCopia)
+    var mudouRede = copiaMudouDesde(retrato, epocaRede);
+    if(mudouRede) return naoEntregar(mudouRede, path, retrato, repetido, outraVolta);
+    if(RETRATO_DE && dadosRede && typeof dadosRede === "object") RETRATO_DE.set(dadosRede, retrato);
+    return dadosRede;
+  }
   // ronda 10 (achado G5 da r3): ler o corpo (res.json) é mais um «await» — «apagar a cópia», trancar ou mudar de conta noutro
   // separador pode acontecer AÍ, depois das verificações de cima. Verifica-se outra vez com o corpo já lido, antes de o entregar.
   var donoAntes = DONO, dados = await handleRes(res);
   if(await copiaTrancadaAqui()) throw erroCopiaTrancada();
-  if(!DONO || DONO !== donoAntes || OUTRA_CONTA) return apiGetFalhaRede(path);
+  if(!DONO || DONO !== donoAntes || OUTRA_CONTA) return apiGetFalhaRede(path, retrato);
   if(await copiaApagadaDesde(geracaoAntes)) throw erroLeituraCopiaApagada();
   // ronda 13 (achados 1A/1B do porte, 2 da r10): as verificações de cima não vêem o que só o service worker revogou (um 404 que pôs
   // a lápide e apagou a entrada, um 401 que trancou) enquanto o corpo se lia ou a geração se relia. A época persistente é o
@@ -1426,16 +1439,81 @@ async function apiGet(path, repetido, outraVolta){
   // cópia, «apagar a cópia» ou outra conta, neste separador ou noutro, pode chegar AÍ. A decisão final toma-se aqui, só com o
   // que já está em memória: daqui até ao return não há mais nenhum await.
   if(COPIA_BLOQUEADA || lerLocal("basalt-copia-bloqueada")) throw erroCopiaTrancada();
-  if(!DONO || DONO !== donoAntes || OUTRA_CONTA) return apiGetFalhaRede(path);
+  if(!DONO || DONO !== donoAntes || OUTRA_CONTA) return apiGetFalhaRede(path, retrato);
   if(COPIA_DESLIGADA || GERACAO_COPIA !== geracaoAntes) throw erroLeituraCopiaApagada();
   // ronda 13: a época mudou desde que o pedido partiu (aviso do service worker, outro separador, este) ou já não é a com que o
   // service worker entregou — esta resposta pode estar revogada e não se entrega. Pede-se outra vez (o service worker decide já
   // com o estado novo); à 2.ª, como sem rede (a cópia da IndexedDB, com as guardas dela)
   if(EPOCA_MEM !== epocaMem || lerLocal("basalt-copia-epoca") !== epocaLocal || epocaAgora !== (res.headers.get("X-Basalt-Epoca") || "")){
-    return outraVolta ? apiGetFalhaRede(path) : apiGet(path, repetido, true);
+    return outraVolta ? apiGetFalhaRede(path, retrato) : apiGet(path, repetido, true);
   }
+  // ronda 13b: e a mesma verificação final da rede (o retrato com que partiu: a tranca e o dono de antes de qualquer await)
+  var mudouCopia = copiaMudouDesde(retrato, null);
+  if(mudouCopia) return naoEntregar(mudouCopia, path, retrato, repetido, outraVolta);
   if(COPIA_DE && dados && typeof dados === "object") COPIA_DE.set(dados, Number(doSw) || 0);   // pendente b: «cópia de <data>»
+  if(RETRATO_DE && dados && typeof dados === "object") RETRATO_DE.set(dados, retrato);
   return dados;
+}
+/* ronda 13b (achado 3 da r13): o «retrato» da cópia com que uma leitura parte — dono, outra conta, geração, época (memória e
+   localStorage; a persistente lê-se à parte, em .epoca) e tranca. A MESMA verificação final vale para todas as respostas (rede e
+   cópia) e para as vistas que as desenham depois de mais awaits: copiaMudouDesde() só olha para a memória (sem await) e diz o
+   que mudou ("" = nada). Destrancar não conta como mudança; uma tranca nova, sim. */
+function retratoCopia(){
+  return {dono: DONO, outraConta: OUTRA_CONTA, geracao: GERACAO_COPIA, desligada: COPIA_DESLIGADA, epocaMem: EPOCA_MEM,
+          epocaLocal: lerLocal("basalt-copia-epoca"), tranca: COPIA_BLOQUEADA ? BLOQUEIO_ID : "",
+          trancaLocal: lerLocal("basalt-copia-bloqueada") || "", epoca: null};
+}
+function copiaMudouDesde(r, epocaAgora){
+  var tranca = COPIA_BLOQUEADA ? BLOQUEIO_ID : "", trancaLocal = lerLocal("basalt-copia-bloqueada") || "";
+  if((tranca && tranca !== r.tranca) || (trancaLocal && trancaLocal !== r.trancaLocal)) return "trancada";
+  if(OUTRA_CONTA !== r.outraConta || DONO !== r.dono) return "conta";         // outra conta, «Sair» (dono "") ou outro dono
+  if((COPIA_DESLIGADA && !r.desligada) || GERACAO_COPIA !== r.geracao) return "apagada";
+  if(EPOCA_MEM !== r.epocaMem || lerLocal("basalt-copia-epoca") !== r.epocaLocal) return "epoca";
+  if(epocaAgora != null && r.epoca != null && epocaAgora !== r.epoca) return "epoca";
+  return "";
+}
+// os dados entregues por apiGet() → o retrato com que se verificaram (a vista continua a verificar a partir dele)
+var RETRATO_DE = (typeof WeakMap === "function") ? new WeakMap() : null;
+// uma resposta já lida, com a cópia mudada desde que o pedido partiu: não se entrega. Trancada → o erro da tranca; outra conta
+// ou «Sair» → como sem rede, sem repetir (no «Sair», verificarDono() voltava a pôr a conta que saiu); o resto → outra vez, uma
+function naoEntregar(m, path, retrato, repetido, outraVolta){
+  if(m === "trancada") throw erroCopiaTrancada();
+  if(m === "conta" || outraVolta) return apiGetFalhaRede(path, retrato);
+  return apiGet(path, repetido, true);
+}
+/* ronda 13b: uma VISTA que leu (apiGet, IndexedDB) e ainda espera por mais alguma coisa antes de desenhar volta a verificar a
+   cópia a seguir a cada await. `antes` = retratoCopia() tirado antes da 1.ª leitura; `lidos` = o que apiGet() acabou de entregar
+   (cada um com o retrato com que se verificou; nunca o que vem de uma cache em memória, que é de um retrato antigo). A época
+   persistente é o último await. "" = pode desenhar. */
+async function leituraMudou(antes, lidos){
+  var m = copiaMudouDesde(antes, null);
+  if(m) return m;
+  var ep = await lerEpocaCopia();
+  m = copiaMudouDesde(antes, null);
+  for(var i = 0; !m && lidos && i < lidos.length; i++){
+    var r = (RETRATO_DE && lidos[i] && typeof lidos[i] === "object") ? RETRATO_DE.get(lidos[i]) : null;
+    if(r) m = copiaMudouDesde(r, ep);
+  }
+  return m;
+}
+// mudou: com uma conta neste separador (a mesma, ou a confirmada agora) lê-se outra vez, até 2 voltas; trancada, «Sair» ou outra
+// conta noutro separador → o erro, no lugar do que se leu (nada da conta anterior)
+function vistaPodeRepetir(m, voltas){ return m !== "trancada" && !!DONO && !OUTRA_CONTA && (voltas || 0) < 2; }
+function erroVistaMudou(m){
+  if(m === "trancada") return erroCopiaTrancada();
+  var e = new Error(t("a conta ou a cópia deste aparelho mudou enquanto se lia — não mostro o que se leu. Recarrega a página."));
+  e.copiaMudou = m;
+  return e;
+}
+/* ronda 13b: as caches em memória (grafo, pré-visualizações, embeds, lista do salto rápido) são da conta e da cópia com que se
+   encheram: mudou a conta ou a geração da cópia → deitam-se fora. A árvore das notas guarda a chave dela (NOTAS_SHELL.chave). */
+var CACHES_DA_CONTA = null;
+function chaveDaConta(r){ return r ? [r.dono, r.outraConta ? 1 : 0, r.geracao].join("|") : [DONO, OUTRA_CONTA ? 1 : 0, GERACAO_COPIA].join("|"); }
+function cachesDaConta(){
+  var chave = chaveDaConta();
+  if(CACHES_DA_CONTA === chave) return;
+  if(CACHES_DA_CONTA !== null){ EMBED_CACHE = {}; previewCache = {}; GRAFO_CACHE_PROMESSA = null; SALTO_NOTAS_CACHE = null; }
+  CACHES_DA_CONTA = chave;
 }
 /* ronda 9 (achado 3 da ronda 8): uma resposta da cópia do service worker que chega DEPOIS de «apagar a cópia» (o SW pode tê-la lido
    antes de a apagar) não se mostra: a cópia está desligada, ou a geração já não é a de quando o pedido partiu. Lê-se também a
@@ -1875,7 +1953,9 @@ function mostrarOutraConta(){
   document.getElementById("outra-conta-fechar").addEventListener("click", function(){ root.innerHTML = ""; });
 }
 
-async function apiGetFalhaRede(path){
+// ronda 13b: `retrato` = o da leitura que falhou (retratoCopia) — a cópia da IndexedDB só se entrega se a conta e a cópia ainda são
+// as com que essa leitura partiu (não a de outra conta que, entretanto, a passou a ter)
+async function apiGetFalhaRede(path, retrato){
   var tipo = await diagnosticarFalha();
   if(tipo === "sessao-expirada"){
     mostrarSessaoExpirada();
@@ -1885,9 +1965,13 @@ async function apiGetFalhaRede(path){
   }
   if(tipo === "offline"){
     var dados = await tentarOffline(path);
+    var mudou = (retrato && dados !== undefined) ? copiaMudouDesde(retrato, null) : "";
+    if(mudou === "trancada") throw erroCopiaTrancada();
+    if(mudou && mudou !== "epoca") throw erroCopiaNaoVerificada();   // a época: a IndexedDB lê-se já com as guardas dela
     if(dados !== undefined){
       OFFLINE_ESTADO.semRede = true;
       atualizarIndicador();
+      if(RETRATO_DE && dados && typeof dados === "object") RETRATO_DE.set(dados, retratoCopia());   // verificada agora, sem await no meio
       return dados;
     }
     var erSemSuporte = new Error(t("precisa de rede"));
@@ -3693,12 +3777,14 @@ function nomesEmbutidosDe(raw){
   return nomes;
 }
 function obterEmbedCache(nome){
+  cachesDaConta();                                           // ronda 13b
   if(EMBED_CACHE.hasOwnProperty(nome)) return Promise.resolve(EMBED_CACHE[nome]);
+  var cache = EMBED_CACHE;                                   // ronda 13b: a da conta com que partiu (mudou → já é outra)
   return apiGet("/api/nota?nome=" + encodeURIComponent(nome)).then(function(n){
-    EMBED_CACHE[nome] = n;
+    cache[nome] = n;
     return n;
   }).catch(function(){
-    EMBED_CACHE[nome] = null;
+    cache[nome] = null;
     return null;
   });
 }
@@ -4042,6 +4128,8 @@ function parseHash(){
 async function route(){
   var parts = parseHash();
   var rota = parts[0] || "";
+  cachesDaConta();                                           // ronda 13b: mudou a conta ou a cópia → nada do que estava em memória
+  if(NOTAS_SHELL && NOTAS_SHELL.chave !== chaveDaConta()) NOTAS_SHELL = null;   // nem a árvore e o índice das notas
 
   if(rota === "indice"){
     location.hash = "#/notas";
@@ -4315,10 +4403,11 @@ async function viewLigar(main){
    Início
    ==================================================================== */
 
-async function viewHome(main){
+async function viewHome(main, voltas){
   main.innerHTML = renderShell(t("Início"));
   var body = main.querySelector(".view-body");
   renderLoading(body, t("a carregar o estado da memória…"));
+  var antes = retratoCopia();                                // ronda 13b
   try{
     var res = await Promise.all([
       apiGet("/api/estado"),
@@ -4327,6 +4416,9 @@ async function viewHome(main){
       apiGet("/api/indice"),
       apiGet("/api/diario").catch(function(){ return null; }),
     ]);
+    // ronda 13b (achado 3 da r13): cinco leituras — a conta ou a cópia pode ter mudado entre a 1.ª e a última, ou depois
+    var mudou = await leituraMudou(antes, res);
+    if(mudou) return vistaMudou(mudou);
     var estado = res[0], recentes = res[1], entrada = res[2], indice = res[3], diario = res[4];
     var comSugestao = entrada.filter(function(e){ return !!e.sugestao; }).length;
     body.innerHTML =
@@ -4359,7 +4451,14 @@ async function viewHome(main){
     });
     body.querySelector("#apagar-copia-link").addEventListener("click", function(e){ e.preventDefault(); abrirApagarCopiaModal(); });
   }catch(e){
+    if(copiaMudouDesde(antes, null) === "conta") return vistaMudou("conta");   // ronda 13b: outra conta a meio
     renderErrorBox(body, tf("não consegui carregar o início: {erro}", {erro: e.message}), function(){ viewHome(main); });
+  }
+  // ronda 13b: mudou → outra vez (até 2 voltas, se ainda é esta a vista à mostra) ou o erro, sem nada do que se leu
+  function vistaMudou(m){
+    if(!main.contains(body)) return;
+    if(vistaPodeRepetir(m, voltas)) return viewHome(main, (voltas || 0) + 1);
+    renderErrorBox(body, tf("não consegui carregar o início: {erro}", {erro: erroVistaMudou(m).message}), function(){ viewHome(main); });
   }
 }
 function statCard(num, label){
@@ -4496,6 +4595,7 @@ async function abrirSaltoRapido(){
   input.focus();
   listaEl.innerHTML = '<div class="state-loading"><span class="spinner"></span>' + t("a carregar…") + '</div>';
   try{
+    cachesDaConta();                                         // ronda 13b
     SALTO_NOTAS_CACHE = await apiGet("/api/notas");
   }catch(e){
     listaEl.innerHTML = '<p class="dim-note">' + tf("não consegui carregar as notas: {erro}", {erro: escapeHtml(e.message)}) + "</p>";
@@ -4648,6 +4748,7 @@ async function montarNotasShell(main, alvoInicial){
 
   NOTAS_SHELL = {
     root: document.getElementById("obsidian-shell"),
+    chave: chaveDaConta((RETRATO_DE && RETRATO_DE.get(notas)) || null),   // ronda 13b: a conta e a cópia de que é (ver route)
     notas: notas,
     agrupamento: "indice",
     filtro: "",
@@ -4656,6 +4757,7 @@ async function montarNotasShell(main, alvoInicial){
     abrir: abrir,
     renderArvore: renderArvore,
   };
+  var shell = NOTAS_SHELL;
 
   document.getElementById("exp-agrupar").value = NOTAS_SHELL.agrupamento;
   document.getElementById("exp-filtro").addEventListener("input", debounce(function(e){
@@ -4763,11 +4865,16 @@ async function montarNotasShell(main, alvoInicial){
     });
   }
 
-  async function renderIndiceNoCentro(centro, contexto){
+  async function renderIndiceNoCentro(centro, contexto, voltas){
     contexto.innerHTML = '<p class="dim-note">' + t("selecciona uma nota para ver o contexto.") + '</p>';
     renderLoading(centro, t("a carregar o índice…"));
+    var antes = retratoCopia();                        // ronda 13b
     try{
       var res = await Promise.all([garantirIndice(), apiGet("/api/categorias")]);
+      // ronda 13b (achado 3 da r13): o índice (da cache deste shell) e as categorias (agora) — a conta ou a cópia pode ter
+      // mudado entre um e outro, ou depois
+      var mudou = await leituraMudou(antes, [res[1]]);
+      if(mudou) return pararVista(mudou, null, voltas, "não consegui carregar o índice: {erro}");
       var idx = res[0], cats = res[1];
       var cartoes = construirCartoesIndice(idx.markdown);
       var maxN = cats.categorias.length ? Math.max.apply(null, cats.categorias.map(function(c){ return c.n; })) : 1;
@@ -4799,11 +4906,31 @@ async function montarNotasShell(main, alvoInicial){
       document.getElementById("indice-filtro").addEventListener("input", debounce(aplicar, 150));
       aplicar();
     }catch(e){
+      if(copiaMudouDesde(antes, null) === "conta") return pararVista("conta", null, voltas, "não consegui carregar o índice: {erro}");   // ronda 13b
       renderErrorBox(centro, tf("não consegui carregar o índice: {erro}", {erro: e.message}), function(){ abrir(null); });
     }
   }
 
-  async function abrir(alvo){
+  /* ronda 13b (achado 3 da r13): a conta ou a cópia mudou enquanto a vista lia — nada do que se leu se desenha. Com uma conta
+     neste separador lê-se outra vez (até 2 voltas; se mudou a conta ou a geração, o shell todo, com a árvore dela, por route).
+     Senão o erro: só no centro se a árvore ainda é desta conta e desta cópia; no lugar do shell inteiro se não é */
+  function pararVista(m, alvo, voltas, msg){
+    if(NOTAS_SHELL !== shell) return;                  // já se montou outro shell: este não desenha mais nada
+    var mesma = (shell.chave === chaveDaConta());
+    if(vistaPodeRepetir(m, voltas)){
+      if(mesma) return abrir(alvo, (voltas || 0) + 1);
+      NOTAS_SHELL = null;
+      return route();
+    }
+    var erro = tf(msg, {erro: erroVistaMudou(m).message});
+    if(mesma) return renderErrorBox(document.getElementById("notas-centro"), erro, function(){ abrir(alvo); });
+    NOTAS_SHELL = null;
+    renderErrorBox(main, erro, function(){ route(); });
+  }
+
+  async function abrir(alvo, voltas){
+    // ronda 13b: a árvore e o índice deste shell são de outra conta ou de outra geração da cópia → não se abre nada nele
+    if(shell.chave !== chaveDaConta()) return pararVista("conta", alvo, voltas, "não consegui abrir esta nota: {erro}");
     NOTAS_SHELL.nomeActual = (alvo && alvo.tipo === "nota") ? alvo.nome : null;
     marcarActiva();
     NOTAS_SHELL.root.classList.toggle("tem-nota-aberta", !!alvo);
@@ -4812,7 +4939,7 @@ async function montarNotasShell(main, alvoInicial){
     centro.scrollTop = 0;
 
     if(!alvo){
-      return renderIndiceNoCentro(centro, contexto);
+      return renderIndiceNoCentro(centro, contexto, voltas);
     }
 
     if(alvo.tipo === "categoria"){
@@ -4839,21 +4966,32 @@ async function montarNotasShell(main, alvoInicial){
     centro.innerHTML = '<div class="notas-centro-topo"><a class="btn" href="#/notas">' + t("← voltar") + '</a></div>';
     renderLoading(centro, t("a carregar a nota…"));
     contexto.innerHTML = "";
-    var nota;
+    var nota, antes = retratoCopia(), MSG = "não consegui abrir esta nota: {erro}";
     try{
       nota = await apiGet("/api/nota?nome=" + encodeURIComponent(alvo.nome));
-      var donoVista = DONO;                            // ronda 10 (G1): a conta com que esta nota foi lida
     }catch(e){
+      if(copiaMudouDesde(antes, null) === "conta") return pararVista("conta", alvo, voltas, MSG);   // ronda 13b: outra conta a meio
       renderErrorBox(centro, tf("não consegui abrir esta nota: {erro}", {erro: e.message}), function(){ abrir(alvo); });
       return;
+    }
+    // ronda 13b (achado 3 da r13): a conta e a cópia com que esta nota se leu (o retrato com que apiGet a verificou). Cada await
+    // daqui até desenhar pode trazer outra conta, «Sair», uma tranca, a cópia apagada ou revogada — verifica-se tudo a seguir a
+    // cada um (antes só o DONO, que neste separador pode ainda não ter mudado)
+    var retrato = (RETRATO_DE && RETRATO_DE.get(nota)) || antes;
+    if(chaveDaConta(retrato) !== shell.chave) return pararVista("conta", alvo, voltas, MSG);   // a árvore é de outra
+    var donoVista = retrato.dono;                      // ronda 10 (G1): a conta com que esta nota foi lida
+    function verificar(){                              // true = mudou (já tratado: outra volta ou o erro)
+      return leituraMudou(retrato, [nota]).then(function(m){ if(m) pararVista(m, alvo, voltas, MSG); return !!m; });
     }
     // uma edição feita sem rede fica marcada "por enviar" até a fila sincronizar; um conflito por resolver
     // ganha sempre à vista normal da nota (as duas versões lado a lado), online ou offline.
     var conflito = null, filaItem = null;
     var geracaoVista = await geracaoActual();          // ronda 9 (achado 5): ANTES de ler o conflito (na dúvida, os botões recusam)
+    var mudou = copiaMudouDesde(retrato, null);
+    if(mudou) return pararVista(mudou, alvo, voltas, MSG);
     var porCima = await filaEConflitoDaCopia(alvo.nome, donoVista, geracaoVista);   // ronda 13 (r4-2): numa transacção, com as guardas
     conflito = porCima.conflito; filaItem = porCima.fila;
-    if(DONO !== donoVista){ abrir(alvo); return; }   // ronda 10 (G1): mudou de conta a meio da leitura — lê-se outra vez
+    if(await verificar()) return;                      // ronda 13b: o último await antes de desenhar (a época persistente)
     nota.dono = donoVista;                             // ronda 10 (G1): a edição fica presa a esta conta
     if(conflito){
       renderConflito(nota, conflito, centro, contexto, geracaoVista);
@@ -4863,7 +5001,7 @@ async function montarNotasShell(main, alvoInicial){
       nota.texto = filaItem.texto;
       nota.porEnviar = true;
     }
-    renderNotaCompleta(nota, centro, contexto);
+    renderNotaCompleta(nota, centro, contexto, verificar);   // ronda 13b: e outra vez depois de preparar o markdown (embeds)
   }
 }
 
@@ -5044,10 +5182,13 @@ function renderConflito(nota, conflito, centro, contexto, geracaoVista){
   });
 }
 
-function renderNotaCompleta(nota, centro, contexto){
+function renderNotaCompleta(nota, centro, contexto, verificar){
   async function renderVer(){
     var corpo = stripFrontmatter(nota.texto);
     await prepararMarkdown(corpo);
+    // ronda 13b (achado 3 da r13): a 1.ª vez que se desenha, a vista que a abriu volta a verificar a cópia (preparar o markdown
+    // espera pelos embeds, o KaTeX, o Mermaid) — mudou → não se desenha nada desta nota
+    if(verificar){ var v = verificar; verificar = null; if(await v()) return; }
     var anotado = anotarEstrutura(renderMarkdown(corpo));
     var larguraTotal = lerBool("basalt-largura-total", false);
     centro.innerHTML =
@@ -5790,11 +5931,15 @@ async function viewEntrada(main){
   };
 
   await carregar();
-  async function carregar(){
+  async function carregar(voltas){
+    var antes = retratoCopia();                              // ronda 13b
     try{
       // 25/09: o Basalt arruma sozinho a cada 3 min (processar_entrada, no servidor) — /api/entrada só traz
       // o que sobrou por decidir; /api/entrada/auto traz o que ele já tratou (com Desfazer).
       var res = await Promise.all([apiGet("/api/entrada"), apiGet("/api/entrada/auto")]);
+      // ronda 13b (achado 3 da r13): duas leituras — a conta ou a cópia pode ter mudado entre uma e outra, ou depois
+      var mudou = await leituraMudou(antes, res);
+      if(mudou) return entradaMudou(mudou);
       var pendentes = res[0], automaticas = res[1];
       body.innerHTML =
         '<p class="dim-note" id="entrada-intro">' + t("O Basalt arruma sozinho as ideias novas em poucos minutos. Aqui ficam só as que precisam de ti.") + '</p>' +
@@ -5887,7 +6032,13 @@ async function viewEntrada(main){
         });
       });
     }catch(e){
-      renderErrorBox(body, tf("não consegui carregar a entrada: {erro}", {erro: e.message}), carregar);
+      if(copiaMudouDesde(antes, null) === "conta") return entradaMudou("conta");   // ronda 13b: outra conta a meio
+      renderErrorBox(body, tf("não consegui carregar a entrada: {erro}", {erro: e.message}), function(){ carregar(); });
+    }
+    function entradaMudou(m){                                 // ronda 13b: como no início (viewHome)
+      if(!main.contains(body)) return;
+      if(vistaPodeRepetir(m, voltas)) return carregar((voltas || 0) + 1);
+      renderErrorBox(body, tf("não consegui carregar a entrada: {erro}", {erro: erroVistaMudou(m).message}), function(){ carregar(); });
     }
   }
 }
@@ -6039,12 +6190,15 @@ async function abrirModalUnir(nomeA, nomeB, main){
   document.addEventListener("keydown", escFechar);
 
   var conteudo = document.getElementById("unir-conteudo");
-  var notaA, notaB;
+  var notaA, notaB, antes = retratoCopia();                  // ronda 13b
   try{
     var res = await Promise.all([
       apiGet("/api/nota?nome=" + encodeURIComponent(nomeA)),
       apiGet("/api/nota?nome=" + encodeURIComponent(nomeB)),
     ]);
+    // ronda 13b (achado 3 da r13): as duas notas com a mesma conta e a mesma cópia, ainda a de agora — senão não se mostram
+    var mudou = await leituraMudou(antes, res);
+    if(mudou) throw erroVistaMudou(mudou);
     notaA = res[0]; notaB = res[1];
   }catch(e){
     conteudo.innerHTML = '<div class="state-error"><p>⚠️ ' + tf("não consegui carregar as notas: {erro}", {erro: escapeHtml(e.message)}) + "</p></div>";
@@ -6316,6 +6470,7 @@ function getCssVar(name){
 
 var GRAFO_CACHE_PROMESSA = null;
 function obterGrafoCache(){
+  cachesDaConta();                                           // ronda 13b
   if(!GRAFO_CACHE_PROMESSA) GRAFO_CACHE_PROMESSA = apiGet("/api/grafo");
   return GRAFO_CACHE_PROMESSA;
 }
@@ -6453,6 +6608,7 @@ function agendarEsconderPreview(){
   previewTimerEsconder = setTimeout(function(){ obterPreviewEl().classList.add("hidden"); }, 150);
 }
 function carregarNotaPreview(nome){
+  cachesDaConta();                                           // ronda 13b
   if(!previewCache[nome]){
     previewCache[nome] = apiGet("/api/nota?nome=" + encodeURIComponent(nome)).catch(function(){ return null; });
   }
