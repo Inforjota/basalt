@@ -132,16 +132,23 @@ def _extras():
     BASALT_SIG_ISOLADO=1 (testes) não corre nenhum, para a suite não ler o basalt.toml de quem a corre."""
     if os.environ.get("BASALT_SIG_ISOLADO") == "1":
         return []
-    itens = []
+    itens, retidos = [], {}
     for cmd in config.carregar(validar=False).fontes_extra:
         try:
             r = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=60, check=True)
             for d in json.loads(r.stdout or "[]"):
                 f, ref, texto = str(d.get("fonte") or ""), str(d.get("ref") or ""), str(d.get("texto") or "")
                 if f and f != "nota" and ref and texto.strip():
-                    itens.append((f, ref, str(d.get("titulo") or ref), texto))
+                    titulo = str(d.get("titulo") or ref)
+                    if tem_segredo_texto(titulo) or tem_segredo_texto(ref):     # o título e a ref também vão para a procura e para as citações
+                        retidos[f] = retidos.get(f, 0) + 1
+                        continue
+                    itens.append((f, ref, titulo, texto))
         except Exception as e:
             print(f"  aviso: a fonte extra {cmd!r} falhou ({str(e)[:80]}) — indexo o resto", file=sys.stderr)
+    for f, n in retidos.items():                # só a fonte e a contagem, nunca o conteúdo
+        print(f"  aviso: {n} {'item' if n == 1 else 'itens'} da fonte {f!r} não {'entra' if n == 1 else 'entram'} (segredo no título/ref)",
+              file=sys.stderr)
     return itens
 
 
@@ -244,6 +251,9 @@ def carregar(c, onde="", args=()):
                 retida[nome] = _retida_agora(nome, excl)
             if retida[nome]:
                 continue
+        # ronda 12: um índice feito antes de o título/ref serem verificados ainda pode tê-los (as notas já são tratadas acima)
+        if f != "nota" and (tem_segredo_texto(t or "") or tem_segredo_texto(r or "")):
+            continue
         if not tem_segredo_texto(tr or ""):
             out.append((f, r, t, tr, v or b""))
     return out

@@ -39,6 +39,9 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   uma password ou chave em claro não se mostra (só se diz quantos ficaram de fora) e uma referência só com pedaços desses não
   se abre. Novo `python -m basalt.sig fonte FONTE REF [--json]` e `GET /api/fonte?fonte=…&ref=…`; `sig pergunta --json`
   passa a dizer a `fonte` de cada excerto. Os comandos de `[fontes_extra]` não mudam.
+- **Título ou referência com um segredo em claro numa fonte externa também não entram:** o filtro só olhava para o texto; agora
+  um item de `[fontes_extra]` cujo título ou referência pareça uma password ou chave não é indexado (aviso no ecrã com a fonte e
+  a contagem, nunca o conteúdo) e, num índice feito antes, também não sai na procura, nas citações nem na vista só de leitura (404).
 - Se voltares a uma versão anterior do Basalt depois de abrir esta: o que ficou guardado à parte não se vê na página anterior,
   e o «Apagar cópia deste aparelho» dela apaga-o. Envia ou descarrega primeiro (ver [INSTALAR.md § 7](docs/INSTALAR.md)).
 

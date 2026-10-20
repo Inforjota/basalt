@@ -23,8 +23,8 @@
   três versões: se alguma tem um segredo, fica só o conflito, para escolheres).
 - **Fontes externas só para ler.** Os textos que os comandos de `[fontes_extra]` trazem para o índice abrem-se na página
   (`GET /api/fonte`, `basalt.sig fonte`) sem editar, apagar nem unir, e com o mesmo filtro da procura e da pergunta: um pedaço
-  com um segredo em claro não se mostra e uma referência só com pedaços desses dá «não encontrado». O título e a referência
-  vêm do comando tal como ele os imprime: não ponhas segredos neles.
+  com um segredo em claro não se mostra e uma referência só com pedaços desses dá «não encontrado». Um item cujo título ou referência
+  tenha um segredo em claro também não entra no índice (nem se mostra, se já lá estava).
 - **Contra agentes de IA desastrados.** Sem ferramenta de apagar. Substituir uma nota exige o `base_hash` da versão lida. O MCP
   recusa substituir uma nota por texto vazio ou só com espaços.
 - **Cada utilizador no seu espaço.** Dois utilizadores no mesmo espaço são recusados ao carregar o `basalt.toml`, a não ser
