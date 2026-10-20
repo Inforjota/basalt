@@ -19,9 +19,9 @@ BASALT_GIT=1 (omissão): fotografia git da memória real antes de a alterar.
 import contextlib, fcntl, hashlib, json, os, re, subprocess, sys, tempfile, time
 from pathlib import Path
 
-from . import caminhos, cas, config
+from . import avisos, caminhos, cas, config
 from .config import Via
-from .segredos import SEGREDO_RX, tem_segredo_texto  # noqa: F401  (SEGREDO_RX: basalt.unir importa daqui)
+from .segredos import SEGREDO_RX, mascarar, tem_segredo_texto  # noqa: F401  (SEGREDO_RX: basalt.unir importa daqui)
 
 REAL = Via("real")          # PORTE: antes caminhos fixos + variáveis; agora a pasta do espaço (config.Espaco; as variáveis antigas ainda mandam)
 COPIA = Via("copia")
@@ -105,8 +105,11 @@ ALERTAS = os.environ.get("BASALT_ALERTAS", "1") == "1"     # o --teste desliga-o
 
 
 def alerta(msg):
-    # PORTE: antes chamava um comando de alertas externo; agora só stderr (o journal do systemd / o cron guardam-no)
-    print("ALERTA:", msg, file=sys.stderr)
+    # ronda 13: no stderr como antes (o journal do systemd / o cron guardam-no) e, com [avisos] comando, também num comando teu
+    if ALERTAS:
+        avisos.alerta(msg)
+    else:
+        print("ALERTA:", mascarar(str(msg)), file=sys.stderr)
 
 
 def ciclo():

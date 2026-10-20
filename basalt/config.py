@@ -141,6 +141,25 @@ class CategoriasConfig:
 
 
 @dataclass
+class SegredosConfig:
+    # ronda 13: um verificador de segredos teu, além do guarda de origem: `comando arg FICHEIRO…` (só caminhos, nunca o texto);
+    # sai 0 = limpo, 1 = tem segredo, outra coisa (ou não responde em tempo_limite s) = não se sabe → recusa. Vazio = desligado.
+    verificador: tuple = ()
+    tempo_limite: int = 30
+
+
+@dataclass
+class AvisosConfig:
+    # ronda 13: um comando teu para os ALERTAS (notificação no telemóvel, email…): `comando arg "mensagem"`, em fundo. Vazio = só o stderr.
+    comando: tuple = ()
+
+
+def comando_ok(c) -> bool:
+    """um comando da configuração é uma lista de textos não vazios (["comando", "arg"]), nunca uma linha para a shell."""
+    return isinstance(c, (list, tuple)) and len(c) > 0 and all(isinstance(x, str) and x.strip() for x in c)
+
+
+@dataclass
 class OAuthConfig:
     redirects_extra: tuple = ()         # «Traz a tua IA»: endereços de regresso (redirect_uri) aceites além dos de origem (só https)
 
@@ -165,6 +184,8 @@ class Config:
     espaco_partilhado: bool = False     # ronda 8 (um espaço por utilizador): dois utilizadores no mesmo espaço só de propósito
     url_publico: str = ""               # «Traz a tua IA»: o endereço https por que a internet chega a este servidor (liga o OAuth do /mcp)
     oauth: OAuthConfig = field(default_factory=OAuthConfig)
+    segredos: SegredosConfig = field(default_factory=SegredosConfig)
+    avisos: AvisosConfig = field(default_factory=AvisosConfig)
 
     # ── «Traz a tua IA» (OAuth 2.1 no /mcp) ──
     @property
@@ -253,6 +274,15 @@ class Config:
         for r in self.oauth.redirects_extra:
             if not isinstance(r, str) or not r.startswith("https://") or len(r) > 500 or "#" in r or any(ord(c) < 33 or ord(c) == 127 for c in r):
                 raise ConfigInvalida(f"[oauth] redirects_extra: {r!r} tem de ser um endereço https:// completo, sem espaços nem #")
+        if self.segredos.verificador and not comando_ok(self.segredos.verificador):
+            raise ConfigInvalida(f"[segredos] verificador tem de ser uma lista de textos, ex.: [\"/usr/local/bin/verificar\", \"--ficheiros\"], "
+                                 f"não {self.segredos.verificador!r}")
+        tl = self.segredos.tempo_limite
+        if isinstance(tl, bool) or not isinstance(tl, int) or tl <= 0:
+            raise ConfigInvalida(f"[segredos] tempo_limite tem de ser um número inteiro de segundos, não {tl!r}")
+        if self.avisos.comando and not comando_ok(self.avisos.comando):
+            raise ConfigInvalida(f"[avisos] comando tem de ser uma lista de textos, ex.: [\"/usr/local/bin/notificar\", \"--titulo\", \"Basalt\"], "
+                                 f"não {self.avisos.comando!r}")
         if self.auth.modo != "aberto" and not self.utilizadores:
             raise ConfigInvalida("sem utilizadores: acrescenta [[utilizadores]] ou usa `basalt utilizador novo EMAIL`")
 
@@ -539,6 +569,12 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
         em = em.strip()
         if em and not cfg.utilizador(em):
             cfg.utilizadores.append(Utilizador(email=em))
+    se = t.get("segredos", {}) if isinstance(t.get("segredos"), dict) else {"verificador": t.get("segredos")}
+    v = se.get("verificador", ())
+    cfg.segredos = SegredosConfig(verificador=tuple(v) if isinstance(v, list) else v, tempo_limite=se.get("tempo_limite", 30))
+    av = t.get("avisos", {}) if isinstance(t.get("avisos"), dict) else {"comando": t.get("avisos")}
+    v = av.get("comando", ())
+    cfg.avisos = AvisosConfig(comando=tuple(v) if isinstance(v, list) else v)
     fe = t.get("fontes_extra", {})
     cfg.fontes_extra = [str(c) for c in fe.get("comandos", [])] if isinstance(fe, dict) else []
     if validar and len({u.espaco for u in cfg.utilizadores}) > 1:   # ronda 8 (um espaço por utilizador): BASALT_REAL & co. valem para TODOS os espaços

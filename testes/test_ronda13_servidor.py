@@ -13,7 +13,7 @@ import pytest
 
 from types import SimpleNamespace
 
-from conftest import FM, RAIZ, usar_ia
+from conftest import FM, RAIZ, toml_de, usar_ia
 
 
 def _por_no_indice(esp, pedacos):
@@ -197,3 +197,92 @@ def test_controlo_item_externo_ja_categorizado_nao_muda(com_notas):
     categorias.main()
     assert _cats_lidas(com_notas)["leituras:artigo-7"]["cats"] == ["Pessoal"]
     assert not any("Fonte: leituras" in p for p in falsa.prompts)            # (a nota do espaço vai, porque o hash é outro)
+
+
+# ═════════════════════════ D — [avisos] comando: os ALERTAS também num comando teu, em fundo ═════════════════════════
+def _esperar(p, segundos=15):
+    import time
+    fim = time.time() + segundos
+    while time.time() < fim and not (p.exists() and p.stat().st_size):
+        time.sleep(0.1)
+    return p.read_text(encoding="utf-8") if p.exists() else None
+
+
+@pytest.fixture
+def avisos_falsos(memoria, tmp_path, monkeypatch):
+    """um basalt.toml com [avisos] comando = um script que escreve a mensagem (e o ambiente) num ficheiro; `espera` o atrasa."""
+    from basalt import duasvias
+    saida, amb = tmp_path / "aviso.txt", tmp_path / "aviso_ambiente.json"
+    script = tmp_path / "notificar.py"
+    script.write_text("import json, os, sys, time\nif sys.argv[1] != '0': time.sleep(float(sys.argv[1]))\n"
+                      f"open({str(amb)!r}, 'w').write(json.dumps(dict(os.environ)))\n"
+                      f"open({str(saida)!r}, 'w', encoding='utf-8').write(sys.argv[2])\n", encoding="utf-8")
+
+    def configurar(espera=0):
+        toml = tmp_path / "basalt.toml"
+        toml.write_text(toml_de(0, tmp_path / "raiz", extra=f"[avisos]\ncomando = {json.dumps([sys.executable, str(script), str(espera)])}\n"),
+                        encoding="utf-8")
+        monkeypatch.setenv("BASALT_CONFIG", str(toml))
+    monkeypatch.setattr(duasvias, "ALERTAS", True)
+    return SimpleNamespace(configurar=configurar, saida=saida, ambiente=amb)
+
+
+def test_alerta_corre_o_comando_de_avisos(avisos_falsos, capfd):
+    from basalt import duasvias
+    avisos_falsos.configurar()
+    duasvias.alerta("1 conflito(s) — versão da cópia guardada como *.CONFLITO-*.md na memória: compras")
+    assert _esperar(avisos_falsos.saida) == "1 conflito(s) — versão da cópia guardada como *.CONFLITO-*.md na memória: compras"
+    assert "ALERTA: 1 conflito(s)" in capfd.readouterr().err                # o stderr continua a ter o ALERTA
+
+
+def test_a_mensagem_do_aviso_nao_leva_segredos(avisos_falsos, capfd):
+    from basalt import duasvias
+    avisos_falsos.configurar()
+    duasvias.alerta("nota retida: senha: minhapalavrasecreta (router) e " + CHAVE_FICTICIA)
+    m = _esperar(avisos_falsos.saida)
+    assert m and "nota retida" in m and "minhapalavrasecreta" not in m and CHAVE_FICTICIA not in m, m
+    err = capfd.readouterr().err
+    assert "minhapalavrasecreta" not in err and CHAVE_FICTICIA not in err
+
+
+def test_o_comando_de_avisos_nao_recebe_as_chaves_do_processo(avisos_falsos, monkeypatch):
+    from basalt import duasvias
+    monkeypatch.setenv("ANTHROPIC_API_KEY", CHAVE_FICTICIA)
+    avisos_falsos.configurar()
+    duasvias.alerta("teste de ambiente")
+    assert _esperar(avisos_falsos.saida) == "teste de ambiente"
+    env = json.loads(avisos_falsos.ambiente.read_text())
+    assert CHAVE_FICTICIA not in env.values() and env.get("PATH")
+
+
+def test_controlo_o_alerta_nao_espera_pelo_comando(avisos_falsos):
+    import time
+    from basalt import duasvias
+    avisos_falsos.configurar(espera=30)
+    t = time.time()
+    duasvias.alerta("demora")
+    assert time.time() - t < 5
+
+
+@pytest.mark.parametrize("extra, erro", [
+    ('[avisos]\ncomando = "notificar --titulo Basalt"\n', "[avisos] comando"),
+    ('[avisos]\ncomando = ["notificar", 3]\n', "[avisos] comando"),
+    ('[segredos]\nverificador = "verificar"\n', "[segredos] verificador"),
+    ('[segredos]\nverificador = [""]\n', "[segredos] verificador"),
+    ('[segredos]\nverificador = ["verificar"]\ntempo_limite = "30"\n', "[segredos] tempo_limite"),
+    ('[segredos]\nverificador = ["verificar"]\ntempo_limite = 0\n', "[segredos] tempo_limite"),
+])
+def test_configuracao_dos_comandos_novos_validada(tmp_path, extra, erro):
+    from basalt import config
+    toml = tmp_path / "basalt.toml"
+    toml.write_text(toml_de(0, tmp_path / "raiz", extra=extra), encoding="utf-8")
+    with pytest.raises(config.ConfigInvalida, match=erro.replace("[", r"\[").replace("]", r"\]")):
+        config.carregar(toml)
+
+
+def test_controlo_sem_avisos_nem_verificador_a_configuracao_e_a_de_sempre(tmp_path):
+    from basalt import config
+    toml = tmp_path / "basalt.toml"
+    toml.write_text(toml_de(0, tmp_path / "raiz"), encoding="utf-8")
+    c = config.carregar(toml)
+    assert not getattr(getattr(c, "avisos", None), "comando", ()) and not getattr(getattr(c, "segredos", None), "verificador", ())

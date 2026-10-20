@@ -152,3 +152,15 @@ def tem_segredo_bytes(b: bytes) -> bool:
 def tem_segredo_ficheiro(p: Path) -> bool:
     from . import caminhos
     return tem_segredo_texto(caminhos.ler_texto(p))
+
+
+OMITIDO = "(omitido: parecia ter uma password ou chave)"
+
+
+def mascarar(txt: str, omitido: str = OMITIDO) -> str:
+    """ronda 13: o texto com as chaves e os valores das passwords tapados (•••), para o registo, os avisos e os relatórios —
+    os dois detectores (chaves conhecidas e passwords escritas à mão). Se ainda assim parecer ter um segredo, vai `omitido`."""
+    t = SEGREDO_RX.sub("•••", str(txt or ""))
+    for rx in (PASSWORD_RX, SO_LETRAS_RX):
+        t = rx.sub(lambda m: m.group(0)[:m.start(1) - m.start()] + "•••" + m.group(0)[m.end(1) - m.start():], t)
+    return omitido if tem_segredo_texto(t) else t
