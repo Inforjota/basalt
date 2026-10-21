@@ -119,7 +119,10 @@ def indice_no_idioma(html: bytes, idioma: str) -> bytes:
 _estado_g = threading.Lock()
 _trincos = {}
 _excls = {}
-_excl_lock = threading.Lock()       # PORTE: a 1.ª lista de excluídas de um espaço calcula-se uma vez só, mesmo com 3 pedidos em simultâneo
+_excl_locks = {}                    # PORTE: a 1.ª lista de excluídas de um espaço calcula-se uma vez só, mesmo com 3 pedidos em simultâneo.
+                                    # r14: um trinco POR ESPAÇO, tomado também pelo arranque e pelo vigia (ver refazer_exclusao_trancada)
+EXCL_SEGUNDOS = 300                 # o vigia refaz a lista de 5 em 5 minutos
+EXCL_REPETIR_S, EXCL_REPETIR_N = 60, 5   # r14: depois de um arranque com o verificador falhado, repete ao fim de 60 s (até 5 vezes)
 _job_lock = threading.Lock()        # PORTE: uma fusão de cada vez por servidor (não por espaço): a IA é um recurso único
 _ia_lock = threading.Lock()          # protege as listas de uso por hora
 _ia_editor_lock = threading.Lock()  # um pedido de cada vez à IA do editor
@@ -198,18 +201,33 @@ def refazer_exclusao():
             except (OSError, ValueError):
                 novo.add(p.stem)
     # ronda 13: com um [segredos] verificador, as notas que ele marca também ficam retidas — todas de uma vez, em lotes
-    novo.update(n for (n, _), r in zip(lidas, retidos([t for _, t in lidas]) if lidas else []) if r)
+    falhas = []
+    novo.update(n for (n, _), r in zip(lidas, retidos([t for _, t in lidas], falhas) if lidas else []) if r)
     # temporário único por processo e fio (duas escritas simultâneas nunca se pisam), sem seguir ligações (ronda 13)
     caminhos.escrever_atomico(EXCL, "".join(f"{n}\n" for n in sorted(novo)).encode("utf-8"))
     with _estado_g:
         _excls[config.actual().nome] = novo
+    return not falhas                     # r14: False = o [segredos] verificador falhou (as notas que ele não viu ficaram retidas)
+
+
+def _excl_lock(nome):
+    with _estado_g:
+        return _excl_locks.setdefault(nome, threading.Lock())
+
+
+def refazer_exclusao_trancada():
+    """r14 (auditoria do Fable à r13b): o arranque e o vigia refazem a lista com o MESMO trinco do espaço que o excl() usa. Antes
+    corriam fora dele: um pedido da página a meio fazia uma 2.ª computação igual (outra ida ao verificador) e ganhava a última a
+    acabar — a mais antiga podia tapar a mais recente. Um trinco por espaço: um espaço lento não faz esperar os outros."""
+    with _excl_lock(config.actual().nome):
+        return refazer_exclusao()
 
 
 def excl():
     """as notas excluídas do espaço activo (calculadas na 1.ª vez que se pedem; depois o vigia refaz de 5 em 5 min)."""
     nome = config.actual().nome
     if nome not in _excls:
-        with _excl_lock:                  # a verificação e o cálculo no mesmo trinco: só o 1.º fio calcula, os outros esperam e reutilizam
+        with _excl_lock(nome):            # a verificação e o cálculo no mesmo trinco: só o 1.º fio calcula, os outros esperam e reutilizam
             if nome not in _excls:
                 refazer_exclusao()
     return _excls[nome]
@@ -221,15 +239,28 @@ def _espacos(cfg):
     return [cfg.espaco(n) for n in nomes]
 
 
-def vigia_exclusao(cfg):
+def vigia_exclusao(cfg, apressar=False):
+    """refaz a lista de cada espaço de EXCL_SEGUNDOS em EXCL_SEGUNDOS. r14: `apressar` = o arranque teve o verificador falhado — a
+    cache dele está vazia e TODAS as notas que ele devia ver ficaram retidas (falha fechada). Enquanto continuar a falhar, a volta
+    seguinte é ao fim de EXCL_REPETIR_S, no máximo EXCL_REPETIR_N vezes (um verificador partido não é chamado de minuto a minuto
+    para sempre); a 1.ª volta boa acaba com isso."""
+    rapidas = EXCL_REPETIR_N if apressar else 0
     while True:
+        falhou = False
         for esp in _espacos(cfg):
             try:
                 with config.dentro(esp.criar()):
-                    refazer_exclusao()
+                    falhou |= not refazer_exclusao_trancada()
             except Exception as e:
+                falhou = True
                 print("exclusão: erro", _erro(e)[:120], flush=True)
-        time.sleep(300)
+        if falhou and rapidas > 0:
+            rapidas -= 1
+            time.sleep(EXCL_REPETIR_S)
+        else:
+            if not falhou:
+                rapidas = 0
+            time.sleep(EXCL_SEGUNDOS)
 
 
 # ───────────────────────── notas ─────────────────────────
@@ -1923,16 +1954,18 @@ def _arranque(cfg, vigias):
                         duasvias.ciclo()
                 except Exception as e:
                     print("sincronização inicial:", _erro(e)[:200], flush=True)
+        falhou = False
         for esp in _espacos(cfg):
             try:
                 with config.dentro(esp):
-                    refazer_exclusao()
+                    falhou |= not refazer_exclusao_trancada()     # r14: no trinco do espaço, como o excl() e o vigia
             except Exception as e:
+                falhou = True
                 print("exclusão inicial:", _erro(e)[:200], flush=True)
     if vigias:
         segundos = int(os.environ.get("BASALT_VIGIA_SEGUNDOS", "10"))
         threading.Thread(target=vigia_copia, args=(cfg, segundos), daemon=True).start()
-    threading.Thread(target=vigia_exclusao, args=(cfg,), daemon=True).start()
+    threading.Thread(target=vigia_exclusao, args=(cfg, falhou), daemon=True).start()   # r14: falhou → repete ao fim de 60 s
     threading.Thread(target=indexar_se_vazio, args=(cfg,), daemon=True).start()
     threading.Thread(target=vigia_entrada, args=(cfg,), daemon=True).start()          # entrada automática (só com IA de chat)
 

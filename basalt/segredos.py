@@ -325,15 +325,17 @@ def verificador_ligado() -> bool:
         return True
 
 
-def retidos(textos) -> list:
+def retidos(textos, falhas=None) -> list:
     """como verificar(), mas com a falha já fechada (para as listas): se o verificador falhar, o que ele já tinha visto fica com
-    a resposta que deu e o resto conta como retido — uma falha passageira não esconde de repente as notas já verificadas."""
+    a resposta que deu e o resto conta como retido — uma falha passageira não esconde de repente as notas já verificadas.
+    r14: `falhas` (uma lista) recebe o motivo quando o verificador falhou — o vigia da exclusão repete mais cedo."""
     import hashlib
     textos = [str(t or "") for t in textos]
     try:
         return verificar(textos)
-    except VerificacaoFalhou:
-        pass
+    except VerificacaoFalhou as e:
+        if falhas is not None:
+            falhas.append(e.porque or "falhou")
     try:
         cmd = _verificador()[0]
     except VerificacaoFalhou:
