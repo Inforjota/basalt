@@ -125,6 +125,7 @@ _ia_lock = threading.Lock()          # protege as listas de uso por hora
 _ia_editor_lock = threading.Lock()  # um pedido de cada vez à IA do editor
 _REGISTO_TRINCO = threading.Lock()   # uma linha do registo de pedidos de cada vez (sem linhas coladas)
 _ia_usos = []                       # PORTE: o limite horário de pedidos à IA é do servidor (a IA é partilhada), não de cada utilizador
+_ia_usos_conta = {}                  # r14 ([ia] pedidos_por_hora_por_conta): email → instantes dos pedidos à IA dessa conta na última hora
 
 
 class Ocupado(Exception):
@@ -899,13 +900,21 @@ def gravar(nome, texto, base_hash):
     return 200, {"ok": True, "hash": sha(dados)}
 
 
-def criar(nome, texto):
+def _espaco_cheio(limite_mb, bytes_novos) -> bool:
+    """r14 ([auth] espaco_max_mb): True se o espaço ACTUAL (config.actual()) já não tem lugar para `bytes_novos` a mais.
+    limite_mb <= 0 = sem tecto."""
+    return bool(limite_mb) and config.actual().uso_bytes() + bytes_novos > limite_mb * 1024 * 1024
+
+
+def criar(nome, texto, limite_mb=0):
     if not re.match(r"^[a-z0-9_]{2,100}$", nome or ""):
         return 400, {"erro": "Nome inválido: usa só letras minúsculas, números e _ (ex.: ideia_barcos)."}
     if f"{nome}.md".lower() in {n.lower() for n in IGNORA}:     # «index» criava uma nota invisível
         return 400, {"erro": f"«{nome}» é um nome reservado; escolhe outro."}
     if tem_segredo_nota(texto or ""):
         return 400, {"erro": "O texto tem o que parece uma password ou chave em claro — não gravei."}
+    if _espaco_cheio(limite_mb, len((texto or "").encode("utf-8"))):
+        return 413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."}
     p = COPIA / f"{nome}.md"
     try:
         with trinco_copia():
@@ -975,9 +984,25 @@ def _limite_horario(usos, maximo):
         return True
 
 
-def ia(acao, texto, contexto=""):
+def _limite_horario_conta(dic, conta, maximo):
+    """r14: o mesmo que `_limite_horario`, mas por CONTA — `dic` é {email: [instantes]}, protegido pelo mesmo `_ia_lock` das
+    listas globais. maximo <= 0 = desligado (não se conta nem se recusa)."""
+    if not conta or maximo <= 0:
+        return True
+    agora = time.time()
+    with _ia_lock:
+        usos = dic.setdefault(conta, [])
+        usos[:] = [t for t in usos if agora - t < 3600]
+        if len(usos) >= maximo:
+            return False
+        usos.append(agora)
+        return True
+
+
+def ia(acao, texto, contexto="", conta=""):
     """o editor pede à IA para resumir/reescrever/corrigir/continuar o texto seleccionado. Um pedido de cada vez, com limite
-    por hora ([ia] pedidos_por_hora); nunca envia nem devolve o que pareça segredo. IA desligada → 503 {"ia": false}."""
+    por hora ([ia] pedidos_por_hora, do servidor todo) e, opcionalmente, um por CONTA ([ia] pedidos_por_hora_por_conta,
+    `conta` = o e-mail de quem pediu); nunca envia nem devolve o que pareça segredo. IA desligada → 503 {"ia": false}."""
     cfg_ia = ia_mod.actual()
     if not cfg_ia.chat_activo:
         return 503, {"erro": "IA desligada neste servidor.", "ia": False}
@@ -991,6 +1016,9 @@ def ia(acao, texto, contexto=""):
         return 400, {"erro": f"A selecção tem {len(texto)} caracteres; a IA só trabalha com até {maximo} de cada vez. Selecciona menos."}
     if tem_segredo_nota(texto + "\n" + contexto):
         return 400, {"erro": "O texto tem o que parece uma password ou chave — não o mando à IA."}
+    maximo_conta = cfg_ia.cfg.pedidos_por_hora_por_conta
+    if maximo_conta and not _limite_horario_conta(_ia_usos_conta, conta, maximo_conta):
+        return 429, {"erro": f"Já fizeste {maximo_conta} pedidos à IA na última hora; espera um bocado."}
     if not _limite_horario(_ia_usos, cfg_ia.cfg.pedidos_por_hora):
         return 429, {"erro": f"Já foram {cfg_ia.cfg.pedidos_por_hora} pedidos à IA na última hora; espera um bocado."}
     if not _ia_editor_lock.acquire(blocking=False):
@@ -1634,6 +1662,9 @@ class H(BaseHTTPRequestHandler):
             return self._json(400, {"erro": "O nome do ficheiro tem o que parece uma chave ou password — muda-lhe o nome; não guardei."})
         if not anexos.nome_ok(nome):
             return self._json(400, {"erro": "Nome de ficheiro inválido (letras, dígitos, espaços, . _ - e uma extensão conhecida)."})
+        limite_mb = self.cfg.auth.espaco_max_mb
+        if limite_mb and self.cfg.espaco_de(user).uso_bytes() + n > limite_mb * 1024 * 1024:
+            return self._json(413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."})
         dados = self.rfile.read(n)
         try:
             with self._dentro(user):
@@ -1721,7 +1752,7 @@ class H(BaseHTTPRequestHandler):
                 if u.path == "/api/nota":
                     if not isinstance(c.get("texto"), str):
                         return self._json(400, {"erro": "Falta o texto da nota."})
-                    cod, r = criar(str(c.get("nome", "")), str(c.get("texto", "")))
+                    cod, r = criar(str(c.get("nome", "")), str(c.get("texto", "")), self.cfg.auth.espaco_max_mb)
                     if cod == 201:
                         toque("escrever", [str(c.get("nome", ""))])
                     return self._json(cod, r)
@@ -1730,7 +1761,7 @@ class H(BaseHTTPRequestHandler):
                 if u.path == "/api/sincronizar":                                                 # edição feita sem internet
                     return self._json(*reconciliar(str(c.get("nome", "")), str(c.get("base_texto", "")), str(c.get("texto", ""))))
                 if u.path == "/api/ia":                                                          # IA no editor
-                    return self._json(*ia(str(c.get("acao", "")), str(c.get("texto", "")), str(c.get("contexto", ""))))
+                    return self._json(*ia(str(c.get("acao", "")), str(c.get("texto", "")), str(c.get("contexto", "")), user.email.lower()))
                 if u.path == "/api/pergunta":
                     qq = str(c.get("q", "")).strip()[:500]
                     if not qq:

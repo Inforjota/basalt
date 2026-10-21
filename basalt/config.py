@@ -69,6 +69,7 @@ class AuthConfig:
     criar_contas: bool = False          # conta nova no 1.º login de um e-mail que o proxy autenticou (exige segredo_proxy)
     dominios: tuple = ()                # só estes domínios de e-mail criam conta (vazio = qualquer)
     max_contas: int = 0                 # tecto de contas (0 = sem tecto); as que existem continuam a entrar
+    espaco_max_mb: int = 0               # r14: tecto de disco por conta (memoria+cópia+dados), em MB — 0 = sem tecto
 
 
 @dataclass
@@ -80,7 +81,8 @@ class IAConfig:
     modelo_chat: str = ""
     tempo_limite: int = 120             # segundos por chamada
     propostas_por_hora: int = 12        # propostas de junção pela IA (sincronizar)
-    pedidos_por_hora: int = 40          # IA no editor (resumir/reescrever/…)
+    pedidos_por_hora: int = 40          # IA no editor (resumir/reescrever/…) — limite do SERVIDOR (todas as contas juntas)
+    pedidos_por_hora_por_conta: int = 0  # r14: além do limite do servidor, um tecto por CONTA (0 = desligado)
     texto_maximo: int = 6000            # caracteres por pedido ao editor
     embeddings_fornecedor: str = ""     # "" = o mesmo que o chat quando é openai; openai | ollama | nenhum
     embeddings_url: str = ""            # openai: …/v1 (usa /embeddings) · ollama: http://host:11434 (usa /api/embeddings)
@@ -301,6 +303,10 @@ class Config:
                                      "(pelo menos 32 caracteres, ex.: python3 -c 'import secrets;print(secrets.token_urlsafe(32))')")
             if self.auth.max_contas < 0:
                 raise ConfigInvalida("[auth] max_contas não pode ser negativo")
+        if self.auth.espaco_max_mb < 0:
+            raise ConfigInvalida("[auth] espaco_max_mb não pode ser negativo")
+        if self.ia.pedidos_por_hora_por_conta < 0:
+            raise ConfigInvalida("[ia] pedidos_por_hora_por_conta não pode ser negativo")
         if self.auth.modo != "aberto" and not self.utilizadores and not self.auth.criar_contas:
             raise ConfigInvalida("sem utilizadores: acrescenta [[utilizadores]] ou usa `basalt utilizador novo EMAIL`")
 
@@ -317,6 +323,26 @@ _AMBIENTE = {
     "semantica": ("BASALT_SIG_DB",), "inbox": ("BASALT_INBOX",), "cas_salvos": ("BASALT_CAS_SALVOS",),
     "versoes_offline": ("BASALT_VERSOES_OFFLINE",), "categorias": ("BASALT_CATEGORIAS",), "jobs_unir": ("BASALT_UNIR_JOBS",),
 }
+
+
+def _uso_pasta(pasta: Path) -> int:
+    """soma recursiva do tamanho dos ficheiros normais de `pasta` (0 se não existir); ignora ligações simbólicas."""
+    total = 0
+    try:
+        with os.scandir(pasta) as it:
+            for e in it:
+                try:
+                    if e.is_symlink():
+                        continue
+                    if e.is_dir(follow_symlinks=False):
+                        total += _uso_pasta(e.path)
+                    elif e.is_file(follow_symlinks=False):
+                        total += e.stat(follow_symlinks=False).st_size
+                except OSError:
+                    continue
+    except OSError:
+        return total
+    return total
 
 
 @dataclass(frozen=True)
@@ -369,6 +395,13 @@ class Espaco:
         for p in (self.real, self.copia, self.dados, self.auto_arrumar, self.jobs_unir, self.versoes_offline, self.cas_salvos):
             p.mkdir(parents=True, exist_ok=True)
         return self
+
+    def uso_bytes(self) -> int:
+        """r14 ([auth] espaco_max_mb): soma dos tamanhos dos ficheiros deste espaço — memoria (`real`, que já leva os anexos
+        dentro), cópia e dados (estado, índice…). Simples de propósito: um `os.scandir` recursivo, sem cache; não segue
+        ligações simbólicas (a mesma cautela do resto do Basalt — a raiz de dados é a âncora de confiança, nunca o que uma
+        ligação lá dentro aponte para fora)."""
+        return sum(_uso_pasta(p) for p in (self.real, self.copia, self.dados))
 
     def ambiente(self) -> dict:
         """as variáveis para os processos filhos (sig, 2vias, categorias…) correrem NESTE espaço."""
@@ -549,7 +582,7 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
                           cabecalho_segredo=str(a.get("cabecalho_segredo", "X-Basalt-Proxy-Segredo")),
                           cabecalho_sub=str(a.get("cabecalho_sub", "")), criar_contas=bool(a.get("criar_contas", False)),
                           dominios=tuple(str(x).strip().lower().lstrip("@") for x in (a.get("dominios") or []) if str(x).strip()),
-                          max_contas=int(a.get("max_contas", 0)))
+                          max_contas=int(a.get("max_contas", 0)), espaco_max_mb=int(a.get("espaco_max_mb", 0)))
     if "segredo_proxy" in a:
         raise ConfigInvalida("[auth] segredo_proxy não vai no basalt.toml: põe-no na variável de ambiente "
                              f"{cfg.auth.segredo_proxy_env} (e só o proxy o conhece)")
@@ -564,7 +597,8 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
         url=amb.get("BASALT_IA_URL") or i.get("url", ""), chave_env=i.get("chave_env", "BASALT_IA_CHAVE"),
         chave_ficheiro=i.get("chave_ficheiro", ""), modelo_chat=amb.get("BASALT_IA_MODELO") or i.get("modelo_chat", ""),
         tempo_limite=int(i.get("tempo_limite", 120)), propostas_por_hora=int(i.get("propostas_por_hora", 12)),
-        pedidos_por_hora=int(i.get("pedidos_por_hora", 40)), texto_maximo=int(i.get("texto_maximo", 6000)),
+        pedidos_por_hora=int(i.get("pedidos_por_hora", 40)), pedidos_por_hora_por_conta=int(i.get("pedidos_por_hora_por_conta", 0)),
+        texto_maximo=int(i.get("texto_maximo", 6000)),
         embeddings_fornecedor=amb.get("BASALT_EMB_FORNECEDOR") or e.get("fornecedor", ""),
         embeddings_url=amb.get("BASALT_EMB_URL") or amb.get("EMB_URL") or e.get("url", ""),
         embeddings_modelo=amb.get("BASALT_EMB_MODELO") or e.get("modelo", "nomic-embed-text"),

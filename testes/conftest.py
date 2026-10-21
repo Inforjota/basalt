@@ -74,6 +74,7 @@ def _isolar_processo():
     for d in (web._excls, web._trincos):
         d.clear()
     web._ia_usos.clear()
+    web._ia_usos_conta.clear()
     web._rec_usos.clear()
     yield
     config.definir_processo(None)
