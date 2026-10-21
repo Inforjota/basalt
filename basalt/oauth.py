@@ -1236,18 +1236,10 @@ def revogar_na_base(dados, email: str) -> int:
     ligações desta conta, antes de o toml mudar — esperar que o servidor o relesse não chegava (parado ou reiniciado antes disso,
     com o toml antigo reposto, os tokens voltavam a valer). Uma base que não existe não tem nada a revogar e nunca se cria aqui.
     Devolve quantas; um erro sobe (Ocupado, sqlite3.Error, OSError) e quem chama não mexe no toml."""
-    caminho = Path(dados).expanduser() / "oauth.sqlite"
-    if os.path.islink(caminho):
-        raise Ocupado("a base OAuth é uma ligação simbólica — recusado")
-    if not caminho.exists():
+    conn = _base_da_cli(dados)
+    if conn is None:
         return 0
-    conn = sqlite3.connect("file:" + urllib.parse.quote(str(caminho)) + "?mode=rw", uri=True, timeout=ESPERA_S,
-                           isolation_level=None)
     try:
-        conn.execute(f"PRAGMA busy_timeout = {ESPERA_S * 1000}")
-        conn.execute("PRAGMA synchronous = FULL")
-        if not _uma(conn, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='familias'"):
-            return 0
         t = agora()
         with Transacao(conn):
             ids = [r[0] for r in conn.execute("SELECT id FROM familias WHERE email=? AND revogada IS NULL", (email.lower(),)).fetchall()]
@@ -1258,6 +1250,58 @@ def revogar_na_base(dados, email: str) -> int:
     finally:
         conn.close()
     return len(ids)
+
+
+def _base_da_cli(dados):
+    """a base OAuth aberta pela linha de comandos (noutro processo que o servidor): só se já existir (nunca se cria aqui), sem
+    seguir uma ligação simbólica, à espera do servidor até ESPERA_S. None = não há base (ou ainda não tem as tabelas)."""
+    caminho = Path(dados).expanduser() / "oauth.sqlite"
+    if os.path.islink(caminho):
+        raise Ocupado("a base OAuth é uma ligação simbólica — recusado")
+    if not caminho.exists():
+        return None
+    conn = sqlite3.connect("file:" + urllib.parse.quote(str(caminho)) + "?mode=rw", uri=True, timeout=ESPERA_S,
+                           isolation_level=None)
+    try:
+        conn.execute(f"PRAGMA busy_timeout = {ESPERA_S * 1000}")
+        conn.execute("PRAGMA synchronous = FULL")
+        if not _uma(conn, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='familias'"):
+            conn.close()
+            return None
+    except sqlite3.OperationalError as e:
+        conn.close()
+        raise (_erro_sqlite(e) or e)
+    except BaseException:
+        conn.close()
+        raise
+    return conn
+
+
+def eliminar_na_base(dados, email: str, ate: float | None = None) -> int:
+    """r17 (`basalt apagados eliminar`, com o trinco do basalt.toml tomado): apaga DE VEZ da base o que resta de uma conta apagada
+    — as famílias desse e-mail (com os tokens e os códigos delas) e os pedidos de autorização com esse e-mail. As famílias ficaram
+    revogadas no apagamento; uma que ainda não esteja (uma base reposta de uma cópia) não tem conta viva a quem pertença e sai
+    também (o servidor revogá-la-ia ao arrancar).
+    `ate`: há uma conta NOVA com o mesmo e-mail, criada depois do apagamento — só sai o que nasceu ANTES desse instante; o dela fica.
+    Devolve quantas famílias saíram. Um erro sobe (Ocupado, sqlite3.Error, OSError) e quem chama não marca a entrada."""
+    conn = _base_da_cli(dados)
+    if conn is None:
+        return 0
+    e = (email or "").strip().lower()
+    cond, args = ("email=?", (e,)) if ate is None else ("email=? AND criado < ?", (e, ate))
+    try:
+        with Transacao(conn):
+            n = conn.execute(f"SELECT COUNT(*) FROM familias WHERE {cond}", args).fetchone()[0]
+            for tabela in ("tokens", "codigos"):
+                conn.execute(f"DELETE FROM {tabela} WHERE familia IN (SELECT id FROM familias WHERE {cond})", args)
+            conn.execute(f"DELETE FROM familias WHERE {cond}", args)
+            if _uma(conn, "SELECT 1 FROM sqlite_master WHERE type='table' AND name='pedidos'"):
+                conn.execute(f"DELETE FROM pedidos WHERE {cond}", args)
+    except sqlite3.OperationalError as x:
+        raise (_erro_sqlite(x) or x)
+    finally:
+        conn.close()
+    return n
 
 
 # ───────────────────────────── rotas (web.ROTAS_EXTRA) ─────────────────────────────

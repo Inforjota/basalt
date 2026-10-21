@@ -60,6 +60,7 @@ sudo cp -r basalt /opt/basalt/ && sudo chown -R basalt:basalt /opt/basalt
 sudo -u basalt env PYTHONPATH=/opt/basalt python3 -m basalt iniciar --dados /var/lib/basalt --email tu@exemplo.pt
 sudo cp sistema/basalt.service /etc/systemd/system/ && sudo systemctl enable --now basalt
 sudo cp sistema/basalt-arrumar.* /etc/systemd/system/ && sudo systemctl enable --now basalt-arrumar.timer   # opcional
+sudo cp sistema/basalt-apagados.* /etc/systemd/system/ && sudo systemctl enable --now basalt-apagados.timer # opcional; com várias contas, sim
 ```
 
 O código fica em `/opt/basalt` (sem pip) e as unidades põem `PYTHONPATH=/opt/basalt`; o serviço corre em `/var/lib/basalt`
@@ -67,6 +68,13 @@ com o `basalt.toml` de lá. Se puseres o código noutro sítio, ajusta o `PYTHON
 `basalt arrumar --auto` às 04:10, com o mesmo utilizador e o mesmo endurecimento do serviço. Por cada espaço faz o que o servidor faz à Entrada
 (se `[entrada] automatica` estiver ligada), arruma as notas parecidas, reindexa e refaz as categorias; a Entrada e as notas parecidas
 precisam de uma IA configurada (`[ia]`, ou a de cada tarefa — § 5); sem ela só reindexa e refaz as categorias. Para ver o que faria sem escrever nada: `basalt arrumar --auto --simular`.
+
+O timer `basalt-apagados` corre `basalt apagados eliminar --dias 30 --sim` todos os dias às 04:40 (com um atraso ao acaso até
+15 min; `Persistent=true` faz a corrida perdida se a máquina esteve desligada), com o mesmo utilizador e o mesmo endurecimento,
+e **sem rede**. É ele que elimina de vez, passados 30 dias, as contas apagadas com `basalt utilizador apagar` (§ 4). O resultado
+vê-se com `journalctl -u basalt-apagados`; a última linha é sempre `resumo: …` (§ 6) e o serviço falha (rc 1) se houver uma
+entrada que não se conseguiu eliminar ou uma conta apagada que voltou ao `basalt.toml`. No Docker não há timers: põe no `cron`
+da máquina `docker compose exec -T basalt python3 -m basalt apagados eliminar --sim` (uma vez por dia).
 
 ## 4. Na rede: proxy com HTTPS
 
@@ -109,6 +117,22 @@ limite do IP do proxy. O cabeçalho lê-se da direita, por isso um visitante nã
 Dois utilizadores no mesmo espaço são recusados ao arrancar, a não ser que ponhas `[basalt] espaco_partilhado = true` de
 propósito (aí vêem e editam as mesmas notas). Os utilizadores, as senhas e os tokens MCP relêem-se do `basalt.toml` sem
 reiniciar; as outras opções só mudam ao reiniciar.
+
+**Apagar uma conta:** `basalt utilizador apagar EMAIL` desliga-a logo — sai do `basalt.toml`, as sessões e as IAs ligadas caem
+— e move a pasta para `<dados>/apagados/<espaco>-<data>/`. Antes de a mover, regista o apagamento em
+`<dados>/contas-apagadas.json` (só o dono lê). Passados **30 dias**, `basalt apagados eliminar --sim` (o timer da § 3 fá-lo
+sozinho) apaga essa pasta de vez, tira da base OAuth tudo o que era dessa conta e deixa no registo só o resumo do e-mail
+(sha256), o `conta_id` e as datas: o e-mail, o espaço e a pasta passam a `null`. `basalt apagados listar` mostra o que está à
+espera e quando; sem `--sim`, `eliminar` só diz o que faria (`--dias N` muda o prazo). O `eliminar` só apaga pastas dentro de
+`apagados/` com um registo que lhes corresponda; as que lá estejam sem registo (de antes da r17, ou postas à mão) ficam, e o
+comando di-lo.
+
+Cada conta tem um `conta_id` aleatório, escrito por `iniciar`, `utilizador novo` e pelo 1.º login com `criar_contas`. Uma conta
+**nova** com o mesmo e-mail, criada depois do apagamento, tem outro `conta_id` e nunca é tocada (nem a pasta, nem as sessões,
+nem as ligações das IAs). As contas criadas **antes da r17** não têm `conta_id`: para essas, o mesmo e-mail chega para as
+reconhecer, por isso uma conta antiga apagada e outra pessoa com o mesmo e-mail num bloco antigo sem `conta_id` confundem-se.
+Se escreveres blocos `[[utilizadores]]` à mão, põe-lhes `conta_id = "…"` (por exemplo
+`python3 -c "import secrets; print(secrets.token_hex(8))"`).
 
 **Mudar a senha:** cada utilizador muda a sua na página **🔌 Ligar a tua IA → A tua senha** (senha actual + nova). As outras
 sessões e as IAs ligadas caem e voltam a pedir «Permitir». Esqueceste-a? No servidor: `python3 -m basalt utilizador senha
@@ -210,6 +234,48 @@ cada tarefa e de onde vem. Uma tarefa desligada não leva as outras: `[ia.unir] 
 
 Copia `<dados>` inteiro (notas + git + índice + sessões). O índice reconstrói-se com `basalt indexar`; as notas são
 ficheiros Markdown com histórico git — `git -C <dados>/<espaco>/memoria log` mostra tudo o que mudou.
+
+**Contas apagadas e cópias antigas.** Uma cópia de antes de um apagamento ainda tem a conta: o `basalt.toml` com o bloco dela, a
+pasta e as ligações das IAs. Nas cópias, os dados de uma conta apagada desaparecem à medida que as cópias rodam; até lá, ao
+repor uma cópia, a conta **não pode voltar**. Para isso:
+
+1. **Depois de cada apagamento**, guarda a lista das contas apagadas **fora** das cópias de segurança (outro disco, outra
+   máquina). A lista não tem e-mails, só o resumo de cada um, o `conta_id` e a data:
+
+   ```bash
+   sudo -u basalt env PYTHONPATH=/opt/basalt python3 -m basalt --config /var/lib/basalt/basalt.toml apagados exportar > contas-apagadas.jsonl
+   ```
+
+2. **Depois de repor uma cópia, ANTES de abrir o serviço** (`systemctl start basalt`), volta a aplicar essa lista e elimina o
+   que já passou do prazo:
+
+   ```bash
+   python3 -m basalt --config /var/lib/basalt/basalt.toml apagados reaplicar --lista contas-apagadas.jsonl         # o que faria
+   python3 -m basalt --config /var/lib/basalt/basalt.toml apagados reaplicar --lista contas-apagadas.jsonl --sim
+   python3 -m basalt --config /var/lib/basalt/basalt.toml apagados eliminar --sim
+   ```
+
+   (na instalação com systemd, como o utilizador do serviço: `sudo -u basalt env PYTHONPATH=/opt/basalt …`.) O `reaplicar` volta
+   a apagar cada conta da lista que a cópia trouxe de volta (o mesmo e-mail **e** o mesmo `conta_id`), pelo mesmo caminho do
+   `utilizador apagar` e com a data do apagamento original, por isso o `eliminar` a seguir apaga logo a pasta se os 30 dias já
+   passaram. Uma conta com o mesmo e-mail mas outro `conta_id` foi criada depois e fica («recriada depois do apagamento — não
+   mexo»). Uma linha que falte no registo reposto, e cuja conta não esteja no `basalt.toml`, acrescenta-se já como eliminada. O
+   único admin nunca se apaga sozinho: o comando conta-o como `protegidas` e sai com rc 1 (cria outro admin e repete). Pode
+   correr-se as vezes que for preciso: da segunda vez não faz nada.
+
+**A linha do resumo.** `apagados eliminar` e `apagados reaplicar` acabam **sempre** com uma linha fixa, a última do stdout — com
+ou sem `--sim`, também quando não há nada a fazer ou quando falham —, sem e-mails, com os números por esta ordem:
+
+| comando | última linha |
+|---|---|
+| `apagados eliminar` | `resumo: a_eliminar=N` (entradas com mais de `--dias` ainda por eliminar) |
+| `apagados eliminar --sim` | `resumo: eliminadas=N falhas=N voltaram=N` |
+| `apagados reaplicar --lista F` | `resumo: reapagaria=N recriadas=N acrescentaria=N protegidas=N` |
+| `apagados reaplicar --lista F --sim` | `resumo: reapagadas=N recriadas=N acrescentadas=N protegidas=N` |
+
+O rc é 1 se alguma coisa falhou (um registo ou um `basalt.toml` que não se lêem, uma pasta recusada, a base ocupada), e também
+com `--sim` quando ficou trabalho por fazer à mão (`voltaram` ou `protegidas` acima de 0); senão 0. Quem vigia o servidor pode
+ler só esta linha e o rc.
 
 ## 7. Actualizar
 

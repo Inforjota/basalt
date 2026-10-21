@@ -1,0 +1,32 @@
+# /etc/systemd/system/basalt-apagados.service — elimina de vez as contas apagadas há mais de 30 dias (chamada por basalt-apagados.timer)
+# Por cada entrada de <dados>/contas-apagadas.json com mais de 30 dias: apaga a pasta em <dados>/apagados/, poda as ligações OAuth
+# dessa conta, termina as sessões e anonimiza a entrada. Nunca mexe em pastas sem registo. A última linha do registo do serviço
+# é sempre «resumo: eliminadas=N falhas=N voltaram=N»; sai com 1 (unidade em falha) se alguma entrada falhou ou a conta voltou.
+# Mesmo utilizador, mesmo código (/opt/basalt) e mesmo endurecimento que basalt.service; não precisa de rede.
+# Sem RemainAfterExit: com ele a unidade ficaria «activa» depois da 1.ª corrida e o timer deixava de a voltar a arrancar.
+[Unit]
+Description=Basalt — eliminar de vez as contas apagadas há mais de 30 dias
+After=basalt.service
+
+[Service]
+Type=oneshot
+User=basalt
+Group=basalt
+WorkingDirectory=/var/lib/basalt
+Environment=BASALT_CONFIG=/var/lib/basalt/basalt.toml
+Environment=PYTHONPATH=/opt/basalt
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 -m basalt apagados eliminar --dias 30 --sim
+# endurecimento: o Basalt só precisa de escrever nos seus dados
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/basalt
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+UMask=0077
+# sem rede: só lê e escreve ficheiros e a base OAuth (SQLite) dentro de /var/lib/basalt
+PrivateNetwork=yes
+RestrictAddressFamilies=AF_UNIX

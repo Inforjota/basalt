@@ -19,7 +19,9 @@ No servidor (`<dados>` é a pasta do `basalt.toml`; cada utilizador tem `<dados>
 | fusões («Unir») e relatórios da arrumação automática | `<espaco>/dados/unir/`, `auto-arrumar/` | desfazer e explicar | até as apagares |
 | cópias de segurança do CAS | `<espaco>/dados/cas-salvos/` | nada se perde numa escrita em simultâneo | 60 dias (`BASALT_CAS_SALVOS_DIAS`) e no máximo 500 ficheiros (`BASALT_CAS_SALVOS_MAX`); a idade conta desde que a cópia foi guardada e as que passaram o prazo apagam-se quando se guarda uma nova |
 | nomes das notas usadas (sem conteúdo) | `<espaco>/dados/toques.jsonl` | vistas «ao vivo» | roda aos 2 MB (fica a volta anterior) |
-| e-mail, nome, hash da senha, hash do token MCP | `basalt.toml` | autenticação | enquanto o utilizador existir |
+| e-mail, nome, hash da senha, hash do token MCP, `conta_id` (aleatório) | `basalt.toml` | autenticação | enquanto o utilizador existir |
+| a pasta de uma conta apagada (notas, anexos, índice…) | `<dados>/apagados/<espaco>-<data>/` | desfazer um apagamento por engano, entregar os dados a quem os pediu | 30 dias: elimina-se de vez com `basalt apagados eliminar --sim` (o timer `basalt-apagados` corre-o todos os dias) |
+| registo das contas apagadas: sha256 do e-mail, `conta_id`, datas e, até à eliminação, o e-mail, o espaço e a pasta | `<dados>/contas-apagadas.json` (`0600`) | cumprir o prazo de 30 dias e não deixar uma cópia de segurança reposta trazer a conta de volta | o e-mail, o espaço e a pasta saem ao eliminar (30 dias); o resto fica enquanto houver cópias que possam trazer a conta de volta (tira-o à mão quando já não houver) |
 | sessões: hash do cookie, e-mail, hora de criação e de expiração, e uma impressão (não reversível) do hash da senha com que abriram | `<dados>/sessoes.json` | manter o login | até expirarem (`[auth] sessao_horas`), saíres, o utilizador deixar de existir ou mudar de senha; as que já não valem saem do ficheiro ao arrancar o servidor e, durante o uso, no máximo de hora a hora (mesmo que ninguém volte com o cookie delas) |
 | tentativas de login falhadas por IP | memória do processo | travar força bruta | esquecem-se as mais velhas que `[auth] janela_minutos` (a cada tentativa, de todos os IPs); perdem-se ao reiniciar |
 | registos do servidor (stdout/journal) | onde o systemd/Docker os puser | diagnóstico | rotação do sistema; método, caminho (sem os parâmetros; um caminho com o que parece uma chave sai mascarado ou omitido) e hora de cada pedido; **não** contêm texto de notas nem chaves |
@@ -57,9 +59,14 @@ se liga continua a poder ler a cópia que tem. Em computadores partilhados, diz 
 Tudo é ficheiro: **acesso** e **portabilidade** = copiar a pasta `memoria/` (Markdown, formato aberto); **rectificação** =
 editar; **apagamento** = apagar a nota e os anexos (e, para apagar do histórico, `git filter-repo` ou recriar o repositório),
 apagar a Entrada e o seu registo de apagadas, `basalt indexar` para refazer o índice, e apagar as cópias em `cas-salvos/`,
-`offline-versoes/` e `unir/`. No browser: «Apagar cópia deste aparelho». Um utilizador apaga-se removendo o
-bloco `[[utilizadores]]` e a pasta do espaço (se era o último, ninguém volta a entrar até haver outro; se é para desligar de
-vez, pára também o servidor).
+`offline-versoes/` e `unir/`. No browser: «Apagar cópia deste aparelho».
+
+Uma **conta** apaga-se com `basalt utilizador apagar EMAIL`: fica desligada logo (as sessões e as IAs ligadas terminam), a pasta
+vai para `apagados/` e elimina-se de vez aos 30 dias (`basalt apagados eliminar --sim`, ou o timer `basalt-apagados`). Nas
+cópias de segurança, os dados desaparecem à medida que as cópias rodam; ao repor uma cópia antiga, `basalt apagados reaplicar`
+volta a apagar a conta antes de o serviço abrir (ver [INSTALAR.md](INSTALAR.md) §§ 4 e 6). Para a portabilidade, antes de
+apagar: `basalt utilizador exportar EMAIL --para dados.zip`. O único admin não se apaga (cria outro antes); se é para desligar
+tudo de vez, pára também o servidor.
 
 ## Modelo de aviso (adapta e põe onde os teus utilizadores o vejam)
 
@@ -67,5 +74,7 @@ vez, pára também o servidor).
 > **O quê:** as notas que escreves, o teu e-mail e nome, a hora das sessões. **Para quê:** guardar e procurar as tuas notas.
 > **Onde:** num servidor [nosso / alojado em …], na União Europeia. [Com IA: «Para resumir e pesquisar, o texto das notas é
 > enviado a … (fornecedor), com quem temos contrato.»]
-> **Quanto tempo:** enquanto tiveres conta; cópias de segurança até [N] dias.
+> **Quanto tempo:** enquanto tiveres conta. Ao pedires o apagamento, a conta é desativada logo e as sessões terminam; os
+> dados são eliminados de vez em 30 dias e, nas cópias de segurança, desaparecem à medida que estas rodam (até [N] dias). Se
+> tivermos de repor uma cópia antiga, a tua conta apagada não é reposta.
 > **Os teus direitos:** acesso, cópia, correcção e apagamento — pede a [contacto]. Podes queixar-te à CNPD (cnpd.pt).

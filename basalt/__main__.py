@@ -3,6 +3,7 @@
   iniciar      cria o basalt.toml, as pastas e o primeiro utilizador
   serve        o servidor web (+ /mcp)
   utilizador   novo · senha · mcp-token · listar · apagar · exportar  (edita o basalt.toml no sítio: só a chave pedida, o resto fica igual)
+  apagados     listar · eliminar · exportar · reaplicar  (as contas apagadas: eliminar de vez aos 30 dias, cópias de segurança)
   indexar      (re)constrói o índice semântico do(s) espaço(s)
   procurar     pesquisa por significado (ou por palavras)
   pergunta     resposta com fontes (precisa de IA)
@@ -23,7 +24,6 @@ import re
 import shutil
 import subprocess
 import sys
-import time
 import zipfile
 from pathlib import Path
 
@@ -292,44 +292,111 @@ def cmd_utilizador(a):
 
 
 def _apagar_utilizador(caminho: Path, email: str, a):
-    """r14: apaga a CONTA (o bloco [[utilizadores]], as sessões abertas e as ligações OAuth) mas nunca os dados — a pasta do
-    espaço é MOVIDA para <dados>/apagados/<espaco>-<AAAAMMDD-HHMMSS>/, nunca apagada. Recusa-se a tirar o último admin."""
+    """r14: apaga a CONTA (o bloco [[utilizadores]], as sessões abertas e as ligações OAuth) mas não os dados logo — a pasta do
+    espaço é MOVIDA para <dados>/apagados/<espaco>-<AAAAMMDD-HHMMSS>/. Recusa-se a tirar o último admin.
+    r17: fica uma entrada em <dados>/contas-apagadas.json e `basalt apagados eliminar` apaga a pasta de vez passados 30 dias."""
     cfg = config.carregar(caminho)
     u = cfg.utilizador(email) or _falha(f"utilizador desconhecido: {email}")
     if u.admin and sum(1 for x in cfg.utilizadores if x.admin) <= 1:
         _falha(f"{email} é o único admin — cria outro admin antes de apagar este")
     if not a.sim:
         resposta = input(f"Vai apagar a conta {email} (espaço «{u.espaco}») — a pasta de dados fica em "
-                          f"apagados/, mas a conta deixa de poder entrar. Escreve o e-mail outra vez para confirmar: ")
+                          f"apagados/ e é eliminada de vez daqui a 30 dias; a conta deixa de poder entrar já. "
+                          f"Escreve o e-mail outra vez para confirmar: ")
         if resposta.strip().lower() != email:
             _falha("confirmação não coincide — nada foi apagado")
+    print(_apagar_conta(caminho, email))
 
-    cortadas, revogadas = [], []
+
+def _apagar_conta(caminho: Path, email: str, conta_id: str | None = None, apagado_em: str | None = None) -> str:
+    """o núcleo de `utilizador apagar` — também o de `apagados reaplicar`, que passa o `conta_id` esperado (outro no basalt.toml =
+    não mexe) e a data ORIGINAL do apagamento. Sem perguntas; um erro é _falha (SystemExit). Devolve a mensagem.
+    r17: a entrada do registo grava-se dentro do trinco do basalt.toml, depois de revogar as ligações e ANTES de o toml mudar e de
+    a pasta sair do sítio, já com o destino decidido. Se o toml não chegar a mudar, a entrada é desfeita."""
+    from . import apagados, auth
+    cfg = config.carregar(caminho)
+    u = cfg.utilizador(email) or _falha(f"utilizador desconhecido: {email}")
+    if u.admin and sum(1 for x in cfg.utilizadores if x.admin) <= 1:
+        _falha(f"{email} é o único admin — cria outro admin antes de apagar este")
+    if conta_id is not None and u.conta_id != conta_id:
+        _falha("a conta do basalt.toml é outra (outro conta_id) — não mexi")
+    caminhos.definir_ancora(cfg.dados)
+    esp = cfg.espaco_de(u)
+    # [basalt] espaco_partilhado = true: a pasta pode ser de mais contas — mover «a pasta da Bea» levava as notas da Ana com ela
+    partilham = sorted(x.email for x in cfg.utilizadores if x.espaco == u.espaco and x.email.lower() != u.email.lower())
+    destino = None if partilham or not esp.raiz.exists() else apagados.destino_livre(cfg.dados, esp.nome)
+
+    cortadas, revogadas, registo = [], [], []
 
     def tirar(t):
         if not _bloco_de(t, email):
             _falha(f"utilizador desconhecido: {email}")
+        if conta_id is not None and str(auth.chave_utilizador(t, email, "conta_id") or "").strip() != conta_id:
+            _falha("a conta do basalt.toml mudou entretanto (outro conta_id) — não mexi")
         novo = remover_utilizador(t, email)
         # ronda 13b (como `senha`/`novo`): as ligações das IAs ficam revogadas NA BASE antes de o toml mudar — se não der, o toml
         # fica como estava. Antes tirava-se o bloco primeiro: com a base inacessível, a conta saía com as ligações vivas
         revogadas.append(_revogar_ligacoes(cfg.dados, email))
         cortadas.append(email)
+        try:
+            registo.append(apagados.registar(cfg.dados, email, u.conta_id, u.espaco, destino, apagado_em))
+        except (apagados.RegistoInvalido, OSError) as e:
+            _falha(f"não consegui gravar o registo das contas apagadas ({e}) — não mexi no basalt.toml; as ligações das IAs de "
+                   f"{email} já ficaram cortadas na base (isso fica) — repete o comando")
         return novo
-    _editar_toml(caminho, tirar, cortadas)
+    try:
+        _editar_toml(caminho, tirar, cortadas)
+    except SystemExit:
+        if registo:                       # a entrada foi gravada mas o basalt.toml não mudou: volta ao que era
+            try:
+                apagados.desfazer(cfg.dados, registo[0][0]["id"], registo[0][1])
+            except (apagados.RegistoInvalido, OSError) as e:
+                print(f"aviso: não consegui desfazer a entrada {registo[0][0]['id']} do registo ({e})", file=sys.stderr)
+        raise
     n = revogar_sessoes(cfg.dados / "sessoes.json", email)
     r = revogadas[0] if revogadas else 0
-    esp = cfg.espaco_de(u)
+    entrada = registo[0][0]
     msg = f"✓ {email} apagado ({n} sessão(ões) fechada(s), {r} ligação(ões) OAuth revogada(s))"
-    # [basalt] espaco_partilhado = true: a pasta pode ser de mais contas — mover «a pasta da Bea» levava as notas da Ana com ela
-    partilham = sorted(x.email for x in cfg.utilizadores if x.espaco == u.espaco and x.email.lower() != u.email.lower())
     if partilham:
         msg += f"; a pasta {esp.raiz} ficou onde está — o espaço «{u.espaco}» é partilhado com {', '.join(partilham)}"
-    elif esp.raiz.exists():
-        destino = cfg.dados / "apagados" / f"{esp.nome}-{time.strftime('%Y%m%d-%H%M%S')}"
-        destino.parent.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(esp.raiz), str(destino))
-        msg += f"; a pasta foi para {destino}"
-    print(msg)
+    elif destino is not None:
+        alvo = cfg.dados / destino
+        try:
+            alvo.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(esp.raiz), str(alvo))
+        except OSError as e:
+            _falha(f"a conta foi apagada, mas a pasta {esp.raiz} não saiu do sítio ({e.strerror or e}) — move-a à mão para {alvo}: "
+                   f"é aí que `basalt apagados eliminar` a vai buscar (entrada {entrada['id']})")
+        msg += f"; a pasta foi para {alvo}"
+    prazo = apagados.carimbo(apagados.instante(entrada["apagado_em"]) + apagados.DIAS * 86400)[:10]
+    msg += f"; registo {entrada['id']}: elimina-se de vez a partir de {prazo} (`basalt apagados eliminar`)"
+    return msg
+
+
+def cmd_apagados(a):
+    """r17: as contas apagadas (ver basalt/apagados.py). `eliminar` e `reaplicar` acabam com a linha `resumo: …`."""
+    from . import apagados
+    try:
+        caminho = _caminho_config(a)
+    except (SystemExit, config.ConfigInvalida) as x:
+        if a.sub not in ("eliminar", "reaplicar"):
+            if isinstance(x, config.ConfigInvalida):
+                _falha(str(x))
+            raise
+        print(x if isinstance(x, SystemExit) else f"basalt: {x}", file=sys.stderr)   # sem basalt.toml: rc 1 e o resumo na mesma
+        caminho = None
+    if a.sub == "listar":
+        rc = apagados.listar(caminho)
+    elif a.sub == "exportar":
+        rc = apagados.exportar(caminho)
+    elif a.sub == "eliminar":
+        rc = apagados.eliminar(caminho, a.dias, a.sim)          # um --dias negativo ou um erro: rc 1, com o resumo na mesma
+    else:
+        # a mensagem do `utilizador apagar` traz o e-mail: aqui fica só a linha do reaplicar (com o resumo do e-mail)
+        rc = apagados.reaplicar(caminho, a.lista, a.sim, lambda email, conta_id, quando: _apagar_conta(caminho, email, conta_id, quando))
+    sys.stdout.flush()
+    if rc:
+        raise SystemExit(rc)
 
 
 def _exportar_utilizador(caminho: Path, email: str, a):
@@ -562,6 +629,13 @@ def main(argv=None):
     p.add_argument("--sim", action="store_true", help="apagar: não pedir para escrever o e-mail outra vez (scripts/testes)")
     p.add_argument("--para", help="exportar: o ficheiro .zip de destino")
     p.set_defaults(fn=cmd_utilizador)
+
+    p = sub.add_parser("apagados", help="as contas apagadas: listar · eliminar (de vez, aos 30 dias) · exportar · reaplicar")
+    p.add_argument("sub", choices=["listar", "eliminar", "exportar", "reaplicar"])
+    p.add_argument("--dias", type=int, default=30, help="eliminar: só as apagadas há MAIS de N dias (omissão: 30)")
+    p.add_argument("--sim", action="store_true", help="eliminar/reaplicar: fazer mesmo (sem isto só mostra o que faria)")
+    p.add_argument("--lista", help="reaplicar: o ficheiro com a saída de `basalt apagados exportar`")
+    p.set_defaults(fn=cmd_apagados)
 
     for nome, fn, ajuda in (("indexar", cmd_indexar, "(re)construir o índice"), ("sincronizar", cmd_sincronizar, "memória ↔ cópia"),
                             ("arrumar", cmd_arrumar, "Entrada → notas, ligações, categorias"), ("estado", cmd_estado, "o que está configurado")):

@@ -232,10 +232,12 @@ quem a esteja a usar nesse instante no browser — ver §6).
 ## 6. Apagar e exportar uma conta
 
 `basalt utilizador apagar EMAIL` tira a conta do `basalt.toml`, revoga as sessões do Basalt e as ligações OAuth do
-`/mcp`, e **move** (nunca apaga) a pasta de dados para `<dados>/apagados/<espaco>-<data>/`. Com login pela Google,
-isto é o que corresponde a "a pessoa deixa de poder entrar": se ela voltar a autenticar-se com a mesma conta Google,
-e `criar_contas` continuar ligado, fica com uma conta **nova** (espaço vazio) — os dados antigos continuam em
-`apagados/`, por se precisares de os recuperar ou entregar. `basalt utilizador exportar EMAIL --para dados.zip`
+`/mcp`, regista o apagamento em `<dados>/contas-apagadas.json` e **move** a pasta de dados para
+`<dados>/apagados/<espaco>-<data>/`. Com login pela Google, isto é o que corresponde a "a pessoa deixa de poder entrar":
+se ela voltar a autenticar-se com a mesma conta Google, e `criar_contas` continuar ligado, fica com uma conta **nova**
+(espaço vazio, outro `conta_id`) — os dados antigos continuam em `apagados/` durante **30 dias**, por se precisares de os
+recuperar ou entregar, e depois `basalt apagados eliminar --sim` (o timer `basalt-apagados`) apaga-os de vez sem tocar na
+conta nova. Cópias de segurança e `apagados reaplicar`: [INSTALAR.md](INSTALAR.md) § 6. `basalt utilizador exportar EMAIL --para dados.zip`
 tira uma cópia das notas e anexos dessa conta (nunca o `basalt.toml` nem tokens) — útil para responder a um pedido de
 portabilidade de dados antes ou depois de apagar a conta. Se o espaço for **partilhado** com outra conta
 (`[basalt] espaco_partilhado = true`), a pasta fica onde está — é também da outra pessoa — e o comando di-lo.
@@ -297,7 +299,7 @@ real quando há nginx na máquina).
 - Login pela Google só transmite o e-mail (e, opcionalmente, o `sub`) ao Basalt — não o perfil, as fotos nem os
   contactos da conta Google; o Basalt nunca pede âmbitos (`scopes`) além de `openid`, `email`, `profile`.
 - O que o Basalt guarda sobre cada conta e como protege os dados de cada uma (isolamento por espaço, cópias CAS,
-  histórico git, sem apagar nunca por fora de `utilizador apagar`) está descrito em [SEGURANCA.md](SEGURANCA.md) —
+  histórico git, sem apagar nunca por fora de `utilizador apagar` e, aos 30 dias, do `apagados eliminar`) está descrito em [SEGURANCA.md](SEGURANCA.md) —
   em particular a secção "Revogar sem reiniciar" (relevante aqui: apagar a conta no toml invalida sessões e tokens no
   pedido seguinte, sem reiniciar o servidor) e "O que NÃO está protegido" (o modo `cabecalho` confia cegamente no
   cabeçalho do proxy — só é seguro atrás de um proxy que o substitua sempre, como mostrado no §3 acima).

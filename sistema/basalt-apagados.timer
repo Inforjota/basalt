@@ -1,0 +1,12 @@
+# elimina de vez, uma vez por dia, as contas apagadas há mais de 30 dias (opcional; ver docs/INSTALAR.md)
+# Persistent: se a máquina estava desligada à hora marcada, corre logo que arrancar.
+[Unit]
+Description=Basalt — eliminar de vez as contas apagadas (diário)
+
+[Timer]
+OnCalendar=*-*-* 04:40:00
+RandomizedDelaySec=15m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

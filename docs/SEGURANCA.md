@@ -79,6 +79,20 @@
   entra, nem por token, até ele voltar a carregar — o motivo aparece no registo do servidor. Um pedido que chegue a meio da
   releitura espera por ela. Só os utilizadores (e-mails, senhas, tokens MCP) se relêem; todas as outras opções (modo, `anfitrioes`, proxies,
   `idioma`…) só mudam ao reiniciar o servidor.
+- **Apagar uma conta é de vez, aos 30 dias, e uma cópia antiga não a traz de volta** (r17). `basalt utilizador apagar` desliga a
+  conta logo (sessões e IAs ligadas caem) e, ANTES de mover a pasta para `apagados/`, regista o apagamento em
+  `<dados>/contas-apagadas.json` (`0600`, escrita atómica com `fsync`, trinco próprio; uma ligação simbólica no lugar dele é
+  recusada). `basalt apagados eliminar --sim` (o timer `basalt-apagados`, sem rede) apaga de vez o que passou de 30 dias: só
+  pastas dentro de `apagados/` com o nome que o registo diz, nunca através de ligações simbólicas, nunca pastas sem registo; tira
+  da base OAuth as ligações e os pedidos dessa conta e as sessões que ainda lá estejam; e deixa no registo só o sha256 do e-mail
+  (com um prefixo fixo), o `conta_id` e as datas. Cada entrada trata-se à parte: uma que falhe não impede as outras e volta a
+  tentar-se no dia seguinte. Uma conta nova com o mesmo e-mail tem outro `conta_id` e não se lhe mexe. Depois de repor uma cópia,
+  `basalt apagados reaplicar --lista F --sim` volta a apagar as contas que ela trouxe, com a data original (ver
+  [INSTALAR.md](INSTALAR.md) § 6). Nenhum dos dois escreve e-mails no terminal nem no registo do sistema: a última linha é sempre
+  uma destas, para quem vigia o servidor a ler sem depender do texto (rc 1 se alguma coisa falhou):
+  `resumo: a_eliminar=N` (`eliminar` sem `--sim`) · `resumo: eliminadas=N falhas=N voltaram=N` (`eliminar --sim`) ·
+  `resumo: reapagaria=N recriadas=N acrescentaria=N protegidas=N` (`reaplicar` sem `--sim`) ·
+  `resumo: reapagadas=N recriadas=N acrescentadas=N protegidas=N` (`reaplicar --sim`).
 - **Contra CSRF e DNS rebinding.** As escritas da interface exigem o cabeçalho `X-Basalt`. Cookies `HttpOnly; SameSite=Strict`.
   Em modo `aberto`, e em qualquer modo quando `[basalt] anfitrioes` está definido, o servidor confere o `Host` de cada pedido
   e o `Origin` das escritas contra os nomes dele (loopback, o endereço em que escuta e `anfitrioes`). Um nome estranho recebe
@@ -139,6 +153,14 @@
   MCP. Não guardes nas notas instruções que não queiras que um agente siga.
 - **Disco cifrado, cópias de segurança, acesso físico**: do sistema, não do Basalt. O índice e as cópias de segurança guardam
   texto das notas em claro (ver [PRIVACIDADE.md](PRIVACIDADE.md)).
+- **Cópias de segurança de contas apagadas.** O Basalt não mexe nas tuas cópias: uma conta apagada continua nelas até rodarem.
+  Uma cópia de antes do apagamento também tem o registo de antes, sem essa conta: repô-la sem correr `apagados reaplicar` com a
+  lista guardada FORA das cópias traz a conta de volta, e nada dá por isso. (Se só o `basalt.toml` voltar atrás, o `eliminar` dá
+  por isso — `voltaram=1`, rc 1 — mas não a apaga sozinho.)
+- **O resumo do e-mail não é anónimo.** O registo e a lista do `exportar` guardam o sha256 do e-mail: quem tiver um e-mail em
+  mente consegue confirmar se essa conta foi apagada. Trata a lista como um dado pessoal.
+- **Contas sem `conta_id`** (criadas antes da r17): o mesmo e-mail chega para as reconhecer, por isso uma conta antiga reposta e
+  outra pessoa com o mesmo e-mail num bloco antigo sem `conta_id` confundem-se. Dá um `conta_id` aos blocos que escreveres à mão.
 
 ## Reportar
 
