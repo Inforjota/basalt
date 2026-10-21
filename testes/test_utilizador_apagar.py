@@ -92,7 +92,7 @@ def test_apagar_revoga_a_ligacao_oauth(s, tmp_path):
     cfg = config.carregar(s.toml)
     u = cfg.utilizador(BEA)
     o = oauth.OAuth(cfg, None)
-    o.token_pessoal(u, "agente de teste")
+    o.token_pessoal(u, "agente de teste", o.geracao())                     # ronda 13b: a geração lida antes de autenticar
     assert len(o.ligacoes(u)) == 1
 
     rc, out, err = correr("--config", str(s.toml), "utilizador", "apagar", BEA, "--sim")
