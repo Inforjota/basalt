@@ -290,8 +290,6 @@ def cmd_utilizador(a):
 def _apagar_utilizador(caminho: Path, email: str, a):
     """r14: apaga a CONTA (o bloco [[utilizadores]], as sessões abertas e as ligações OAuth) mas nunca os dados — a pasta do
     espaço é MOVIDA para <dados>/apagados/<espaco>-<AAAAMMDD-HHMMSS>/, nunca apagada. Recusa-se a tirar o último admin."""
-    from . import oauth
-
     cfg = config.carregar(caminho)
     u = cfg.utilizador(email) or _falha(f"utilizador desconhecido: {email}")
     if u.admin and sum(1 for x in cfg.utilizadores if x.admin) <= 1:
@@ -302,13 +300,20 @@ def _apagar_utilizador(caminho: Path, email: str, a):
         if resposta.strip().lower() != email:
             _falha("confirmação não coincide — nada foi apagado")
 
+    cortadas, revogadas = [], []
+
     def tirar(t):
         if not _bloco_de(t, email):
             _falha(f"utilizador desconhecido: {email}")
-        return remover_utilizador(t, email)
-    _editar_toml(caminho, tirar)
+        novo = remover_utilizador(t, email)
+        # ronda 13b (como `senha`/`novo`): as ligações das IAs ficam revogadas NA BASE antes de o toml mudar — se não der, o toml
+        # fica como estava. Antes tirava-se o bloco primeiro: com a base inacessível, a conta saía com as ligações vivas
+        revogadas.append(_revogar_ligacoes(cfg.dados, email))
+        cortadas.append(email)
+        return novo
+    _editar_toml(caminho, tirar, cortadas)
     n = revogar_sessoes(cfg.dados / "sessoes.json", email)
-    r = oauth.OAuth(cfg, None).revogar(u)
+    r = revogadas[0] if revogadas else 0
     esp = cfg.espaco_de(u)
     msg = f"✓ {email} apagado ({n} sessão(ões) fechada(s), {r} ligação(ões) OAuth revogada(s))"
     # [basalt] espaco_partilhado = true: a pasta pode ser de mais contas — mover «a pasta da Bea» levava as notas da Ana com ela

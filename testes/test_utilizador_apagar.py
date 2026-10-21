@@ -152,3 +152,34 @@ def test_apagar_nao_move_a_pasta_quando_outra_conta_partilha_o_espaco(tmp_path):
     rc, out, err = correr("--config", str(toml), "utilizador", "apagar", CAI, "--sim")
     assert rc == 0, err
     assert not esp_c.real.exists() and len(list((dados / "apagados").glob("c-*"))) == 1
+
+
+def test_apagar_revoga_na_base_antes_de_mudar_o_toml_e_se_nao_der_nao_muda_nada(s, tmp_path):
+    """r14 sobre a r13b: como `utilizador senha`/`novo`, o `apagar` revoga as ligações das IAs NA BASE dentro do trinco do
+    basalt.toml e ANTES de ele mudar. Antes tirava o bloco primeiro e só depois revogava: com a base inacessível, a conta saía
+    do toml com as ligações ainda vivas na base (um toml antigo reposto, ou o servidor parado antes de o reler, e voltavam a
+    valer). Aqui a base é uma ligação simbólica (recusada pela revogação da r13b): nada pode mudar."""
+    from basalt import oauth
+    cfg = config.carregar(s.toml)
+    o = oauth.OAuth(cfg, None)
+    o.token_pessoal(cfg.utilizador(BEA), "agente de teste", o.geracao())
+    base = cfg.dados / "oauth.sqlite"
+    assert base.is_file()
+    verdadeira = tmp_path / "oauth-verdadeira.sqlite"
+    os.replace(base, verdadeira)
+    os.symlink(verdadeira, base)
+    esp_b = s.espaco("b").criar()
+    (esp_b.real / "nota.md").write_text("olá\n", encoding="utf-8")
+    antes = s.toml.read_text(encoding="utf-8")
+
+    rc, out, err = correr("--config", str(s.toml), "utilizador", "apagar", BEA, "--sim")
+    assert s.toml.read_text(encoding="utf-8") == antes, "a conta saiu do toml sem as ligações das IAs revogadas"
+    assert rc != 0 and "revogar" in err and "não mexi no basalt.toml" in err, (rc, out, err)
+    assert (esp_b.real / "nota.md").exists(), "a pasta foi movida sem a conta ter sido apagada"
+
+    os.remove(base)                                                         # a base volta a ser um ficheiro: agora apaga
+    os.replace(verdadeira, base)
+    rc, out, err = correr("--config", str(s.toml), "utilizador", "apagar", BEA, "--sim")
+    assert rc == 0, err
+    assert "1 ligação(ões) OAuth revogada(s)" in out, out
+    assert config.carregar(s.toml).utilizador(BEA) is None
