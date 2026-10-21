@@ -79,8 +79,15 @@ def chave_utilizador(texto: str, email: str, chave: str):
     return None
 
 
-def bloco_utilizador(email: str, espaco: str, nome: str, admin: bool, senha_hash: str = "") -> str:
-    out = ["[[utilizadores]]", f"email = {_toml_str(email)}", f"espaco = {_toml_str(espaco)}", f"nome = {_toml_str(nome)}"]
+def bloco_utilizador(email: str, espaco: str, nome: str, admin: bool, senha_hash: str = "", conta_id: str | None = None) -> str:
+    """r17: cada conta nova ganha um `conta_id` aleatório. Serve para distinguir a conta apagada de uma conta criada mais tarde
+    com o mesmo e-mail (`basalt apagados`): só a primeira volta a ser apagada depois de repor uma cópia de segurança."""
+    if conta_id is None:
+        conta_id = secrets.token_hex(8)
+    out = ["[[utilizadores]]", f"email = {_toml_str(email)}"]
+    if conta_id:
+        out.append(f"conta_id = {_toml_str(conta_id)}")
+    out += [f"espaco = {_toml_str(espaco)}", f"nome = {_toml_str(nome)}"]
     if senha_hash:
         out.append(f"senha_hash = {_toml_str(senha_hash)}")
     out.append(f"admin = {'true' if admin else 'false'}")

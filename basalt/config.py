@@ -50,6 +50,7 @@ class Utilizador:
     mcp_token_hash: str = ""    # `basalt utilizador mcp-token EMAIL` (sha256 do token); vazio = sem MCP
     admin: bool = False
     sub: str = ""               # r14 (login Google): o identificador da conta no fornecedor (`sub`); um e-mail recriado não entra aqui
+    conta_id: str = ""          # r17: aleatório, posto ao criar a conta; vazio = conta de uma versão anterior (ver `basalt apagados`)
 
 
 @dataclass
@@ -642,7 +643,7 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
         cfg.utilizadores.append(Utilizador(email=str(u["email"]).strip(), espaco=str(u.get("espaco", ESPACO_OMISSAO)),
                                            nome=str(u.get("nome", "")), senha_hash=str(u.get("senha_hash", "")),
                                            mcp_token_hash=str(u.get("mcp_token_hash", "")), admin=bool(u.get("admin", False)),
-                                           sub=str(u.get("sub", ""))))
+                                           sub=str(u.get("sub", "")), conta_id=str(u.get("conta_id", "")).strip()))
     # compatibilidade: BASALT_AUTH_EMAIL="a@x.pt,b@y.pt" → utilizadores no espaço principal (modo cabecalho sem toml)
     for em in (amb.get("BASALT_AUTH_EMAIL") or "").split(","):
         em = em.strip()
