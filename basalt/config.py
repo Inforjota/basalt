@@ -49,6 +49,7 @@ class Utilizador:
     senha_hash: str = ""        # `basalt utilizador senha EMAIL` (scrypt); vazio = não entra por senha
     mcp_token_hash: str = ""    # `basalt utilizador mcp-token EMAIL` (sha256 do token); vazio = sem MCP
     admin: bool = False
+    sub: str = ""               # r14 (login Google): o identificador da conta no fornecedor (`sub`); um e-mail recriado não entra aqui
 
 
 @dataclass
@@ -59,6 +60,15 @@ class AuthConfig:
     tentativas: int = 5                 # por IP, por janela
     janela_minutos: int = 15
     proxies_de_confianca: tuple = ()   # ronda 8 (X-Forwarded-For): IPs/redes de onde se acredita nesse cabeçalho (loopback conta sempre)
+    # r14 (login Google para clientes, modo cabecalho): o proxy prova que é ele com um segredo partilhado (só no ambiente, nunca
+    # no toml); sem ele, uma rota que o proxy deixe passar sem login aceitava o X-Basalt-Email escrito pelo visitante
+    segredo_proxy_env: str = "BASALT_SEGREDO_PROXY"
+    cabecalho_segredo: str = "X-Basalt-Proxy-Segredo"
+    segredo_proxy: str = field(default="", repr=False)
+    cabecalho_sub: str = ""             # ex. "X-Basalt-Sub" (o proxy põe o `sub` da Google); vazio = não se confere
+    criar_contas: bool = False          # conta nova no 1.º login de um e-mail que o proxy autenticou (exige segredo_proxy)
+    dominios: tuple = ()                # só estes domínios de e-mail criam conta (vazio = qualquer)
+    max_contas: int = 0                 # tecto de contas (0 = sem tecto); as que existem continuam a entrar
 
 
 @dataclass
@@ -283,7 +293,15 @@ class Config:
         if self.avisos.comando and not comando_ok(self.avisos.comando):
             raise ConfigInvalida(f"[avisos] comando tem de ser uma lista de textos, ex.: [\"/usr/local/bin/notificar\", \"--titulo\", \"Basalt\"], "
                                  f"não {self.avisos.comando!r}")
-        if self.auth.modo != "aberto" and not self.utilizadores:
+        if self.auth.criar_contas:
+            if self.auth.modo != "cabecalho":
+                raise ConfigInvalida("[auth] criar_contas só no modo cabecalho (o proxy com o login Google é que autentica)")
+            if len(self.auth.segredo_proxy) < 32:
+                raise ConfigInvalida(f"[auth] criar_contas exige o segredo do proxy na variável {self.auth.segredo_proxy_env} "
+                                     "(pelo menos 32 caracteres, ex.: python3 -c 'import secrets;print(secrets.token_urlsafe(32))')")
+            if self.auth.max_contas < 0:
+                raise ConfigInvalida("[auth] max_contas não pode ser negativo")
+        if self.auth.modo != "aberto" and not self.utilizadores and not self.auth.criar_contas:
             raise ConfigInvalida("sem utilizadores: acrescenta [[utilizadores]] ou usa `basalt utilizador novo EMAIL`")
 
 
@@ -526,7 +544,16 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
     cfg.auth = AuthConfig(modo=amb.get("BASALT_AUTH_MODO") or a.get("modo", "senha"),
                           cabecalho=a.get("cabecalho", "X-Basalt-Email"), sessao_horas=int(a.get("sessao_horas", 24 * 14)),
                           tentativas=int(a.get("tentativas", 5)), janela_minutos=int(a.get("janela_minutos", 15)),
-                          proxies_de_confianca=tuple(str(x) for x in (a.get("proxies_de_confianca") or [])))
+                          proxies_de_confianca=tuple(str(x) for x in (a.get("proxies_de_confianca") or [])),
+                          segredo_proxy_env=str(a.get("segredo_proxy_env", "BASALT_SEGREDO_PROXY")),
+                          cabecalho_segredo=str(a.get("cabecalho_segredo", "X-Basalt-Proxy-Segredo")),
+                          cabecalho_sub=str(a.get("cabecalho_sub", "")), criar_contas=bool(a.get("criar_contas", False)),
+                          dominios=tuple(str(x).strip().lower().lstrip("@") for x in (a.get("dominios") or []) if str(x).strip()),
+                          max_contas=int(a.get("max_contas", 0)))
+    if "segredo_proxy" in a:
+        raise ConfigInvalida("[auth] segredo_proxy não vai no basalt.toml: põe-no na variável de ambiente "
+                             f"{cfg.auth.segredo_proxy_env} (e só o proxy o conhece)")
+    cfg.auth.segredo_proxy = (amb.get(cfg.auth.segredo_proxy_env) or "").strip() if cfg.auth.segredo_proxy_env else ""
     if amb.get("BASALT_WEB_DEV") == "1":          # compatibilidade: o antigo «modo dev» = aberto (só em loopback)
         cfg.auth.modo = "aberto"
 
@@ -563,7 +590,8 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
             raise ConfigInvalida("[[utilizadores]] precisa de email")
         cfg.utilizadores.append(Utilizador(email=str(u["email"]).strip(), espaco=str(u.get("espaco", ESPACO_OMISSAO)),
                                            nome=str(u.get("nome", "")), senha_hash=str(u.get("senha_hash", "")),
-                                           mcp_token_hash=str(u.get("mcp_token_hash", "")), admin=bool(u.get("admin", False))))
+                                           mcp_token_hash=str(u.get("mcp_token_hash", "")), admin=bool(u.get("admin", False)),
+                                           sub=str(u.get("sub", ""))))
     # compatibilidade: BASALT_AUTH_EMAIL="a@x.pt,b@y.pt" → utilizadores no espaço principal (modo cabecalho sem toml)
     for em in (amb.get("BASALT_AUTH_EMAIL") or "").split(","):
         em = em.strip()

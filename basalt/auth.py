@@ -226,6 +226,7 @@ class Autenticador:
         self._origem = Path(cfg.origem) if cfg.origem else None   # ronda 8 (configuração relida em execução): o basalt.toml relê-se quando muda (revogar sem reiniciar)
         self._marca = self._marca_do_toml()
         self._fechado = ""          # ronda 9 (achado G4 da ronda 2): o basalt.toml mudou e não carrega → ninguém entra (o motivo)
+        self._criar_lock = threading.Lock()   # r14: uma conta nova de cada vez (o tecto e o «já existe» conferem-se lá dentro)
         with self._lock:
             self._podar_sessoes(forcar=True)
 
@@ -482,8 +483,7 @@ class Autenticador:
         if modo == "aberto":
             return self.cfg.utilizadores[0] if self.cfg.utilizadores else Utilizador(email="local@basalt", nome="local", admin=True)
         if modo == "cabecalho":
-            email = (get(self.cfg.auth.cabecalho) or "").strip().lower()
-            return self.cfg.utilizador(email) if email else None
+            return self._do_proxy(get)
         # senha: cookie
         c = SimpleCookie()
         try:
@@ -507,6 +507,71 @@ class Autenticador:
         if u is None or not s.cred or not hmac.compare_digest(s.cred, impressao_credencial(u.senha_hash)):
             return None
         return u
+
+    # ── r14: modo cabecalho com o login Google (oauth2-proxy) e contas criadas no 1.º login ──
+    def proxy_confirmado(self, get) -> bool:
+        """com segredo do proxy configurado, só um pedido que o traga veio mesmo do proxy (o resto é o visitante a escrever o
+        cabeçalho do e-mail numa rota que o proxy deixou passar sem login). Sem segredo configurado: como antes."""
+        seg = self.cfg.auth.segredo_proxy
+        if not seg:
+            return True
+        dado = (get(self.cfg.auth.cabecalho_segredo) or "").strip()
+        return hmac.compare_digest(dado.encode("utf-8"), seg.encode("utf-8"))
+
+    def _do_proxy(self, get) -> Utilizador | None:
+        if not self.proxy_confirmado(get):
+            return None
+        email = (get(self.cfg.auth.cabecalho) or "").strip().lower()
+        if not email:
+            return None
+        sub = (get(self.cfg.auth.cabecalho_sub) or "").strip() if self.cfg.auth.cabecalho_sub else ""
+        u = self.cfg.utilizador(email)
+        if u is None and self.cfg.auth.criar_contas:
+            u = self._criar_conta(email, sub)
+        if u is None:
+            return None
+        # a conta Google desse e-mail foi apagada e recriada (Workspace) → é outra pessoa: não entra nas notas da anterior
+        if self.cfg.auth.cabecalho_sub and u.sub and not hmac.compare_digest(u.sub, sub):
+            return None
+        return u
+
+    def _criar_conta(self, email: str, sub: str) -> Utilizador | None:
+        """conta nova (espaço próprio com nome aleatório, sem senha, não admin) no basalt.toml, dentro do trinco do toml.
+        None = não se cria (e-mail estranho, domínio fora da lista, tecto de contas, sem `sub` quando se exige, erro a gravar)."""
+        a = self.cfg.auth
+        if self._origem is None or self._fechado:
+            return None
+        if len(email) > 254 or not re.fullmatch(r"[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+", email):
+            return None
+        if a.dominios and email.rsplit("@", 1)[1] not in a.dominios:
+            return None
+        if a.cabecalho_sub and not re.fullmatch(r"[A-Za-z0-9._:@|-]{1,255}", sub or ""):
+            return None
+        with self._criar_lock:
+            self.reler_se_mudou()
+            u = self.cfg.utilizador(email)
+            if u is not None:                                   # outro pedido criou-a entretanto
+                return u
+            if a.max_contas and len(self.cfg.utilizadores) >= a.max_contas:
+                print(f"contas: tecto de {a.max_contas} atingido — {email} não foi criada", file=sys.stderr, flush=True)
+                return None
+            espaco = "c" + secrets.token_hex(6)                  # nunca derivado do e-mail (não se adivinha nem se enumera)
+
+            def editar(texto):
+                if _bloco_de(texto, email):
+                    return texto
+                novo = acrescentar_utilizador(texto, bloco_utilizador(email, espaco, email.split("@")[0], False))
+                return definir_chave_utilizador(novo, email, "sub", sub) if sub else novo
+            try:
+                editar_toml(self._origem, editar)
+            except (OSError, config.ConfigInvalida, ValueError) as e:
+                print(f"contas: não consegui criar {email} ({getattr(e, 'strerror', None) or e})", file=sys.stderr, flush=True)
+                return None
+            self.reler_se_mudou()
+            u = self.cfg.utilizador(email)
+            if u is not None:
+                print(f"contas: {email} criada no 1.º login (espaço {u.espaco})", file=sys.stderr, flush=True)
+            return u
 
     def token_do_pedido(self, cabecalhos) -> str:
         c = SimpleCookie()
