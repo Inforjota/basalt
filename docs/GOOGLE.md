@@ -90,32 +90,31 @@ server {
         proxy_set_header Host                       $host;
         proxy_set_header X-Forwarded-Proto           https;
         proxy_set_header X-Forwarded-For             $remote_addr;
-        # apagar primeiro o que o visitante tenha mandado, e só depois pôr o valor verdadeiro
-        proxy_set_header X-Basalt-Email              "";
+        # proxy_set_header SUBSTITUI o cabeçalho com o mesmo nome que o visitante tenha mandado (o dele nunca passa)
         proxy_set_header X-Basalt-Email              $email;
-        proxy_set_header X-Basalt-Proxy-Segredo       "";
-        proxy_set_header X-Basalt-Proxy-Segredo       $basalt_segredo_proxy;   # ver nota abaixo
+        proxy_set_header X-Basalt-Sub                "";                      # ou $sub — ver o fim desta secção
+        include /etc/nginx/basalt-segredo.conf;                               # o segredo — ver nota abaixo
     }
 }
 ```
 
-`$basalt_segredo_proxy` não é uma variável do nginx — é o mesmo segredo que vai para o `BASALT_SEGREDO_PROXY` do
-Basalt (passo 4), posto numa `map` ou num `set` fixo no `server`/`http`:
+O segredo fica num ficheiro à parte, só legível pelo root (`chmod 600`), nunca no repositório nem no ficheiro do site:
 
 ```nginx
-# no bloco http { } ou num ficheiro incluído:
-set $basalt_segredo_proxy "COLA_AQUI_O_MESMO_VALOR_DE_BASALT_SEGREDO_PROXY";
+# /etc/nginx/basalt-segredo.conf — o mesmo valor do BASALT_SEGREDO_PROXY do Basalt (passo 4)
+proxy_set_header X-Basalt-Proxy-Segredo "COLA_AQUI_O_MESMO_VALOR";
 ```
 
-(Alternativa mais limpa com variável de ambiente do sistema: gerar este troço do nginx a partir de um template na
-instalação, em vez de o escrever à mão com o segredo em claro no ficheiro — mas o ficheiro do nginx já só é legível
-pelo root, como o resto de `/etc/nginx`.)
+Em **todos** os `location` que vão para o Basalt (incluindo os das rotas que o oauth2-proxy deixa passar sem login,
+como `/mcp` e `/oauth/token`) põe as linhas do `X-Basalt-Email` e do `include`; nas rotas sem login o `$email` vem
+vazio e o Basalt não dá a sessão de ninguém. Um `location` que se esqueça do `include` deixa simplesmente de entrar
+(falta o segredo) — falha fechada, não aberta.
 
 Se quiseres o `sub` da Google como confirmação extra (impede que um e-mail *gmail.com* mudado de dono volte a
 coincidir com a conta antiga sem dar por nada — ver §4), o oauth2-proxy também expõe
 `X-Auth-Request-User` como subject id com certos provedores; confirma com `--set-xauthrequest=true` e
 `auth_request_set $sub $upstream_http_x_auth_request_user;`, e injecta-o como `X-Basalt-Sub` da mesma forma
-(apagar e depois pôr).
+(substitui o do visitante, como os outros). ⚠️ Confirma no ensaio que esse valor é mesmo o `sub` da Google e não o e-mail; se for o e-mail, deixa `cabecalho_sub` vazio.
 
 **Sem proxy na mesma máquina** (oauth2-proxy e nginx em hosts diferentes do Basalt): acrescenta o IP/rede deles a
 `[auth] proxies_de_confianca` no `basalt.toml` (ver [INSTALAR.md §4](INSTALAR.md#4-na-rede-proxy-com-https)), senão o
@@ -205,9 +204,9 @@ curl -i https://basalt.exemplo.pt/api/eu \
 # esperado: 401 ou 403
 ```
 
-Se qualquer um destes devolver 200, **o nginx está a deixar passar o cabeçalho do cliente** (falta a linha
-`proxy_set_header X-Basalt-Email "";` antes de injectar o valor verdadeiro, ou o `location` que respondeu ao `curl`
-não é o mesmo que tem o `auth_request`) — corrige o nginx antes de pôr isto em produção. Este é exactamente o
+Se qualquer um destes devolver 200, **o nginx está a deixar passar o cabeçalho do cliente** (há um `location`
+com o `include` do segredo mas sem a linha `proxy_set_header X-Basalt-Email $email;` — o segredo só prova que o
+pedido passou pelo nginx, não que o e-mail é verdadeiro; o `include` e a linha do e-mail andam SEMPRE juntos) — corrige o nginx antes de pôr isto em produção. Este é exactamente o
 comportamento provado em `testes/test_login_google.py::test_sem_o_segredo_do_proxy_ninguem_entra`, que faz o mesmo
 ataque directamente ao servidor Basalt (sem precisar de um nginx real para correr a bateria de testes).
 
