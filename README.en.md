@@ -103,9 +103,9 @@ cannot write to your notes). More in [docs/SEGURANCA.md](docs/SEGURANCA.md); giv
 ## Don't want to install it yourself?
 
 - **Installed for you**: €49, paid once, VAT included. We install it on your computer or server and connect your AI.
-- **Basalt in the cloud** (coming soon): nothing to install, and the servers are in the EU.
+- **Basalt in the cloud** (free beta, by invitation): nothing to install, and the servers are in the EU. It is a test version: it may have bugs or outages, and there is no uptime guarantee.
 
-More at [inforjota.com/basalt](https://inforjota.com/basalt/) (page in Portuguese). The code stays free and complete; what you pay for is the service.
+More at [inforjota.com/basalt](https://inforjota.com/basalt/) (page in Portuguese), where you can also ask to join the beta. The code stays free and complete; what you pay for is the service.
 
 ## Licence
 

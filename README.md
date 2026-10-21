@@ -93,9 +93,9 @@ não escreve nas tuas notas). Mais em [docs/SEGURANCA.md](docs/SEGURANCA.md); d�
 ## Não queres instalar sozinho?
 
 - **Instalado por nós**: 49 €, pagos uma vez, com IVA. Instalamos no teu computador ou servidor e ligamos a tua IA.
-- **Basalt na nuvem** (brevemente): não instalas nada e os servidores ficam na UE.
+- **Basalt na nuvem** (beta grátis, por convite): não instalas nada e os servidores ficam na UE. É uma versão de teste: pode ter falhas ou paragens e não há garantia de funcionamento contínuo.
 
-Mais em [inforjota.com/basalt](https://inforjota.com/basalt/). O código continua grátis e completo; o que se paga é o serviço.
+Mais em [inforjota.com/basalt](https://inforjota.com/basalt/), onde também pedes acesso à beta. O código continua grátis e completo; o que se paga é o serviço.
 
 ## Licença
 
