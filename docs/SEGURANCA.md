@@ -86,7 +86,10 @@
   pastas dentro de `apagados/` com o nome que o registo diz, nunca através de ligações simbólicas, nunca pastas sem registo; tira
   da base OAuth as ligações e os pedidos dessa conta e as sessões que ainda lá estejam; e deixa no registo só o sha256 do e-mail
   (com um prefixo fixo), o `conta_id` e as datas. Cada entrada trata-se à parte: uma que falhe não impede as outras e volta a
-  tentar-se no dia seguinte. Uma conta nova com o mesmo e-mail tem outro `conta_id` e não se lhe mexe. Depois de repor uma cópia,
+  tentar-se no dia seguinte. Uma conta nova com o mesmo e-mail tem outro `conta_id` e não se lhe mexe. O `eliminar` e um
+  apagamento (`utilizador apagar`, `reaplicar`) não se cruzam: a pasta move-se e cada entrada decide-se com o trinco do
+  `basalt.toml` tomado; uma pasta que não chegou a sair de `<dados>/<espaco>/` fica por eliminar (rc 1) até a moverem para onde
+  o registo diz; e `apagados` não pode ser nome de espaço. Depois de repor uma cópia,
   `basalt apagados reaplicar --lista F --sim` volta a apagar as contas que ela trouxe, com a data original (ver
   [INSTALAR.md](INSTALAR.md) § 6). Nenhum dos dois escreve e-mails no terminal nem no registo do sistema: a última linha é sempre
   uma destas, para quem vigia o servidor a ler sem depender do texto (rc 1 se alguma coisa falhou):

@@ -30,9 +30,22 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   voltaram=N`, `resumo: reapagaria=N recriadas=N acrescentaria=N protegidas=N` ou `resumo: reapagadas=N recriadas=N
   acrescentadas=N protegidas=N` — a última linha do stdout, sem e-mails, também quando falham —, para os vigiar sem depender do
   texto. Nenhum dos comandos escreve e-mails.
+- **O `eliminar` e um apagamento não se cruzam:** a pasta move-se para `apagados/` ainda com o trinco do `basalt.toml` tomado, e o
+  `eliminar` decide cada entrada com esse trinco — um `eliminar --sim` a correr no instante de um `utilizador apagar` ou de um
+  `reaplicar --sim` espera, em vez de dar a entrada por eliminada («a pasta já não existia») com a pasta a chegar a seguir, sem
+  registo e para sempre.
+- **A pasta que não saiu do sítio fica por eliminar:** se o `apagar` registou a conta mas não conseguiu mover a pasta (outro
+  disco, permissões), o `eliminar` recusa essa entrada (`falhas=1`, rc 1) enquanto `<dados>/<espaco>/` existir sem dono, e diz
+  para onde a mover — antes dava-a por eliminada com os dados intactos. Um espaço com o mesmo nome que entretanto seja de uma
+  conta nova não conta: é dela.
+- **`apagados` deixa de ser nome de espaço** (`ESPACOS_RESERVADOS`): o `basalt.toml` recusa-o, o `utilizador novo --espaco
+  apagados` também, e «apagados@…» cai em `apagados_2` — uma conta com esse espaço nunca se conseguia apagar (a pasta ia
+  mover-se para dentro de si própria) e aos 30 dias era dada por eliminada.
 - Testes novos: `testes/test_r17_apagados.py` (o apagamento grava antes de mover, os dias, as recusas de ligações simbólicas e
   de pastas fora de `apagados/`, a poda OAuth só da conta, a reposição de uma cópia simulada, a conta recriada, o espaço
-  partilhado, o `toml` antigo, as falhas isoladas e os quatro formatos do resumo).
+  partilhado, o `toml` antigo, as falhas isoladas e os quatro formatos do resumo) e `testes/test_r17_eliminar_e_apagar.py` (o
+  `eliminar` a correr durante um apagamento, a pasta que não saiu do sítio, o espaço reutilizado por uma conta nova, o nome
+  reservado).
 
 ### Isolamento entre contas, ronda r16 (21/10/2026)
 
