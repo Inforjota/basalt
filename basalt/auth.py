@@ -99,6 +99,37 @@ def acrescentar_utilizador(texto: str, bloco: str) -> str:
     return texto.rstrip("\n") + "\n\n" + bloco
 
 
+def remover_utilizador(texto: str, email: str) -> str:
+    """tira o bloco [[utilizadores]] desse e-mail; o resto do toml (e os outros blocos) ficam exactamente iguais — TOML não
+    precisa de linhas em branco entre secções (KeyError = esse e-mail não está no texto)."""
+    pos = _bloco_de(texto, email)
+    if not pos:
+        raise KeyError(email)
+    a, b = pos
+    return texto[:a] + texto[b:]
+
+
+def revogar_sessoes(ficheiro_sessoes: Path, email: str) -> int:
+    """r14 (`basalt utilizador apagar`): tira do sessoes.json todas as sessões dessa conta — para quem já tinha a sessão aberta
+    no browser deixar de poder continuar a usá-la. O servidor pode estar a correr ao mesmo tempo: a mesma escrita com cuidado
+    do `Autenticador._guardar` (tmp + os.replace, 0600). Devolve quantas sessões saíram (0 = nenhuma, ou o ficheiro não existe)."""
+    try:
+        d = json.loads(ficheiro_sessoes.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return 0
+    if not isinstance(d, dict):
+        return 0
+    e = (email or "").strip().lower()
+    restantes = {k: v for k, v in d.items() if not (isinstance(v, dict) and str(v.get("email", "")).strip().lower() == e)}
+    n = len(d) - len(restantes)
+    if n:
+        tmp = ficheiro_sessoes.with_suffix(".tmp")
+        tmp.write_text(json.dumps(restantes), encoding="utf-8")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, ficheiro_sessoes)
+    return n
+
+
 class trinco_toml:
     """um só escritor do basalt.toml de cada vez (a interface e a linha de comandos): flock num ficheiro ao lado."""
     def __init__(self, caminho: Path):

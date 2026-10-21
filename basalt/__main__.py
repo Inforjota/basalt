@@ -2,7 +2,7 @@
 
   iniciar      cria o basalt.toml, as pastas e o primeiro utilizador
   serve        o servidor web (+ /mcp)
-  utilizador   novo · senha · mcp-token · listar  (edita o basalt.toml no sítio: só a chave pedida, o resto fica igual)
+  utilizador   novo · senha · mcp-token · listar · apagar · exportar  (edita o basalt.toml no sítio: só a chave pedida, o resto fica igual)
   indexar      (re)constrói o índice semântico do(s) espaço(s)
   procurar     pesquisa por significado (ou por palavras)
   pergunta     resposta com fontes (precisa de IA)
@@ -20,13 +20,17 @@ import argparse
 import getpass
 import os
 import re
+import shutil
 import subprocess
 import sys
+import time
+import zipfile
 from pathlib import Path
 
 from . import __version__, caminhos, config
 from .auth import (_BLOCO_RX, _bloco_de, _toml_str, acrescentar_utilizador, bloco_utilizador,   # noqa: F401 (re-exportados: testes e
-                   definir_chave_utilizador, editar_toml, gravar_toml, trinco_toml)                #  quem importava daqui)
+                   definir_chave_utilizador, editar_toml, gravar_toml, remover_utilizador,         #  quem importava daqui)
+                   revogar_sessoes, trinco_toml)
 from .config import Config, Utilizador
 
 EMAIL_RX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -277,6 +281,62 @@ def cmd_utilizador(a):
         _editar_toml(caminho, lambda t: definir_chave_utilizador(t, email, "mcp_token_hash", h))
         print(f"token MCP de {email} (mostra-se UMA vez; guarda-o no cliente, nunca numa nota):\n\n  {token}\n")
         print('  claude mcp add --transport http basalt https://O-TEU-BASALT/mcp --header "Authorization: Bearer ' + token + '"')
+    elif a.sub == "apagar":
+        _apagar_utilizador(caminho, email, a)
+    elif a.sub == "exportar":
+        _exportar_utilizador(caminho, email, a)
+
+
+def _apagar_utilizador(caminho: Path, email: str, a):
+    """r14: apaga a CONTA (o bloco [[utilizadores]], as sessões abertas e as ligações OAuth) mas nunca os dados — a pasta do
+    espaço é MOVIDA para <dados>/apagados/<espaco>-<AAAAMMDD-HHMMSS>/, nunca apagada. Recusa-se a tirar o último admin."""
+    from . import oauth
+
+    cfg = config.carregar(caminho)
+    u = cfg.utilizador(email) or _falha(f"utilizador desconhecido: {email}")
+    if u.admin and sum(1 for x in cfg.utilizadores if x.admin) <= 1:
+        _falha(f"{email} é o único admin — cria outro admin antes de apagar este")
+    if not a.sim:
+        resposta = input(f"Vai apagar a conta {email} (espaço «{u.espaco}») — a pasta de dados fica em "
+                          f"apagados/, mas a conta deixa de poder entrar. Escreve o e-mail outra vez para confirmar: ")
+        if resposta.strip().lower() != email:
+            _falha("confirmação não coincide — nada foi apagado")
+
+    def tirar(t):
+        if not _bloco_de(t, email):
+            _falha(f"utilizador desconhecido: {email}")
+        return remover_utilizador(t, email)
+    _editar_toml(caminho, tirar)
+    n = revogar_sessoes(cfg.dados / "sessoes.json", email)
+    r = oauth.OAuth(cfg, None).revogar(u)
+    esp = cfg.espaco_de(u)
+    msg = f"✓ {email} apagado ({n} sessão(ões) fechada(s), {r} ligação(ões) OAuth revogada(s))"
+    if esp.raiz.exists():
+        destino = cfg.dados / "apagados" / f"{esp.nome}-{time.strftime('%Y%m%d-%H%M%S')}"
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(esp.raiz), str(destino))
+        msg += f"; a pasta foi para {destino}"
+    print(msg)
+
+
+def _exportar_utilizador(caminho: Path, email: str, a):
+    """r14: zip das notas + anexos de uma conta (nunca o basalt.toml nem tokens — só `esp.real`, que é onde vivem as notas e
+    `anexos/`; a cópia editável e `dados/` — sessões, índice — ficam de fora de propósito)."""
+    if not a.para:
+        _falha("falta --para FICHEIRO.zip")
+    cfg = config.carregar(caminho)
+    u = cfg.utilizador(email) or _falha(f"utilizador desconhecido: {email}")
+    esp = cfg.espaco_de(u)
+    destino = Path(a.para).expanduser().resolve()
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    n = 0
+    with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:
+        if esp.real.exists():
+            for p in sorted(esp.real.rglob("*")):
+                if p.is_file() and not p.is_symlink():
+                    z.write(p, p.relative_to(esp.real))
+                    n += 1
+    print(f"✓ {n} ficheiro(s) de {email} em {destino}")
 
 
 def _dentro_de_cada(cfg, a, fn):
@@ -483,9 +543,11 @@ def main(argv=None):
 
     sub.add_parser("serve", help="servidor web + /mcp").set_defaults(fn=cmd_serve)
 
-    p = sub.add_parser("utilizador", help="novo · senha · mcp-token · listar")
-    p.add_argument("sub", choices=["novo", "senha", "mcp-token", "listar"]); p.add_argument("email", nargs="?")
+    p = sub.add_parser("utilizador", help="novo · senha · mcp-token · listar · apagar · exportar")
+    p.add_argument("sub", choices=["novo", "senha", "mcp-token", "listar", "apagar", "exportar"]); p.add_argument("email", nargs="?")
     p.add_argument("--nome"); p.add_argument("--espaco"); p.add_argument("--senha"); p.add_argument("--admin", action="store_true")
+    p.add_argument("--sim", action="store_true", help="apagar: não pedir para escrever o e-mail outra vez (scripts/testes)")
+    p.add_argument("--para", help="exportar: o ficheiro .zip de destino")
     p.set_defaults(fn=cmd_utilizador)
 
     for nome, fn, ajuda in (("indexar", cmd_indexar, "(re)construir o índice"), ("sincronizar", cmd_sincronizar, "memória ↔ cópia"),
