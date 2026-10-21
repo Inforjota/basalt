@@ -100,3 +100,56 @@ def test_espaco_max_mb_zero_e_sem_tecto(servidor_local):
     texto_700k = "x" * (700 * 1024)                                # sem [auth] espaco_max_mb → 0 → sem tecto
     assert s.pedido("POST", "/api/nota", {"nome": "n1", "texto": texto_700k}, email=ANA).codigo == 201
     assert s.pedido("POST", "/api/nota", {"nome": "n2", "texto": texto_700k}, email=ANA).codigo == 201
+
+
+# ───────────── revisão Fable (20/10): o tecto de disco vale por TODAS as portas, não só pelo criar/anexos ─────────────
+def test_espaco_max_mb_recusa_crescer_uma_nota_mas_deixa_encolher(com_espaco_max_mb):
+    s = com_espaco_max_mb(1, [{"email": ANA, "espaco": "a"}, {"email": BEA, "espaco": "b"}])
+    texto_700k = "x" * (700 * 1024)
+    assert s.pedido("POST", "/api/nota", {"nome": "n1", "texto": texto_700k}, email=ANA).codigo == 201
+    h = s.get("/api/nota?nome=n1", email=ANA).json["hash"]
+    # crescer para 1,3 MB por PUT (a mesma nota) passava o tecto sem ninguém dar por isso
+    r = s.pedido("PUT", "/api/nota?nome=n1", {"texto": texto_700k * 2, "base_hash": h}, email=ANA)
+    assert r.codigo == 413, r.corpo
+    assert s.get("/api/nota?nome=n1", email=ANA).json["hash"] == h                  # nada gravado
+    # encolher passa sempre (quem está no tecto tem de conseguir apagar texto)
+    r = s.pedido("PUT", "/api/nota?nome=n1", {"texto": "curta\n", "base_hash": h}, email=ANA)
+    assert r.codigo == 200, r.corpo
+    # e com o espaço libertado volta a caber uma nota grande
+    assert s.pedido("POST", "/api/nota", {"nome": "n2", "texto": texto_700k}, email=ANA).codigo == 201
+
+
+def test_espaco_max_mb_cobre_sincronizar_entrada_e_guarda(com_espaco_max_mb, monkeypatch):
+    from basalt import web
+    s = com_espaco_max_mb(1, [{"email": ANA, "espaco": "a"}])
+    assert s.pedido("POST", "/api/nota", {"nome": "n1", "texto": "pequena\n"}, email=ANA).codigo == 201
+    grande = "y" * 900_000                                        # cabe sozinha; a dobrar (1,8 MB < 2 MB de corpo) passa o tecto
+    # /api/sincronizar (edição offline) = o mesmo gravar → o mesmo tecto, pelo caminho simples e pelo da cópia offline
+    r = s.pedido("POST", "/api/sincronizar", {"nome": "n1", "base_texto": "pequena\n", "texto": grande + grande}, email=ANA)
+    assert r.codigo == 413, r.corpo
+    r = s.pedido("POST", "/api/sincronizar", {"nome": "n1", "base_texto": "outra base\n", "texto": grande + grande}, email=ANA)
+    assert r.codigo == 413, r.corpo
+    esp = s.espaco("a")
+    assert not list(esp.raiz.rglob("n1.*.md"))                    # nenhuma cópia offline ficou gravada
+    r = s.pedido("POST", "/api/sincronizar", {"nome": "n1", "base_texto": "pequena\n", "texto": grande}, email=ANA)
+    assert r.codigo == 200, r.corpo
+    assert s.pedido("POST", "/api/nota", {"nome": "n2", "texto": "x" * 144_000}, email=ANA).codigo == 201   # sobram ~4,5 KB
+    # /api/guarda (Entrada) com o espaço quase cheio: 4000 «é» = 8000 bytes não cabem; «cabe» cabe
+    chamadas = []
+    monkeypatch.setattr(web, "motor", lambda args, timeout=60, espaco=None: chamadas.append(args) or
+                        type("R", (), {"returncode": 0, "stdout": "guardado", "stderr": ""})())
+    r = s.pedido("POST", "/api/guarda", {"texto": "é" * 4000}, email=ANA)
+    assert r.codigo == 413 and not chamadas, r.corpo
+    r = s.pedido("POST", "/api/guarda", {"texto": "cabe"}, email=ANA)
+    assert r.codigo == 200 and len(chamadas) == 1, r.corpo
+
+
+def test_limite_de_ia_por_conta_cobre_a_pergunta(s, monkeypatch):
+    from basalt import web
+    usar_ia("resumo falso", pedidos_por_hora_por_conta=2)
+    monkeypatch.setattr(web, "pergunta", lambda q: {"resposta": "falsa", "fontes": []})
+    assert s.pedido("POST", "/api/ia", {"acao": "resumir", "texto": "O barco sai às oito."}, email=ANA).codigo == 200
+    assert s.pedido("POST", "/api/pergunta", {"q": "quando sai o barco?"}, email=ANA).codigo == 200
+    r = s.pedido("POST", "/api/pergunta", {"q": "quando sai o barco?"}, email=ANA)      # o mesmo balde do editor
+    assert r.codigo == 429 and "2" in r.json["erro"], r.corpo
+    assert s.pedido("POST", "/api/pergunta", {"q": "quando sai o barco?"}, email=BEA).codigo == 200

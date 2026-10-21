@@ -473,7 +473,7 @@ def entrada_arquivar(t):
     return 200, {"ok": True, "mensagem": "Arrumada."}
 
 
-def entrada_juntar(t, nome, auto=None):
+def entrada_juntar(t, nome, auto=None, limite_mb=0):
     """acrescenta a ideia no fim da nota (com a data e a origem) e tira-a da Entrada. Ronda 9 (achado M2 da ronda 2): a operação INTEIRA —
     confirmar que a ideia ainda está pendente, escrever a nota, arquivar — corre sob o trinco da Entrada; antes só o arquivar o tinha, e duas
     juntas da mesma ideia a notas diferentes davam dois 200 e duas notas alteradas. Ordem dos trincos: a Entrada primeiro, depois a nota
@@ -491,7 +491,7 @@ def entrada_juntar(t, nome, auto=None):
         data = time.strftime("%d/%m/%Y", time.strptime(reg["t"][:10], "%Y-%m-%d")) if re.match(r"\d{4}-\d{2}-\d{2}", reg.get("t", "")) else time.strftime("%d/%m/%Y")
         linha = f"- {data}: {reg['texto'].strip()} _(da Entrada, via {reg.get('de', '?')})_"
         novo = atual.rstrip("\n") + "\n\n" + linha + "\n"
-        c, r = gravar(nome, novo, sha(b))
+        c, r = gravar(nome, novo, sha(b), limite_mb)
         if c != 200:
             return c, r
         try:
@@ -865,7 +865,9 @@ def estado():
 OCUPADO = (503, {"erro": "A sincronização com a memória está ocupada; tenta daqui a uns segundos.", "estado": "ocupado"})
 
 
-def gravar(nome, texto, base_hash):
+def gravar(nome, texto, base_hash, limite_mb=0):
+    """`limite_mb` (r14, [auth] espaco_max_mb): a nota só pode CRESCER enquanto o espaço tiver lugar; encolher ou reescrever ao
+    mesmo tamanho passa sempre — quem chegou ao tecto tem de conseguir apagar texto para voltar a caber."""
     loc = localizar(nome)
     if not loc:
         return 404, {"erro": "Nota não encontrada."}
@@ -890,6 +892,8 @@ def gravar(nome, texto, base_hash):
                     return 409, {"erro": "A nota acabou de mudar na memória (um agente); espera uns segundos e recarrega.",
                                  "hash_actual": actual, "actual": b.decode("utf-8", "replace"), "pendente": True, "estado": "ocupado"}
             dados = texto.encode("utf-8")
+            if _espaco_cheio(limite_mb, max(0, len(dados) - len(b))):     # só o que a nota cresce conta (o tecto não tranca o encolher)
+                return 413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."}
             motivo = cas().escrever(p, dados, actual, "web")
             if motivo:
                 b = caminhos.ler(p) if caminhos.regular(p) else b""
@@ -1226,7 +1230,7 @@ def _conflito(p, erro, teu, copia=None, **extra):
     return 409, r
 
 
-def reconciliar(nome, base_texto, texto):
+def reconciliar(nome, base_texto, texto, limite_mb=0):
     """sincronização de uma edição feita SEM internet (pedido do utilizador 25/09: «se os agentes mudaram entretanto, um agente
     verifica se não é algo já dito ou tratado»). BASE = o que o aparelho tinha, TEU = o que se escreveu offline, ACTUAL = o
     servidor agora. Ninguém mexeu → grava. Mexeram em sítios diferentes → junção linha a linha (git merge-file), verificada,
@@ -1244,7 +1248,7 @@ def reconciliar(nome, base_texto, texto):
         return 400, {"erro": "O texto tem o que parece uma password ou chave em claro — não gravei. Guarda-a num gestor de palavras-passe."}
     actual, h_actual = _texto_hash(p)
     if actual == base_texto or actual == texto:                # ninguém mexeu (ou já está igual) → gravação normal
-        c, r = gravar(nome, texto, h_actual)
+        c, r = gravar(nome, texto, h_actual, limite_mb)
         if c != 409:
             return c, dict(r, estado="gravado" if c == 200 else r.get("estado", "erro"))
         if r.get("pendente"):                                  # o vigia está a trazer uma mudança → tenta já a seguir
@@ -1254,10 +1258,12 @@ def reconciliar(nome, base_texto, texto):
     if not _rec_lock.acquire(timeout=REC_ESPERA):
         return 503, {"estado": "ocupado", "erro": "Há outra sincronização a correr; tento outra vez daqui a pouco."}
     try:
+        if _espaco_cheio(limite_mb, len(texto.encode("utf-8"))):   # r14: a cópia offline é um ficheiro novo inteiro — conta para o tecto
+            return 413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."}
         copia = _guardar_versao_offline(nome, texto)          # a versão offline nunca se perde, aconteça o que acontecer
         actual, h_actual = _texto_hash(p)
         if actual == base_texto or actual == texto:
-            c, r = gravar(nome, texto, h_actual)
+            c, r = gravar(nome, texto, h_actual, limite_mb)
             if c != 409:
                 return c, dict(r, estado="gravado" if c == 200 else r.get("estado", "erro"), copia=copia)
             if r.get("pendente"):
@@ -1444,6 +1450,15 @@ class H(BaseHTTPRequestHandler):
     def _dentro(self, u):
         with config.dentro(self.cfg.espaco_de(u).criar()):
             yield
+
+    def _ia_conta_cheia(self, user) -> bool:
+        """r14 ([ia] pedidos_por_hora_por_conta) nas rotas que chamam a IA FORA do editor (/api/pergunta, /api/unir): True = já
+        respondeu 429. Conta no mesmo balde do /api/ia — o tecto é «pedidos à IA por conta», por onde quer que entrem."""
+        maximo = ia_mod.actual().cfg.pedidos_por_hora_por_conta
+        if maximo and not _limite_horario_conta(_ia_usos_conta, user.email.lower(), maximo):
+            self._json(429, {"erro": f"Já fizeste {maximo} pedidos à IA na última hora; espera um bocado."})
+            return True
+        return False
 
     # ── respostas ──
     def _json(self, code, obj, cabecalhos=()):
@@ -1692,7 +1707,8 @@ class H(BaseHTTPRequestHandler):
                     c = self._corpo()
                     if not isinstance(c.get("texto"), str):     # sem «texto» gravava a nota vazia (ou «None»)
                         return self._json(400, {"erro": "Falta o texto da nota."})
-                    cod, r = gravar((q.get("nome") or [""])[0], str(c.get("texto", "")), str(c.get("base_hash", "")))
+                    cod, r = gravar((q.get("nome") or [""])[0], str(c.get("texto", "")), str(c.get("base_hash", "")),
+                                    self.cfg.auth.espaco_max_mb)
                     if cod == 200:
                         toque("escrever", [(q.get("nome") or [""])[0]])
                     return self._json(cod, r)
@@ -1759,7 +1775,8 @@ class H(BaseHTTPRequestHandler):
                 if u.path == "/api/parecidas":                                                   # aviso ao escrever
                     return self._json(200, parecidas_texto(str(c.get("nome", ""))[:120], str(c.get("texto", ""))))
                 if u.path == "/api/sincronizar":                                                 # edição feita sem internet
-                    return self._json(*reconciliar(str(c.get("nome", "")), str(c.get("base_texto", "")), str(c.get("texto", ""))))
+                    return self._json(*reconciliar(str(c.get("nome", "")), str(c.get("base_texto", "")), str(c.get("texto", "")),
+                                                   self.cfg.auth.espaco_max_mb))
                 if u.path == "/api/ia":                                                          # IA no editor
                     return self._json(*ia(str(c.get("acao", "")), str(c.get("texto", "")), str(c.get("contexto", "")), user.email.lower()))
                 if u.path == "/api/pergunta":
@@ -1768,6 +1785,8 @@ class H(BaseHTTPRequestHandler):
                         return self._json(200, {"resposta": "Escreve uma pergunta.", "fontes": []})
                     if not ia_mod.actual().chat_activo:
                         return self._json(503, {"erro": "IA desligada neste servidor: a pesquisa funciona, mas não há respostas escritas.", "ia": False})
+                    if self._ia_conta_cheia(user):                                              # r14: o mesmo tecto por conta do editor
+                        return
                     rp = pergunta(qq); toque("procurar", [f.get("nome") for f in rp.get("fontes", [])])
                     return self._json(200, rp)
                 if u.path == "/api/guarda":
@@ -1776,14 +1795,18 @@ class H(BaseHTTPRequestHandler):
                         return self._json(400, {"erro": "Nada para guardar."})
                     if tem_segredo_nota(t):
                         return self._json(400, {"erro": "Parece uma password ou chave — não guardei. Usa um gestor de palavras-passe."})
+                    if _espaco_cheio(self.cfg.auth.espaco_max_mb, len(t.encode("utf-8"))):     # r14: a Entrada vive no espaço da conta
+                        return self._json(413, {"erro": f"Chegaste ao limite de espaço da tua conta ({self.cfg.auth.espaco_max_mb} MB)."})
                     r = motor(["guarda", t, "--de", "web"])
                     return self._json(200, {"ok": r.returncode == 0, "mensagem": r.stdout.strip() or "guardado"})
                 if u.path == "/api/unir":
+                    if ia_mod.actual("unir").chat_activo and self._ia_conta_cheia(user):        # r14: a fusão também é um pedido à IA
+                        return
                     return self._json(*iniciar_fusao(str(c.get("manter", "")), str(c.get("fundir", ""))))
                 if u.path == "/api/unir/desfazer":
                     return self._json(*desfazer_fusao(str(c.get("job", ""))))
                 if u.path == "/api/entrada/juntar":
-                    return self._json(*entrada_juntar(str(c.get("t", "")), str(c.get("nota", ""))))
+                    return self._json(*entrada_juntar(str(c.get("t", "")), str(c.get("nota", "")), limite_mb=self.cfg.auth.espaco_max_mb))
                 if u.path == "/api/entrada/desfazer":
                     return self._json(*entrada_desfazer(str(c.get("t", ""))))
                 if u.path == "/api/entrada/apagar":

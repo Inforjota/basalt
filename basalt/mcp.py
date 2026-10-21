@@ -240,7 +240,7 @@ class ServidorMCP:
         nome, texto, base = _str(a, "nome", True, 200), _str(a, "texto", True), _str(a, "base_hash", True, 64)
         if not texto.strip():                             # ronda 8 (o MCP não esvazia notas): «texto» só com espaços esvaziava a nota — esta ferramenta não apaga
             return {"erro": "o texto está vazio — escrever_nota não apaga nem esvazia notas; isso faz-se na página"}, True
-        estado, d = self.web.gravar(nome, texto, base)
+        estado, d = self.web.gravar(nome, texto, base, self.cfg.auth.espaco_max_mb)     # r14: o mesmo tecto de disco da página
         if estado == 200:
             return {"ok": True, "nome": nome, "hash": d.get("hash")}, False
         d = dict(d)
@@ -258,7 +258,7 @@ class ServidorMCP:
                 return {"erro": f"nota não encontrada: {nome}"}, True
             _loc, b, actual = n
             novo = actual.rstrip("\n") + "\n\n" + texto.strip() + "\n"
-            estado, d = self.web.gravar(nome, novo, self.web.sha(b))
+            estado, d = self.web.gravar(nome, novo, self.web.sha(b), self.cfg.auth.espaco_max_mb)
             if estado == 200:
                 return {"ok": True, "nome": nome, "hash": d.get("hash")}, False
             ultimo = dict(d)
@@ -272,7 +272,8 @@ class ServidorMCP:
         tipo = _str(a, "tipo", maximo=20) or "project"
         if tipo not in TIPOS:
             raise ParametrosInvalidos(f"tipo tem de ser um de {TIPOS}")
-        estado, d = self.web.criar(nome, com_frontmatter(nome, texto, _str(a, "descricao", maximo=300), tipo))
+        estado, d = self.web.criar(nome, com_frontmatter(nome, texto, _str(a, "descricao", maximo=300), tipo),
+                                   self.cfg.auth.espaco_max_mb)                       # r14: o /mcp não contorna o tecto de disco
         if estado == 201:
             return {"ok": True, "nome": nome}, False
         return dict(d, estado="erro"), True
@@ -332,6 +333,8 @@ class ServidorMCP:
                 return {"erro": MOTIVO_SEGREDO}, True
         except VerificacaoFalhou as e:
             return {"erro": str(e)}, True
+        if self.web._espaco_cheio(self.cfg.auth.espaco_max_mb, len(texto.encode("utf-8"))):     # r14: a Entrada conta para o tecto de disco
+            return {"erro": f"Chegaste ao limite de espaço da tua conta ({self.cfg.auth.espaco_max_mb} MB).", "estado": "erro"}, True
         reg = entrada.acrescentar(texto, "mcp", autor=u.email)    # pelo trinco comum da Entrada (ronda 8, trinco da Entrada) e com t único (ronda 8, carimbos únicos)
         return {"ok": True, "guardada_em": "entrada", "quando": reg["t"]}, False
 

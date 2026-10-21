@@ -230,11 +230,11 @@ class TestEscritasAMeio:
         usar_ia("")
         original, feito = web.gravar, []
 
-        def gravar_com_corrida(nome, texto, h):
+        def gravar_com_corrida(nome, texto, h, limite_mb=0):       # a mesma assinatura da web.gravar (r14: limite_mb)
             if not feito:
                 feito.append(1)
                 (memoria.copia / "n.md").write_text(base + "outra escrita\n", encoding="utf-8")
-            return original(nome, texto, h)
+            return original(nome, texto, h, limite_mb)
         monkeypatch.setattr(web, "gravar", gravar_com_corrida)
         c, r = web.reconciliar("n", base, base + "teu\n")
         agora = (memoria.copia / "n.md").read_bytes()

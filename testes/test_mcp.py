@@ -242,3 +242,35 @@ def test_origem():
     assert not mcp.origem_ok("https://mau.exemplo.com", nossos)
     assert not mcp.origem_ok("null", nossos)
     assert not mcp.origem_ok("http://127.0.0.1.mau.exemplo.com", nossos)     # ronda 8 (Host/Origin): o nome inteiro, não um prefixo
+
+
+def test_o_mcp_respeita_o_tecto_de_disco_da_conta(tmp_path, monkeypatch):
+    """revisão Fable (20/10): criar_nota/escrever_nota/acrescentar_nota/guardar_ideia pelo /mcp contornavam o
+    [auth] espaco_max_mb que a página já cumpria."""
+    token, h = auth.gerar_token()
+    u = Utilizador(email="ana@exemplo.pt", espaco="ana", nome="Ana", mcp_token_hash=h)
+    cfg = Config(dados=tmp_path / "dados", escutar="127.0.0.1", auth=AuthConfig(modo="aberto", espaco_max_mb=1), utilizadores=[u],
+                 anfitrioes=("basalt.exemplo.pt",))
+    cfg.validar()
+    esp = cfg.espaco_de(u).criar()
+    (esp.copia / "tarefas.md").write_text(NOTAS["tarefas"], encoding="utf-8")
+    (esp.real / "tarefas.md").write_text(NOTAS["tarefas"], encoding="utf-8")
+    srv = mcp.ServidorMCP(cfg, web=_web_para(esp, monkeypatch))
+    grande = "x" * 390_000                                                            # abaixo dos 400 000 do «texto» do MCP
+    d, erro = ferramenta(srv, u, "criar_nota", nome="n1", texto=grande)
+    assert not erro and d["ok"]
+    (esp.copia / "enche.md").write_text("e" * 400_000, encoding="utf-8")             # ~790 KB usados; sobram ~250 KB
+    d, erro = ferramenta(srv, u, "criar_nota", nome="n2", texto=grande)                 # passava 1 MB
+    assert erro and "limite" in d["erro"] and not (esp.copia / "n2.md").exists()
+    d, erro = ferramenta(srv, u, "acrescentar_nota", nome="tarefas", texto=grande)
+    assert erro and "limite" in d["erro"]
+    d, _ = ferramenta(srv, u, "ler_nota", nome="tarefas")
+    d2, erro = ferramenta(srv, u, "escrever_nota", nome="tarefas", texto=d["texto"] + grande, base_hash=d["hash"])
+    assert erro and "limite" in d2["erro"]
+    d2, erro = ferramenta(srv, u, "escrever_nota", nome="tarefas", texto="encolhida\n", base_hash=d["hash"])   # encolher passa
+    assert not erro and d2["ok"]
+    d, erro = ferramenta(srv, u, "guardar_ideia", texto="cabe")
+    assert not erro and d["ok"]
+    (esp.copia / "enche2.md").write_text("e" * 250_000, encoding="utf-8")            # sobram < 10 KB
+    d, erro = ferramenta(srv, u, "guardar_ideia", texto="i" * 19_000)
+    assert erro and "limite" in d["erro"]

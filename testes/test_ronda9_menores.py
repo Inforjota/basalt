@@ -52,13 +52,13 @@ def test_duas_juntas_da_mesma_ideia_a_notas_diferentes_so_uma_passa(memoria, mon
     original = web.gravar
     chegaram, juntos = [], threading.Event()
 
-    def gravar_a_dois(nome, texto, base_hash):
+    def gravar_a_dois(nome, texto, base_hash, limite_mb=0):        # a mesma assinatura da web.gravar (r14: limite_mb)
         """força a sobreposição: nenhuma das duas escreve até as duas estarem a escrever (sem trinco que as separe, chegam as duas)."""
         chegaram.append(nome)
         if len(chegaram) == 2:
             juntos.set()
         juntos.wait(1.0)
-        return original(nome, texto, base_hash)
+        return original(nome, texto, base_hash, limite_mb)
     monkeypatch.setattr(web, "gravar", gravar_a_dois)
     codigos = {}
 
