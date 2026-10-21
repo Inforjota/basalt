@@ -35,6 +35,12 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   prontos**, como as do arranque. `docs/GOOGLE.md`: o `X-Auth-Request-User` **é** o `sub` com `--provider=google`
   (confirmado no `providers/google.go`), nota sobre `--provider=oidc`/`--user-id-claim`, `--upstream=static://202`, e
   o alcance exacto de cada tecto.
+- Assente na ronda 13c (21/10): **`utilizador apagar` revoga as ligações das IAs na base antes de tirar a conta do
+  `basalt.toml`**, como `senha`/`novo` desde a ronda 13 — se a base não deixar (ocupada, ligação simbólica), o comando falha
+  e o `basalt.toml` fica como estava. **A lista das notas retidas** (`[segredos] verificador`) calcula-se no trinco do
+  espaço também no arranque e no vigia (um pedido da página a meio já não faz uma 2.ª ida ao verificador nem tapa a lista
+  mais recente com a mais antiga), e **depois de um arranque com o verificador falhado o vigia repete ao fim de 60 s**
+  (no máximo 5 vezes) em vez de deixar todas as notas retidas durante 5 minutos.
 
 ### Correcções da ronda 13c (20/10/2026)
 - **Uma nota em que o `[segredos] verificador` falha sempre já não trava a sincronização das outras:** com «no máximo uma
