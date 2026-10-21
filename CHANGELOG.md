@@ -4,6 +4,36 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Contas apagadas: de vez aos 30 dias e não voltam com uma cópia, ronda r17 (21/10/2026)
+
+> **Depois de actualizar**, com várias contas: liga o timer `basalt-apagados` ([docs/INSTALAR.md](docs/INSTALAR.md) §3) e,
+> depois de cada apagamento, guarda a saída de `basalt apagados exportar` **fora** das cópias de segurança (§6). As contas
+> apagadas antes desta versão não têm registo: as pastas delas em `apagados/` ficam até as tirares à mão.
+
+- **Registo das contas apagadas** (`<dados>/contas-apagadas.json`, `0600`, escrita atómica com `fsync` e trinco próprio): o
+  `basalt utilizador apagar` grava a entrada (sha256 do e-mail, `conta_id`, espaço, pasta e a hora em UTC) **antes** de mover a
+  pasta para `apagados/`; se o registo não se puder gravar, a conta não se apaga. A mensagem diz a partir de que dia a conta se
+  elimina de vez.
+- **`basalt apagados eliminar [--dias 30] [--sim]`:** apaga de vez o que passou do prazo — só pastas dentro de `apagados/` com o
+  nome que o registo diz (nunca por ligações simbólicas, nunca pastas sem registo) —, tira da base OAuth as ligações e os
+  pedidos dessa conta, termina as sessões que ainda lá estejam e deixa a entrada anonimizada (o e-mail, o espaço e a pasta
+  passam a `null`). Cada entrada é independente: uma que falhe não trava as outras e repete-se na corrida seguinte. Uma conta
+  que voltou ao `basalt.toml` (o mesmo e-mail e o mesmo `conta_id`) não se elimina: o comando avisa e sai com rc 1. Novo timer
+  opcional `sistema/basalt-apagados.timer` (diário, `Persistent=true`, sem rede), que o corre com `--sim`.
+- **`basalt apagados exportar` e `basalt apagados reaplicar --lista F [--sim]`:** a lista (JSON Lines sem e-mails) guarda-se
+  fora das cópias; depois de repor uma cópia, o `reaplicar` volta a apagar cada conta que ela trouxe, pelo mesmo caminho e com
+  a data original, para o `eliminar` seguinte a tratar logo. Idempotente; o único admin nunca se apaga sozinho.
+- **`conta_id` em cada conta nova** (`iniciar`, `utilizador novo`, o 1.º login com `criar_contas`): uma conta criada mais tarde
+  com o mesmo e-mail tem outro e nunca é tocada pelo `eliminar` nem pelo `reaplicar`. Um `basalt.toml` antigo carrega com o
+  `conta_id` vazio; para essas contas o mesmo e-mail chega para as reconhecer (limitação documentada).
+- **Linha de resumo fixa:** `eliminar` e `reaplicar` acabam sempre com `resumo: a_eliminar=N`, `resumo: eliminadas=N falhas=N
+  voltaram=N`, `resumo: reapagaria=N recriadas=N acrescentaria=N protegidas=N` ou `resumo: reapagadas=N recriadas=N
+  acrescentadas=N protegidas=N` — a última linha do stdout, sem e-mails, também quando falham —, para os vigiar sem depender do
+  texto. Nenhum dos comandos escreve e-mails.
+- Testes novos: `testes/test_r17_apagados.py` (o apagamento grava antes de mover, os dias, as recusas de ligações simbólicas e
+  de pastas fora de `apagados/`, a poda OAuth só da conta, a reposição de uma cópia simulada, a conta recriada, o espaço
+  partilhado, o `toml` antigo, as falhas isoladas e os quatro formatos do resumo).
+
 ### Isolamento entre contas, ronda r16 (21/10/2026)
 
 > **⚠️ Antes de actualizar:** se usas `modo = "cabecalho"`, configura `BASALT_SEGREDO_PROXY` (pelo menos 32 caracteres)
