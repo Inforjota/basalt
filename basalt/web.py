@@ -1071,10 +1071,30 @@ def _limite_horario_conta(dic, conta, maximo):
         return True
 
 
-def ia(acao, texto, contexto="", conta=""):
+TECTO_IA_CONTA_AUTO = 20       # r16 (M1): o tecto por conta quando o toml não diz nenhum e o servidor tem (ou pode ter) várias contas
+
+
+def tecto_ia_conta(cfg_srv, cfg_ia) -> int:
+    """r16 (auditoria de isolamento 21/10, M1): pedidos à IA por hora para CADA conta (0 = sem tecto por conta). Calculado à hora
+    do pedido — as contas e o criar_contas relêem-se do toml sem reiniciar (r15) — e usado pelo /api/ia e pelo _ia_conta_cheia.
+      · [ia] pedidos_por_hora_por_conta > 0 → esse;
+      · omisso ou 0, com mais de uma conta ou [auth] criar_contas = true → min(20, pedidos_por_hora) (20 se esse for 0): antes
+        era «desligado» e uma conta gastava os pedidos da hora de toda a gente;
+      · omisso ou 0, com uma só conta e sem criar contas → sem tecto (o servidor de uma pessoa: chega o do servidor).
+    `cfg_srv` None (chamadas fora de um servidor) → só conta o valor explícito."""
+    explicito = cfg_ia.pedidos_por_hora_por_conta
+    if explicito > 0:
+        return explicito
+    if cfg_srv is None or not (len(cfg_srv.utilizadores) > 1 or cfg_srv.auth.criar_contas):
+        return 0
+    total = cfg_ia.pedidos_por_hora
+    return min(TECTO_IA_CONTA_AUTO, total) if total > 0 else TECTO_IA_CONTA_AUTO
+
+
+def ia(acao, texto, contexto="", conta="", cfg_srv=None):
     """o editor pede à IA para resumir/reescrever/corrigir/continuar o texto seleccionado. Um pedido de cada vez, com limite
-    por hora ([ia] pedidos_por_hora, do servidor todo) e, opcionalmente, um por CONTA ([ia] pedidos_por_hora_por_conta,
-    `conta` = o e-mail de quem pediu); nunca envia nem devolve o que pareça segredo. IA desligada → 503 {"ia": false}."""
+    por hora ([ia] pedidos_por_hora, do servidor todo) e um por CONTA (`conta` = o e-mail de quem pediu; o tecto vem de
+    `tecto_ia_conta(cfg_srv, …)`, r16); nunca envia nem devolve o que pareça segredo. IA desligada → 503 {"ia": false}."""
     cfg_ia = ia_mod.actual()
     if not cfg_ia.chat_activo:
         return 503, {"erro": "IA desligada neste servidor.", "ia": False}
@@ -1088,7 +1108,7 @@ def ia(acao, texto, contexto="", conta=""):
         return 400, {"erro": f"A selecção tem {len(texto)} caracteres; a IA só trabalha com até {maximo} de cada vez. Selecciona menos."}
     if tem_segredo_nota(texto + "\n" + contexto):
         return 400, {"erro": "O texto tem o que parece uma password ou chave — não o mando à IA."}
-    maximo_conta = cfg_ia.cfg.pedidos_por_hora_por_conta
+    maximo_conta = tecto_ia_conta(cfg_srv, cfg_ia.cfg)      # r16 (M1): com várias contas há sempre tecto por conta
     if maximo_conta and not _limite_horario_conta(_ia_usos_conta, conta, maximo_conta):
         return 429, {"erro": f"Já fizeste {maximo_conta} pedidos à IA na última hora; espera um bocado."}
     if not _limite_horario(_ia_usos, cfg_ia.cfg.pedidos_por_hora):
@@ -1525,8 +1545,9 @@ class H(BaseHTTPRequestHandler):
 
     def _ia_conta_cheia(self, user) -> bool:
         """r14 ([ia] pedidos_por_hora_por_conta) nas rotas que chamam a IA FORA do editor (/api/pergunta, /api/unir): True = já
-        respondeu 429. Conta no mesmo balde do /api/ia — o tecto é «pedidos à IA por conta», por onde quer que entrem."""
-        maximo = ia_mod.actual().cfg.pedidos_por_hora_por_conta
+        respondeu 429. Conta no mesmo balde do /api/ia — o tecto é «pedidos à IA por conta», por onde quer que entrem.
+        r16 (M1): o tecto é o de `tecto_ia_conta` (automático com várias contas), o mesmo do /api/ia."""
+        maximo = tecto_ia_conta(self.cfg, ia_mod.actual().cfg)
         if maximo and not _limite_horario_conta(_ia_usos_conta, user.email.lower(), maximo):
             self._json(429, {"erro": f"Já fizeste {maximo} pedidos à IA na última hora; espera um bocado."})
             return True
@@ -1856,7 +1877,8 @@ class H(BaseHTTPRequestHandler):
                     return self._json(*reconciliar(str(c.get("nome", "")), str(c.get("base_texto", "")), str(c.get("texto", "")),
                                                    self.cfg.auth.espaco_max_mb))
                 if u.path == "/api/ia":                                                          # IA no editor
-                    return self._json(*ia(str(c.get("acao", "")), str(c.get("texto", "")), str(c.get("contexto", "")), user.email.lower()))
+                    return self._json(*ia(str(c.get("acao", "")), str(c.get("texto", "")), str(c.get("contexto", "")), user.email.lower(),
+                                          self.cfg))
                 if u.path == "/api/pergunta":
                     qq = str(c.get("q", "")).strip()[:500]
                     if not qq:

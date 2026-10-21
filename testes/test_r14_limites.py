@@ -62,11 +62,15 @@ def test_limite_de_ia_por_conta(s):
     assert s.pedido("POST", "/api/ia", pedido, email=BEA).codigo == 200
 
 
-def test_limite_de_ia_por_conta_desligado_por_omissao(s):
-    usar_ia("resumo falso")                                     # pedidos_por_hora_por_conta = 0 (omissão)
+def test_limite_de_ia_por_conta_automatico_por_omissao(s):
+    # r16 (auditoria de isolamento 21/10, M1): era «desligado por omissão»; com duas contas (este `s`) passou a ser automático —
+    # min(20, pedidos_por_hora). O servidor de uma só conta continua sem tecto por conta (testes/test_r16_ia_por_conta.py)
+    usar_ia("resumo falso")                                     # pedidos_por_hora_por_conta = 0 (omissão), pedidos_por_hora = 40
     pedido = {"acao": "resumir", "texto": "O barco sai às oito da manhã."}
-    for _ in range(5):
+    for _ in range(20):
         assert s.pedido("POST", "/api/ia", pedido, email=ANA).codigo == 200
+    assert s.pedido("POST", "/api/ia", pedido, email=ANA).codigo == 429
+    assert s.pedido("POST", "/api/ia", pedido, email=BEA).codigo == 200
 
 
 def test_espaco_max_mb_recusa_nota_grande(com_espaco_max_mb):

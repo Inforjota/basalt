@@ -83,7 +83,8 @@ class IAConfig:
     tempo_limite: int = 120             # segundos por chamada
     propostas_por_hora: int = 12        # propostas de junção pela IA (sincronizar)
     pedidos_por_hora: int = 40          # IA no editor (resumir/reescrever/…) — limite do SERVIDOR (todas as contas juntas)
-    pedidos_por_hora_por_conta: int = 0  # r14: além do limite do servidor, um tecto por CONTA (0 = desligado)
+    pedidos_por_hora_por_conta: int = 0  # r14: além do limite do servidor, um tecto por CONTA; r16: 0/omisso = automático — com várias
+                                        # contas (ou criar_contas) min(20, pedidos_por_hora), com uma só sem tecto (web.tecto_ia_conta)
     texto_maximo: int = 6000            # caracteres por pedido ao editor
     embeddings_fornecedor: str = ""     # "" = o mesmo que o chat quando é openai; openai | ollama | nenhum
     embeddings_url: str = ""            # openai: …/v1 (usa /embeddings) · ollama: http://host:11434 (usa /api/embeddings)
