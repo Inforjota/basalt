@@ -4,6 +4,20 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Revisão do login com a Google, ronda r15 (21/10/2026)
+- **`[auth]` relido sem reiniciar:** mudar no `basalt.toml` o `max_contas`, os `dominios`, o `criar_contas` ou o
+  `espaco_max_mb` vale no pedido seguinte — antes, o tecto de contas e os domínios ficavam os do arranque até reiniciar
+  (um toml com 6 contas continuava a dizer «tecto de 3»). Modo, cabeçalhos e segredo continuam a pedir reinício.
+- **Aviso no arranque** em modo `cabecalho` sem o segredo do proxy: o servidor arranca (as instalações anteriores à r14
+  continuam a funcionar), mas escreve no registo que qualquer processo que chegue à porta entra com o e-mail que puser
+  no cabeçalho.
+- **`docs/GOOGLE.md` revisto:** o include do nginx leva o e-mail e o segredo juntos (sem o `auth_request_set` o
+  `nginx -t` falha — a configuração fica fechada, nunca aberta); `/oauth2/auth` sem corpo; o `cabecalho` do
+  `basalt.toml` tem de ser o nome que o nginx escreve; o histórico git e a pasta de cópia contam no tecto de disco; a
+  prova do ataque (§7) foi refeita — a anterior dava 302 também numa instalação mal configurada.
+- Testes novos: `testes/test_guia_google.py` (o guia à letra, com `nginx -t` real quando há nginx) e mais 2 em
+  `testes/test_login_google.py`.
+
 ### Login com a Google para clientes, ronda r14 (20/10/2026)
 - **Modo `cabecalho` com conta automática:** atrás de um proxy de SSO (oauth2-proxy + Google), `[auth] criar_contas = true`
   cria a conta sozinha no primeiro login de um e-mail novo — nada de `basalt utilizador novo` à mão por cada cliente. O
