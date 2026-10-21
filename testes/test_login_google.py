@@ -5,7 +5,7 @@ import threading
 
 import pytest
 
-from basalt import config
+from basalt import auth, config, web
 from test_oauth import ANA, RUI, Srv, _relogio, mcp, tokens  # noqa: F401 (fixtures)
 
 SEG = "s" * 40
@@ -128,10 +128,16 @@ def test_configuracao_recusa_o_que_e_perigoso(tmp_path, monkeypatch):
     base = (f'[basalt]\ndados = "{tmp_path}/d"\nescutar = "127.0.0.1"\ngit = false\n[auth]\nmodo = "cabecalho"\n')
     p = tmp_path / "b.toml"
     p.write_text(base + "criar_contas = true\n", encoding="utf-8")
+    # os comandos de administração carregam a config sem o segredo (ensaio de 20/10: recusavam todos correr)…
+    sem = config.carregar(p, ambiente={})
+    # …mas o servidor não arranca: sem segredo qualquer visitante criava contas
     with pytest.raises(config.ConfigInvalida, match="segredo"):
-        config.carregar(p, ambiente={})                              # criar contas sem segredo do proxy
+        web.criar_servidor(sem, porta=0)
     with pytest.raises(config.ConfigInvalida, match="32"):
-        config.carregar(p, ambiente={"BASALT_SEGREDO_PROXY": "curto"})
+        web.criar_servidor(config.carregar(p, ambiente={"BASALT_SEGREDO_PROXY": "curto"}), porta=0)
+    # e, se alguém o pusesse a servir na mesma, não se cria conta nenhuma
+    a = auth.Autenticador(sem); a._origem = p
+    assert a._criar_conta("x@gmail.com", "") is None
     assert config.carregar(p, ambiente={"BASALT_SEGREDO_PROXY": SEG}).auth.criar_contas
     p.write_text(base + f'segredo_proxy = "{SEG}"\n', encoding="utf-8")
     with pytest.raises(config.ConfigInvalida, match="ambiente"):

@@ -570,7 +570,7 @@ class Autenticador:
         """conta nova (espaço próprio com nome aleatório, sem senha, não admin) no basalt.toml, dentro do trinco do toml.
         None = não se cria (e-mail estranho, domínio fora da lista, tecto de contas, sem `sub` quando se exige, erro a gravar)."""
         a = self.cfg.auth
-        if self._origem is None or self._fechado:
+        if self._origem is None or self._fechado or len(a.segredo_proxy) < 32:     # sem segredo, nunca (defesa a mais)
             return None
         if len(email) > 254 or not re.fullmatch(r"[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+", email):
             return None

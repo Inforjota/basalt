@@ -81,6 +81,19 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # rotas que a IA do cliente (claude.ai, ChatGPT) chama SEM browser: não podem pedir login Google. O /mcp tem o
+    # seu próprio Bearer; aqui o e-mail vai SEMPRE vazio, por isso ninguém entra como pessoa por estas rotas.
+    # (/oauth/authorize fica de fora de propósito: é o browser do cliente, e passa pelo login Google em baixo.)
+    location ~ ^/(\.well-known/|oauth/register$|oauth/token$|mcp$|api/saude$) {
+        proxy_pass http://127.0.0.1:8121;
+        proxy_set_header Host                       $host;
+        proxy_set_header X-Forwarded-Proto           https;
+        proxy_set_header X-Forwarded-For             $remote_addr;
+        proxy_set_header X-Basalt-Email              "";
+        proxy_set_header X-Basalt-Sub                "";
+        proxy_buffering off;                                                  # o /mcp responde em stream
+    }
+
     location / {
         auth_request /oauth2/auth;
         error_page 401 = /oauth2/sign_in;
@@ -105,9 +118,8 @@ O segredo fica num ficheiro à parte, só legível pelo root (`chmod 600`), nunc
 proxy_set_header X-Basalt-Proxy-Segredo "COLA_AQUI_O_MESMO_VALOR";
 ```
 
-Em **todos** os `location` que vão para o Basalt (incluindo os das rotas que o oauth2-proxy deixa passar sem login,
-como `/mcp` e `/oauth/token`) põe as linhas do `X-Basalt-Email` e do `include`; nas rotas sem login o `$email` vem
-vazio e o Basalt não dá a sessão de ninguém. Um `location` que se esqueça do `include` deixa simplesmente de entrar
+Em **todos** os `location` que vão para o Basalt põe a linha do `X-Basalt-Email`: com `$email` (vindo do
+`auth_request`) junto com o `include` do segredo, ou `""` sem o `include`, como no das rotas da IA. Um `location` que se esqueça do `include` deixa simplesmente de entrar
 (falta o segredo) — falha fechada, não aberta.
 
 Se quiseres o `sub` da Google como confirmação extra (impede que um e-mail *gmail.com* mudado de dono volte a

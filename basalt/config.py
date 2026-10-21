@@ -224,6 +224,14 @@ class Config:
     def espaco_de(self, u: Utilizador) -> "Espaco":
         return self.espaco(u.espaco)
 
+    def exigir_segredo_proxy(self) -> None:
+        """só para quem SERVE pedidos (web.criar_servidor): com criar_contas, sem o segredo do proxy qualquer visitante que
+        escreva o cabeçalho do e-mail criava contas. Os comandos de administração (utilizador apagar/exportar/mcp-token…)
+        não falam com o proxy e não precisam dele (ensaio de 20/10: recusavam todos correr)."""
+        if self.auth.criar_contas and len(self.auth.segredo_proxy) < 32:
+            raise ConfigInvalida(f"[auth] criar_contas exige o segredo do proxy na variável {self.auth.segredo_proxy_env} "
+                                 "(pelo menos 32 caracteres, ex.: python3 -c 'import secrets;print(secrets.token_urlsafe(32))')")
+
     def validar(self) -> None:
         if self.idioma not in IDIOMAS:
             raise ConfigInvalida(f"[basalt] idioma tem de ser um de {IDIOMAS}, não {self.idioma!r}")
@@ -298,9 +306,6 @@ class Config:
         if self.auth.criar_contas:
             if self.auth.modo != "cabecalho":
                 raise ConfigInvalida("[auth] criar_contas só no modo cabecalho (o proxy com o login Google é que autentica)")
-            if len(self.auth.segredo_proxy) < 32:
-                raise ConfigInvalida(f"[auth] criar_contas exige o segredo do proxy na variável {self.auth.segredo_proxy_env} "
-                                     "(pelo menos 32 caracteres, ex.: python3 -c 'import secrets;print(secrets.token_urlsafe(32))')")
             if self.auth.max_contas < 0:
                 raise ConfigInvalida("[auth] max_contas não pode ser negativo")
         if self.auth.espaco_max_mb < 0:

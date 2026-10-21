@@ -1861,6 +1861,7 @@ class ServidorV6(Servidor):
 
 def criar_servidor(cfg, host=None, porta=None):
     """o servidor HTTP pronto a servir (não arranca fios nem vigias). porta=0 → o sistema escolhe uma livre (testes)."""
+    cfg.exigir_segredo_proxy()                # r14: criar contas sem o segredo do proxy = qualquer um cria contas
     config.activar(cfg)                       # ambiente para os filhos + IA de [ia] (ronda 8, --config para tudo: o mesmo que a linha de comandos faz)
     for esp in _espacos(cfg):
         esp.criar()
