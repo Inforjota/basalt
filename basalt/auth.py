@@ -349,6 +349,12 @@ class Autenticador:
             for k in mortas:
                 self._sessoes.pop(k, None)
             self.cfg.utilizadores = novos                      # o mesmo objecto Config que o servidor web usa
+            # auditoria 21/10: o que em [auth] governa as contas novas e os tectos também é relido — descer o
+            # tecto, apertar os domínios ou desligar criar_contas ao vivo vale no pedido seguinte (antes só a lista de utilizadores
+            # mudava e _criar_conta ficava com o max_contas do arranque). Modo, cabeçalhos e segredo ficam como arrancaram: isso é
+            # reiniciar (o segredo nem vem do toml); ligar criar_contas ao vivo sem segredo continua a não criar nada (_criar_conta).
+            for campo in ("criar_contas", "dominios", "max_contas", "espaco_max_mb"):
+                setattr(self.cfg.auth, campo, getattr(novo.auth, campo))
             if getattr(self, "oauth", None) is not None:
                 self.oauth.contas_mudaram()                    # ronda 13: quem saiu ou mudou fica com as ligações revogadas na base
             self._fechado = ""
@@ -570,8 +576,11 @@ class Autenticador:
     def _criar_conta(self, email: str, sub: str) -> Utilizador | None:
         """conta nova (espaço próprio com nome aleatório, sem senha, não admin) no basalt.toml, dentro do trinco do toml.
         None = não se cria (e-mail estranho, domínio fora da lista, tecto de contas, sem `sub` quando se exige, erro a gravar)."""
+        if self._origem is None:
+            return None
+        self.reler_se_mudou()                                   # auditoria 21/10: o tecto e os domínios são os do toml ACTUAL
         a = self.cfg.auth
-        if self._origem is None or self._fechado or len(a.segredo_proxy) < 32:     # sem segredo, nunca (defesa a mais)
+        if self._fechado or len(a.segredo_proxy) < 32:          # sem segredo, nunca (defesa a mais)
             return None
         if len(email) > 254 or not re.fullmatch(r"[a-z0-9._%+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+", email):
             return None
@@ -581,9 +590,12 @@ class Autenticador:
             return None
         with self._criar_lock:
             self.reler_se_mudou()
+            a = self.cfg.auth                                   # relido dentro do trinco (antes ficava o [auth] de fora dele)
             u = self.cfg.utilizador(email)
             if u is not None:                                   # outro pedido criou-a entretanto
                 return u
+            if not a.criar_contas or (a.dominios and email.rsplit("@", 1)[1] not in a.dominios):
+                return None                                     # o toml mudou entretanto: desligou-se ou apertaram-se os domínios
             if a.max_contas and len(self.cfg.utilizadores) >= a.max_contas:
                 print(f"contas: tecto de {a.max_contas} atingido — {email} não foi criada", file=sys.stderr, flush=True)
                 return None

@@ -13,6 +13,7 @@ import contextlib
 import ipaddress
 import re
 import os
+import sys
 import threading
 import tomllib
 import urllib.parse
@@ -231,6 +232,12 @@ class Config:
         if self.auth.criar_contas and len(self.auth.segredo_proxy) < 32:
             raise ConfigInvalida(f"[auth] criar_contas exige o segredo do proxy na variável {self.auth.segredo_proxy_env} "
                                  "(pelo menos 32 caracteres, ex.: python3 -c 'import secrets;print(secrets.token_urlsafe(32))')")
+        if self.auth.modo == "cabecalho" and not self.auth.segredo_proxy:
+            # auditoria (21/10): sem criar_contas arrancava em silêncio — toda a segurança ficava no proxy, sem ninguém o dizer.
+            # Continua a arrancar (instalações anteriores à r14, com um proxy que substitui sempre o cabeçalho), mas fica escrito.
+            print(f"aviso: [auth] modo cabecalho sem o segredo do proxy ({self.auth.segredo_proxy_env} vazio): qualquer processo que "
+                  f"chegue a esta porta entra com o e-mail que escrever em {self.auth.cabecalho}. Define a variável e o include do "
+                  "nginx (docs/GOOGLE.md §3), ou garante que só o proxy chega aqui.", file=sys.stderr, flush=True)
 
     def validar(self) -> None:
         if self.idioma not in IDIOMAS:

@@ -170,3 +170,50 @@ def test_conta_nova_fica_com_o_espaco_e_o_git_prontos(g, monkeypatch):
     marca = (esp.real / ".git" / "HEAD").stat().st_mtime_ns
     assert _eu(s, s.como(NOVO, sub="1234567890"))[0] == 200
     assert (esp.real / ".git" / "HEAD").stat().st_mtime_ns == marca
+
+
+# ───────────── auditoria de 21/10/2026 ao login Google ─────────────
+def test_modo_cabecalho_sem_segredo_avisa_no_arranque(tmp_path, capsys):
+    """sem criar_contas o servidor arranca sem o segredo do proxy (instalações anteriores à r14), mas fica escrito no stderr que toda a
+    segurança está no proxy — antes arrancava em silêncio e aceitava o X-Basalt-Email de quem chegasse à porta (ensaio b2)."""
+    base = (f'[basalt]\ndados = "{tmp_path}/d"\nescutar = "127.0.0.1"\ngit = false\n[auth]\nmodo = "cabecalho"\n'
+            f'[[utilizadores]]\nemail = "{ANA}"\nespaco = "ana"\n')
+    p = tmp_path / "b.toml"
+    p.write_text(base, encoding="utf-8")
+    srv = web.criar_servidor(config.carregar(p, ambiente={}), porta=0)
+    srv.server_close()
+    err = capsys.readouterr().err
+    assert "aviso" in err and "segredo" in err and "BASALT_SEGREDO_PROXY" in err and "X-Basalt-Email" in err, err
+    srv = web.criar_servidor(config.carregar(p, ambiente={"BASALT_SEGREDO_PROXY": SEG}), porta=0)
+    srv.server_close()
+    assert "aviso" not in capsys.readouterr().err                   # com o segredo, nada a dizer
+
+
+def _editar_auth(s, *pares):
+    """muda o [auth] do basalt.toml ao vivo, numa só escrita (o texto muda de tamanho: a marca do ficheiro é (mtime, tamanho, inode))."""
+    t = antes = s.toml.read_text(encoding="utf-8")
+    for velho, novo in zip(pares[::2], pares[1::2]):
+        assert t.count(velho) == 1, velho
+        t = t.replace(velho, novo)
+    assert len(t) != len(antes)
+    s.toml.write_text(t, encoding="utf-8")
+
+
+def test_tecto_dominios_e_criar_contas_mudados_no_toml_valem_sem_reiniciar(g):
+    """o tecto e os domínios que _criar_conta aplica são os do toml ACTUAL: antes ficavam os do arranque (reler_se_mudou só trazia
+    os utilizadores) — descer o tecto ou apertar os domínios ao vivo não travava contas novas (ensaio b1: toml a 6, registo «tecto de 3»)."""
+    s = g(auth_extra="criar_contas = true\nmax_contas = 3\n")
+    assert _eu(s, s.como("a@empresa.pt"))[0] == 200                 # 3.ª conta (Ana, Rui + esta)
+    assert _eu(s, s.como("b@empresa.pt"))[0] in (401, 403)          # tecto
+    _editar_auth(s, "max_contas = 3\n", "max_contas = 10\n")        # subir o tecto, sem reiniciar
+    assert _eu(s, s.como("b@empresa.pt"))[0] == 200
+    _editar_auth(s, "max_contas = 10\n", 'max_contas = 100\ndominios = ["empresa.pt"]\n')   # apertar os domínios
+    assert _eu(s, s.como("c@gmail.com"))[0] in (401, 403)
+    assert _eu(s, s.como("c@empresa.pt"))[0] == 200
+    _editar_auth(s, "max_contas = 100\n", "max_contas = 5\n")       # descer o tecto até ao que já há
+    assert _eu(s, s.como("d@empresa.pt"))[0] in (401, 403)          # Ana, Rui, a, b, c = 5 → fechado
+    assert _eu(s, s.como("c@empresa.pt"))[0] == 200                 # quem já existe continua a entrar
+    _editar_auth(s, "criar_contas = true\n", "criar_contas = false\n", "max_contas = 5\n", "max_contas = 0\n")   # desligar ao vivo
+    assert _eu(s, s.como("e@empresa.pt"))[0] in (401, 403)
+    texto = s.toml.read_text(encoding="utf-8")
+    assert "c@gmail.com" not in texto and "d@empresa.pt" not in texto and "e@empresa.pt" not in texto
