@@ -4,6 +4,29 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Login com a Google para clientes, ronda r14 (20/10/2026)
+- **Modo `cabecalho` com conta automática:** atrás de um proxy de SSO (oauth2-proxy + Google), `[auth] criar_contas = true`
+  cria a conta sozinha no primeiro login de um e-mail novo — nada de `basalt utilizador novo` à mão por cada cliente. O
+  proxy prova que é ele com um segredo partilhado (`BASALT_SEGREDO_PROXY`, nunca no `basalt.toml`); sem ele, ou com o
+  segredo errado, um cabeçalho `X-Basalt-Email` escrito pelo próprio visitante é recusado (401/403) e não cria conta
+  nenhuma — provado em `testes/test_login_google.py`. `[auth] dominios` e `max_contas` limitam quem/quantas contas se
+  criam; `[auth] cabecalho_sub` confere também o `sub` da Google, de propósito.
+- **Tecto de IA por conta** (`[ia] pedidos_por_hora_por_conta`, 0 = desligado): além do tecto do servidor todo
+  (`pedidos_por_hora`), uma conta sozinha não consegue esgotar a IA para as outras — 429 com a mensagem a dizer quantos
+  pedidos já fez na última hora.
+- **Tecto de disco por conta** (`[auth] espaco_max_mb`, 0 = sem tecto): uma conta não consegue encher o disco do
+  servidor — uma nota ou anexo que levasse o espaço dela acima do tecto é recusado (413) antes de gravar; as outras
+  contas não são afectadas.
+- **`basalt utilizador apagar EMAIL`** (pede para escrever o e-mail outra vez para confirmar, `--sim` para scripts):
+  tira o bloco `[[utilizadores]]`, termina as sessões abertas dessa conta e revoga as ligações OAuth do `/mcp`, e
+  **move** (nunca apaga) a pasta de dados para `<dados>/apagados/<espaco>-<data>/`. Recusa-se a apagar o último admin.
+  **`basalt utilizador exportar EMAIL --para FICHEIRO.zip`**: cópia em zip das notas e anexos dessa conta, nunca do
+  `basalt.toml` nem de tokens — para responder a um pedido de portabilidade de dados.
+- **`docs/GOOGLE.md`:** guia completo para pôr isto em produção — consola da Google (ecrã de consentimento em
+  produção, não em teste), oauth2-proxy, nginx (`auth_request` + apagar/injectar cabeçalhos), as chaves do
+  `basalt.toml`, terminar sessão (`/oauth2/sign_out`), prova do ataque por `curl` e notas de RGPD a ligar com
+  [SEGURANCA.md](docs/SEGURANCA.md) e [PRIVACIDADE.md](docs/PRIVACIDADE.md).
+
 ### Correcções da ronda 13c (20/10/2026)
 - **Uma nota em que o `[segredos] verificador` falha sempre já não trava a sincronização das outras:** com «no máximo uma
   chamada falhada por ciclo» (ronda 13) e a ordem das notas sempre igual, as que vinham a seguir a ela ficavam adiadas em
