@@ -125,3 +125,30 @@ def test_exportar_utilizador_desconhecido_falha(s, tmp_path):
     rc, out, err = correr("--config", str(s.toml), "utilizador", "exportar", "fantasma@exemplo.pt", "--para", str(tmp_path / "x.zip"))
     assert rc != 0 and "desconhecido" in err
     assert not (tmp_path / "x.zip").exists()
+
+
+def test_apagar_nao_move_a_pasta_quando_outra_conta_partilha_o_espaco(tmp_path):
+    """revisão Fable (20/10): com [basalt] espaco_partilhado = true, «a pasta da Bea» é também a da Ana — mover levava as notas
+    da Ana para apagados/. Caso bom: o espaço só dela (Cai, «c») continua a ser movido."""
+    from conftest import toml_de
+    CAI = "cai@exemplo.pt"
+    dados, toml = tmp_path / "dados", tmp_path / "basalt.toml"
+    t = toml_de(0, dados, "cabecalho", None, [{"email": ANA, "espaco": "a", "admin": True}, {"email": BEA, "espaco": "a"},
+                                               {"email": CAI, "espaco": "c"}])
+    toml.write_text(t.replace("git = false\n", "git = false\nespaco_partilhado = true\n", 1), encoding="utf-8")
+    cfg = config.carregar(toml)
+    esp_a, esp_c = cfg.espaco("a").criar(), cfg.espaco("c").criar()
+    (esp_a.real / "nota.md").write_text("da ana e da bea\n", encoding="utf-8")
+    (esp_c.real / "nota.md").write_text("só do cai\n", encoding="utf-8")
+
+    rc, out, err = correr("--config", str(toml), "utilizador", "apagar", BEA, "--sim")
+    assert rc == 0, err
+    assert (esp_a.real / "nota.md").read_text(encoding="utf-8") == "da ana e da bea\n"    # ficou onde estava
+    assert not list((dados / "apagados").glob("a-*")) if (dados / "apagados").exists() else True
+    assert "partilhado" in out and ANA in out
+    cfg2 = config.carregar(toml)
+    assert cfg2.utilizador(BEA) is None and cfg2.utilizador(ANA).espaco == "a"
+
+    rc, out, err = correr("--config", str(toml), "utilizador", "apagar", CAI, "--sim")
+    assert rc == 0, err
+    assert not esp_c.real.exists() and len(list((dados / "apagados").glob("c-*"))) == 1

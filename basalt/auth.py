@@ -258,6 +258,7 @@ class Autenticador:
         self._marca = self._marca_do_toml()
         self._fechado = ""          # ronda 9 (achado G4 da ronda 2): o basalt.toml mudou e não carrega → ninguém entra (o motivo)
         self._criar_lock = threading.Lock()   # r14: uma conta nova de cada vez (o tecto e o «já existe» conferem-se lá dentro)
+        self.ao_criar_conta = None            # r14: fn(utilizador) que o servidor põe para preparar o espaço da conta nova (pastas + git)
         with self._lock:
             self._podar_sessoes(forcar=True)
 
@@ -602,6 +603,11 @@ class Autenticador:
             u = self.cfg.utilizador(email)
             if u is not None:
                 print(f"contas: {email} criada no 1.º login (espaço {u.espaco})", file=sys.stderr, flush=True)
+                if self.ao_criar_conta is not None:     # o servidor prepara o espaço (pastas + git) como faz aos configurados no arranque
+                    try:
+                        self.ao_criar_conta(u)
+                    except Exception as e:              # a conta existe; sem git fica só sem histórico (como um espaço sem git)
+                        print(f"contas: aviso — não consegui preparar o espaço de {email} ({e})", file=sys.stderr, flush=True)
             return u
 
     def token_do_pedido(self, cabecalhos) -> str:

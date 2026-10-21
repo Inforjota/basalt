@@ -311,7 +311,11 @@ def _apagar_utilizador(caminho: Path, email: str, a):
     r = oauth.OAuth(cfg, None).revogar(u)
     esp = cfg.espaco_de(u)
     msg = f"✓ {email} apagado ({n} sessão(ões) fechada(s), {r} ligação(ões) OAuth revogada(s))"
-    if esp.raiz.exists():
+    # [basalt] espaco_partilhado = true: a pasta pode ser de mais contas — mover «a pasta da Bea» levava as notas da Ana com ela
+    partilham = sorted(x.email for x in cfg.utilizadores if x.espaco == u.espaco and x.email.lower() != u.email.lower())
+    if partilham:
+        msg += f"; a pasta {esp.raiz} ficou onde está — o espaço «{u.espaco}» é partilhado com {', '.join(partilham)}"
+    elif esp.raiz.exists():
         destino = cfg.dados / "apagados" / f"{esp.nome}-{time.strftime('%Y%m%d-%H%M%S')}"
         destino.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(esp.raiz), str(destino))

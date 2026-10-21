@@ -154,3 +154,19 @@ def test_mcp_continua_so_por_bearer(g):
     s = g()
     st, _, _ = s.pedir("POST", "/mcp", {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, s.como(ANA))
     assert st == 401
+
+
+def test_conta_nova_fica_com_o_espaco_e_o_git_prontos(g, monkeypatch):
+    """revisão Fable (20/10): as contas do arranque passam por esp.criar() + git_iniciar; a criada no 1.º login não passava —
+    ficava sem repositório (sem histórico nem «desfazer», e o `git add -A` do duasvias a falhar em silêncio)."""
+    monkeypatch.setenv("BASALT_GIT", "1")                        # o toml dos testes tem git = false; aqui queremos o git a sério
+    s = g()
+    assert _eu(s, s.como(NOVO, sub="1234567890"))[0] == 200
+    u = config.carregar(s.toml).utilizador(NOVO)
+    esp = s.cfg.espaco_de(u)
+    assert esp.real.is_dir() and esp.copia.is_dir() and esp.dados.is_dir()
+    assert (esp.real / ".git").is_dir()
+    # o 2.º login não volta a mexer (o git_iniciar não toca num repositório que já existe)
+    marca = (esp.real / ".git" / "HEAD").stat().st_mtime_ns
+    assert _eu(s, s.como(NOVO, sub="1234567890"))[0] == 200
+    assert (esp.real / ".git" / "HEAD").stat().st_mtime_ns == marca

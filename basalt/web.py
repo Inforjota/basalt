@@ -1890,6 +1890,7 @@ def criar_servidor(cfg, host=None, porta=None):
         esp.criar()
         git_iniciar(esp)
     classe = type("Handler", (H,), {"cfg": cfg, "aut": auth.Autenticador(cfg)})
+    classe.aut.ao_criar_conta = lambda u: git_iniciar(cfg.espaco_de(u).criar())   # r14: a conta criada no 1.º login fica como as do arranque
     try:
         from . import mcp
         classe.servidor_mcp = mcp.registar(ROTAS_EXTRA, cfg, classe.aut)   # POST /mcp (só Bearer) + GET /mcp → 405; o MCP importa basalt.web sozinho
