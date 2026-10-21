@@ -16,6 +16,7 @@ import urllib.parse
 import pytest
 
 from basalt import auth, config, oauth, web
+from conftest import SEGREDO_PROXY
 
 SENHA = "uma senha comprida"
 HASH = auth.hash_senha(SENHA)
@@ -39,7 +40,12 @@ def _toml(dados, porta, url, modo="senha", utilizadores=None, extra=""):
 
 
 class Srv:
-    """um Basalt em processo com o OAuth ligado (url_publico = http://<nome>:<porta>, loopback para os testes)."""
+    """um Basalt em processo com o OAuth ligado (url_publico = http://<nome>:<porta>, loopback para os testes).
+
+    r16 (auditoria de isolamento 21/10, M4): o modo cabecalho já não arranca sem o segredo do proxy — o servidor arranca com o
+    dos testes (conftest.SEGREDO_PROXY) e, nesse modo, o `pedir` manda-o em todos os pedidos, como o proxy faz. Quem precisa de
+    escolher o segredo pedido a pedido (o SrvG do login com a Google, que prova o ataque sem ele) põe `segredo_auto = False`."""
+    segredo_auto = True
 
     def __init__(self, tmp_path, modo="senha", nome="127.0.0.1", url=True, utilizadores=None, extra=""):
         # porta 0: o sistema escolhe-a no próprio bind (uma porta «livre» escolhida antes podia ser apanhada por outro processo
@@ -55,7 +61,7 @@ class Srv:
         self.extra = extra
         self.modo = modo
         self.escrever()
-        self.cfg = config.carregar(self.toml, ambiente={})
+        self.cfg = config.carregar(self.toml, ambiente={"BASALT_SEGREDO_PROXY": SEGREDO_PROXY})
         self.srv = web.criar_servidor(self.cfg, host="127.0.0.1", porta=0)
         self.porta = self.srv.server_address[1]
         if url:
@@ -79,6 +85,8 @@ class Srv:
     def pedir(self, metodo, caminho, corpo=None, cab=None, form=None):
         c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=15)
         h = {"Host": f"{self.nome}:{self.porta}", **(cab or {})}
+        if self.segredo_auto and self.modo == "cabecalho":
+            h.setdefault("X-Basalt-Proxy-Segredo", SEGREDO_PROXY)
         if form is not None:
             dados = urllib.parse.urlencode(form).encode()
             h.setdefault("Content-Type", "application/x-www-form-urlencoded")

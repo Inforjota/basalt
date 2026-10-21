@@ -35,6 +35,10 @@ for _k in ("BASALT_CONFIG", "BASALT_DADOS", "BASALT_ESPACO", "BASALT_REAL", "BAS
            "BASALT_IA_MODELO", "BASALT_EMB_FORNECEDOR", "BASALT_EMB_URL", "EMB_URL", "BASALT_GIT", "BASALT_GIT_NOME",
            "BASALT_GIT_EMAIL", "BASALT_PORTA", "BASALT_WEB_PORT", "BASALT_ESCUTAR", "BASALT_WEB_HOST", "BASALT_ANCORA"):
     os.environ.pop(_k, None)
+# r16 (auditoria de isolamento 21/10, M4): o modo cabecalho já não arranca sem o segredo do proxy — os servidores dos testes têm-no
+# (no processo e nos filhos, pelo ambiente), e o `Cliente` manda-o como o proxy (`segredo_proxy=False` = o visitante sem ele)
+SEGREDO_PROXY = "segredo-do-proxy-dos-testes-0123456789"
+os.environ["BASALT_SEGREDO_PROXY"] = SEGREDO_PROXY
 
 EMAIL = "geral@exemplo.pt"
 FM = "---\nname: {nome}\ndescription: nota de teste\nmetadata:\n  type: project\n---\n"
@@ -197,13 +201,18 @@ class Cliente:
     porta = 0
 
     def pedido(self, metodo, caminho, corpo=None, email=EMAIL, csrf=True, cabecalhos=None, bruto=None, cabecalho_email="X-Basalt-Email",
-               dono=True):
+               dono=True, segredo_proxy=True):
         """`dono`: True = manda o X-Basalt-Dono da conta do pedido (como a página: ronda 9, o servidor recusa a API sem ele),
+        False = não manda, texto = esse. `segredo_proxy`: True = manda o X-Basalt-Proxy-Segredo do ambiente (como o proxy, r16),
         False = não manda, texto = esse."""
         c = http.client.HTTPConnection("127.0.0.1", self.porta, timeout=30)
         h = dict(cabecalhos or {})
         if email is not None:
             h[cabecalho_email] = email
+        if segredo_proxy is True:
+            segredo_proxy = os.environ.get("BASALT_SEGREDO_PROXY", "")
+        if segredo_proxy:
+            h.setdefault("X-Basalt-Proxy-Segredo", segredo_proxy)
         if dono is True and "X-Basalt-Dono" not in h and caminho.startswith(("/api/", "/anexos/")) \
                 and not caminho.startswith(("/api/eu", "/api/entrar", "/api/sair", "/api/saude")) and "Authorization" not in h:
             dono = self.dono_de_quem(h)

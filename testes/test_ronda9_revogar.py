@@ -13,7 +13,7 @@ import threading
 from pathlib import Path
 
 from basalt import auth, config
-from conftest import toml_de
+from conftest import SEGREDO_PROXY, toml_de
 
 ANA, BEA = "ana@exemplo.pt", "bea@exemplo.pt"
 SENHA = "uma senha comprida"
@@ -88,7 +88,7 @@ def test_toml_com_erro_ou_apagado_fecha_a_porta_ate_voltar(tmp_path):
     p = _toml(tmp_path, "cabecalho", [{"email": ANA, "espaco": "a", "mcp_token_hash": h}])
     bom = p.read_text(encoding="utf-8")
     aut = auth.Autenticador(config.carregar(p), tmp_path / "sessoes.json")
-    proxy = {"X-Basalt-Email": ANA}
+    proxy = {"X-Basalt-Email": ANA, "X-Basalt-Proxy-Segredo": SEGREDO_PROXY}    # r16: o proxy manda sempre o segredo
     assert aut.utilizador_do_pedido(proxy).email == ANA
     _rescrever(p, bom.replace("[auth]", "[auth\n"))                          # um erro ao editar
     assert aut.utilizador_do_pedido(proxy) is None and _bearer(aut, token) is None, "com o toml estragado entrou-se na mesma"
@@ -113,7 +113,8 @@ def test_pedido_a_meio_da_releitura_espera_por_ela(tmp_path, monkeypatch):
 
     monkeypatch.setattr(auth.config, "carregar", lento)
     _rescrever(p, toml_de(0, tmp_path / "dados", "cabecalho", None, [{"email": ANA, "espaco": "a"}]))   # token apagado
-    primeiro = threading.Thread(target=lambda: aut.utilizador_do_pedido({"X-Basalt-Email": ANA}), daemon=True)
+    primeiro = threading.Thread(target=lambda: aut.utilizador_do_pedido({"X-Basalt-Email": ANA, "X-Basalt-Proxy-Segredo": SEGREDO_PROXY}),
+                               daemon=True)
     primeiro.start()
     assert a_ler.wait(5)
     resultado = []

@@ -11,7 +11,7 @@ import time
 
 import pytest
 
-from conftest import AQUI, EMAIL, FM, Memoria, Servidor, sha
+from conftest import AQUI, EMAIL, FM, SEGREDO_PROXY, Memoria, Servidor, sha
 from ollama_falso import OllamaFalso
 
 SEGREDOS = {
@@ -398,6 +398,7 @@ class TestPedidosEstranhos:
     def test_content_length_negativo_responde_depressa(self, srv):
         s = socket.create_connection(("127.0.0.1", srv.porta), timeout=3)
         s.sendall(b"POST /api/nota HTTP/1.1\r\nHost: x\r\nX-Basalt-Email: " + EMAIL.encode() +
+                  b"\r\nX-Basalt-Proxy-Segredo: " + SEGREDO_PROXY.encode() +      # r16: como o proxy (sem ele era um 401 logo)
                   b"\r\nX-Basalt: 1\r\nContent-Length: -1\r\n\r\n{}")
         try:
             assert s.recv(100).startswith(b"HTTP/1.")

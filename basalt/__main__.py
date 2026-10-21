@@ -216,6 +216,10 @@ def cmd_iniciar(a):
 
 def cmd_serve(a):
     cfg = _cfg(a)
+    try:
+        cfg.exigir_segredo_proxy()          # r16: ex. modo cabecalho sem o segredo do proxy — antes de tudo, numa linha, sem traceback
+    except config.ConfigInvalida as e:      # (o web.criar_servidor volta a verificar: é ele que guarda o /mcp e os testes)
+        _falha(f"o servidor não arranca: {e}")
     _verificar_trocas(cfg, a)
     try:
         from . import web

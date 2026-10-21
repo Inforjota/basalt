@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from basalt import auth, config
-from conftest import toml_de
+from conftest import SEGREDO_PROXY, toml_de
 
 ANA, BEA = "ana@exemplo.pt", "bea@exemplo.pt"
 SENHA = "uma senha comprida"
@@ -55,7 +55,8 @@ def test_g3_pedido_durante_a_troca_dos_utilizadores_nao_entra_com_a_lista_antiga
     p = _toml(tmp_path, "cabecalho", [{"email": ANA, "espaco": "a", "mcp_token_hash": h_a},
                                       {"email": BEA, "espaco": "b", "mcp_token_hash": h_b}])
     aut = auth.Autenticador(config.carregar(p), tmp_path / "sessoes.json")
-    pedir = (lambda: _bearer(aut, tok_a)) if via == "bearer" else (lambda: aut.utilizador_do_pedido({"X-Basalt-Email": ANA}))
+    proxy = {"X-Basalt-Email": ANA, "X-Basalt-Proxy-Segredo": SEGREDO_PROXY}   # r16: o proxy manda sempre o segredo
+    pedir = (lambda: _bearer(aut, tok_a)) if via == "bearer" else (lambda: aut.utilizador_do_pedido(proxy))
     assert pedir().email == ANA
     a_trocar, soltar = threading.Event(), threading.Event()
     carregar = config.carregar

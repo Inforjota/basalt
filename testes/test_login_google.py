@@ -13,6 +13,8 @@ NOVO = "cliente@gmail.com"
 
 
 class SrvG(Srv):
+    segredo_auto = False                     # r16: aqui cada pedido diz se traz o segredo (como()), para provar o ataque sem ele
+
     def __init__(self, tmp_path, auth_extra="", **k):
         self.auth_extra = auth_extra
         super().__init__(tmp_path, modo="cabecalho", **k)
@@ -173,17 +175,17 @@ def test_conta_nova_fica_com_o_espaco_e_o_git_prontos(g, monkeypatch):
 
 
 # ───────────── auditoria de 21/10/2026 ao login Google ─────────────
-def test_modo_cabecalho_sem_segredo_avisa_no_arranque(tmp_path, capsys):
-    """sem criar_contas o servidor arranca sem o segredo do proxy (instalações anteriores à r14), mas fica escrito no stderr que toda a
-    segurança está no proxy — antes arrancava em silêncio e aceitava o X-Basalt-Email de quem chegasse à porta (ensaio b2)."""
+def test_modo_cabecalho_sem_segredo_nao_arranca(tmp_path, capsys):
+    """r15: sem criar_contas o servidor arrancava sem o segredo do proxy e só avisava no stderr (antes nem isso) — aceitava o
+    X-Basalt-Email de quem chegasse à porta (ensaio b2). r16 (auditoria de isolamento 21/10, M4): não arranca, e a razão diz o que
+    fazer; mais casos em testes/test_r16_segredo_proxy.py."""
     base = (f'[basalt]\ndados = "{tmp_path}/d"\nescutar = "127.0.0.1"\ngit = false\n[auth]\nmodo = "cabecalho"\n'
             f'[[utilizadores]]\nemail = "{ANA}"\nespaco = "ana"\n')
     p = tmp_path / "b.toml"
     p.write_text(base, encoding="utf-8")
-    srv = web.criar_servidor(config.carregar(p, ambiente={}), porta=0)
-    srv.server_close()
-    err = capsys.readouterr().err
-    assert "aviso" in err and "segredo" in err and "BASALT_SEGREDO_PROXY" in err and "X-Basalt-Email" in err, err
+    with pytest.raises(config.ConfigInvalida) as e:
+        web.criar_servidor(config.carregar(p, ambiente={}), porta=0)
+    assert "segredo" in str(e.value) and "BASALT_SEGREDO_PROXY" in str(e.value) and "X-Basalt-Email" in str(e.value), e.value
     srv = web.criar_servidor(config.carregar(p, ambiente={"BASALT_SEGREDO_PROXY": SEG}), porta=0)
     srv.server_close()
     assert "aviso" not in capsys.readouterr().err                   # com o segredo, nada a dizer

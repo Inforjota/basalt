@@ -13,7 +13,6 @@ import contextlib
 import ipaddress
 import re
 import os
-import sys
 import threading
 import tomllib
 import urllib.parse
@@ -229,16 +228,21 @@ class Config:
     def exigir_segredo_proxy(self) -> None:
         """só para quem SERVE pedidos (web.criar_servidor): com criar_contas, sem o segredo do proxy qualquer visitante que
         escreva o cabeçalho do e-mail criava contas. Os comandos de administração (utilizador apagar/exportar/mcp-token…)
-        não falam com o proxy e não precisam dele (ensaio de 20/10: recusavam todos correr)."""
+        não falam com o proxy e não precisam dele (ensaio de 20/10: recusavam todos correr). Desde a r16, o mesmo para o modo
+        cabecalho com ou sem criar_contas: sem o segredo, quem chegasse à porta escolhia a conta pelo cabeçalho do e-mail."""
         if self.auth.criar_contas and len(self.auth.segredo_proxy) < 32:
             raise ConfigInvalida(f"[auth] criar_contas exige o segredo do proxy na variável {self.auth.segredo_proxy_env} "
                                  "(pelo menos 32 caracteres, ex.: python3 -c 'import secrets;print(secrets.token_urlsafe(32))')")
-        if self.auth.modo == "cabecalho" and not self.auth.segredo_proxy:
-            # auditoria (21/10): sem criar_contas arrancava em silêncio — toda a segurança ficava no proxy, sem ninguém o dizer.
-            # Continua a arrancar (instalações anteriores à r14, com um proxy que substitui sempre o cabeçalho), mas fica escrito.
-            print(f"aviso: [auth] modo cabecalho sem o segredo do proxy ({self.auth.segredo_proxy_env} vazio): qualquer processo que "
-                  f"chegue a esta porta entra com o e-mail que escrever em {self.auth.cabecalho}. Define a variável e o include do "
-                  "nginx (docs/GOOGLE.md §3), ou garante que só o proxy chega aqui.", file=sys.stderr, flush=True)
+        if self.auth.modo == "cabecalho" and len(self.auth.segredo_proxy) < 32:
+            # r16 (auditoria de isolamento 21/10, M4): a r15 só avisava no stderr e arrancava — qualquer processo que chegasse à porta
+            # entrava com o e-mail que escrevesse. Agora o servidor (web e /mcp) não arranca; os comandos de linha continuam a correr.
+            tem = len(self.auth.segredo_proxy)
+            porque = "está vazia" if not tem else f"tem só {tem} caracteres"
+            raise ConfigInvalida(
+                f"[auth] modo cabecalho exige o segredo do proxy e a variável {self.auth.segredo_proxy_env} {porque}. Põe nela um "
+                "valor com pelo menos 32 caracteres (ex.: python3 -c 'import secrets;print(secrets.token_urlsafe(32))') e o MESMO "
+                f"valor no proxy, no cabeçalho {self.auth.cabecalho_segredo} (docs/GOOGLE.md §3). Sem ele, qualquer processo que "
+                f"chegue a esta porta entra com o e-mail que escrever em {self.auth.cabecalho}.")
 
     def validar(self) -> None:
         if self.idioma not in IDIOMAS:

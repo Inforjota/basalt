@@ -5,6 +5,7 @@ import pytest
 
 from basalt import __main__ as cli, auth, config
 from test_oauth import ANA, RUI, SENHA, Srv, _relogio, _toml, ler, mcp, renovar, srv, tokens  # noqa: F401 (fixtures)
+from conftest import SEGREDO_PROXY
 
 NOVA = "outra senha bem comprida"
 
@@ -148,10 +149,12 @@ def test_pagina_mudar_senha_no_browser(srv, navegador):
     assert auth.verificar_senha(config.carregar(s.toml, ambiente={}).utilizador(ANA).senha_hash, NOVA)
     # mau: no modo cabecalho (SSO) a secção não aparece
     s2 = srv(modo="cabecalho")
-    ctx = navegador.new_context(extra_http_headers={"X-Basalt-Email": ANA})
+    # r16: o proxy manda o e-mail E o segredo (sem ele o servidor responde 401 e a secção faltava pela razão errada)
+    ctx = navegador.new_context(extra_http_headers={"X-Basalt-Email": ANA, "X-Basalt-Proxy-Segredo": SEGREDO_PROXY})
     try:
         p = ctx.new_page()
         _abrir_ligar(p, s2.url)
+        assert p.evaluate("fetch('/api/eu').then(r => r.status)") == 200     # entrou mesmo (é o modo, não a falta de sessão)
         assert p.locator("#senha-form").count() == 0
     finally:
         ctx.close()
