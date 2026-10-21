@@ -71,7 +71,7 @@ def _isolar_processo():
     (o servidor em processo põe BASALT_CONFIG & co no ambiente, e o `web` guarda o trinco e as excluídas por espaço)."""
     from basalt import config, ia, web
     antes = dict(os.environ)
-    for d in (web._excls, web._trincos):
+    for d in (web._excls, web._trincos, web._quota_locks):      # r16: e os trincos da quota por espaço
         d.clear()
     web._ia_usos.clear()
     web._ia_usos_conta.clear()

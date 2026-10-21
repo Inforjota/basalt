@@ -333,9 +333,14 @@ class ServidorMCP:
                 return {"erro": MOTIVO_SEGREDO}, True
         except VerificacaoFalhou as e:
             return {"erro": str(e)}, True
-        if self.web._espaco_cheio(self.cfg.auth.espaco_max_mb, len(texto.encode("utf-8"))):     # r14: a Entrada conta para o tecto de disco
-            return {"erro": f"Chegaste ao limite de espaço da tua conta ({self.cfg.auth.espaco_max_mb} MB).", "estado": "erro"}, True
-        reg = entrada.acrescentar(texto, "mcp", autor=u.email)    # pelo trinco comum da Entrada (ronda 8, trinco da Entrada) e com t único (ronda 8, carimbos únicos)
+        limite = self.cfg.auth.espaco_max_mb
+        try:
+            with self.web.trinco_quota(limite):                   # r16 (H1): ver se cabe + escrever sob o trinco da quota da conta
+                if self.web._espaco_cheio(limite, len(texto.encode("utf-8"))):     # r14: a Entrada conta para o tecto de disco
+                    return {"erro": f"Chegaste ao limite de espaço da tua conta ({limite} MB).", "estado": "erro"}, True
+                reg = entrada.acrescentar(texto, "mcp", autor=u.email)    # pelo trinco comum da Entrada (ronda 8, trinco da Entrada) e com t único (ronda 8, carimbos únicos)
+        except self.web.Ocupado:
+            return dict(self.web.OCUPADO[1]), True
         return {"ok": True, "guardada_em": "entrada", "quando": reg["t"]}, False
 
     # ───────────────────────────── recursos ─────────────────────────────

@@ -129,6 +129,7 @@ _ia_editor_lock = threading.Lock()  # um pedido de cada vez à IA do editor
 _REGISTO_TRINCO = threading.Lock()   # uma linha do registo de pedidos de cada vez (sem linhas coladas)
 _ia_usos = []                       # PORTE: o limite horário de pedidos à IA é do servidor (a IA é partilhada), não de cada utilizador
 _ia_usos_conta = {}                  # r14 ([ia] pedidos_por_hora_por_conta): email → instantes dos pedidos à IA dessa conta na última hora
+_quota_locks = {}                    # r16 (auditoria de isolamento 21/10, H1): nome do espaço → RLock de «ver se cabe + escrever» ([auth] espaco_max_mb)
 
 
 class Ocupado(Exception):
@@ -169,6 +170,30 @@ def trinco_copia(espera=None):
     finally:
         if f is not None:
             os.close(f)                    # fechar o ficheiro liberta o flock
+        lk.release()
+
+
+def _quota_lock(nome):
+    with _estado_g:
+        return _quota_locks.setdefault(nome, threading.RLock())
+
+
+@contextlib.contextmanager
+def trinco_quota(limite_mb, espera=None):
+    """r16 (auditoria de isolamento 21/10, H1): com [auth] espaco_max_mb, «ver se cabe» e «escrever» correm sob um trinco do espaço
+    da conta (config.actual().nome) — antes, 40 anexos em simultâneo viam todos o mesmo uso, passavam todos e enchiam o disco de toda a
+    gente. Sem tecto não tranca nada (como antes). Reentrante: a junção da Entrada segura-o e chama a `gravar`, que o toma outra vez.
+    ORDEM DOS TRINCOS (única, nada toma ao contrário): este por fora → o da Entrada (entrada_mod.trinco) → o da cópia (trinco_copia).
+    Ocupado mais de `espera` segundos → Ocupado (503, como o da cópia)."""
+    if not limite_mb:
+        yield
+        return
+    lk = _quota_lock(config.actual().nome)
+    if not lk.acquire(timeout=TRINCO_ESPERA if espera is None else espera):
+        raise Ocupado()
+    try:
+        yield
+    finally:
         lk.release()
 
 
@@ -508,7 +533,17 @@ def entrada_juntar(t, nome, auto=None, limite_mb=0):
     """acrescenta a ideia no fim da nota (com a data e a origem) e tira-a da Entrada. Ronda 9 (achado M2 da ronda 2): a operação INTEIRA —
     confirmar que a ideia ainda está pendente, escrever a nota, arquivar — corre sob o trinco da Entrada; antes só o arquivar o tinha, e duas
     juntas da mesma ideia a notas diferentes davam dois 200 e duas notas alteradas. Ordem dos trincos: a Entrada primeiro, depois a nota
-    (o da `gravar`); nada toma por ordem inversa. Se o arquivar falhar depois de a nota estar escrita, a nota volta ao que era."""
+    (o da `gravar`); nada toma por ordem inversa. Se o arquivar falhar depois de a nota estar escrita, a nota volta ao que era.
+    r16 (H1): com tecto, o trinco da quota vem ANTES do da Entrada (o /api/guarda e o guardar_ideia do MCP seguram-no e depois
+    escrevem na Entrada — pela ordem inversa, os dois ficavam à espera um do outro)."""
+    try:
+        with trinco_quota(limite_mb):
+            return _entrada_juntar(t, nome, auto, limite_mb)
+    except Ocupado:
+        return OCUPADO
+
+
+def _entrada_juntar(t, nome, auto, limite_mb):
     with entrada_mod.trinco() as p:
         reg = next((r for r in entrada_mod.ler(p) if r.get("t") == t and not r.get("arquivado")), None)
         if not reg:
@@ -908,7 +943,7 @@ def gravar(nome, texto, base_hash, limite_mb=0):
     if tem_segredo_nota(texto):
         return 400, {"erro": "O texto tem o que parece uma password ou chave em claro — não gravei. Guarda-a num gestor de palavras-passe."}
     try:
-        with trinco_copia():
+        with trinco_quota(limite_mb), trinco_copia():     # r16 (H1): a quota por fora, a cópia por dentro (ver trinco_quota)
             if not p.exists():
                 return 404, {"erro": "Nota não encontrada."}
             b = caminhos.ler(p)
@@ -948,15 +983,17 @@ def criar(nome, texto, limite_mb=0):
         return 400, {"erro": f"«{nome}» é um nome reservado; escolhe outro."}
     if tem_segredo_nota(texto or ""):
         return 400, {"erro": "O texto tem o que parece uma password ou chave em claro — não gravei."}
-    if _espaco_cheio(limite_mb, len((texto or "").encode("utf-8"))):
-        return 413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."}
     p = COPIA / f"{nome}.md"
+    dados = (texto or "").encode("utf-8")
     try:
-        with trinco_copia():
-            if p.exists() or (REAL / f"{nome}.md").exists():
-                return 409, {"erro": "Já existe uma nota com esse nome."}
-            if cas().escrever(p, (texto or "").encode("utf-8"), None, "web"):    # nunca por cima de quem a criou agora
-                return 409, {"erro": "Já existe uma nota com esse nome."}
+        with trinco_quota(limite_mb):                 # r16 (H1): ver se cabe e escrever sob o MESMO trinco (antes via-se fora dele)
+            if _espaco_cheio(limite_mb, len(dados)):
+                return 413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."}
+            with trinco_copia():
+                if p.exists() or (REAL / f"{nome}.md").exists():
+                    return 409, {"erro": "Já existe uma nota com esse nome."}
+                if cas().escrever(p, dados, None, "web"):    # nunca por cima de quem a criou agora
+                    return 409, {"erro": "Já existe uma nota com esse nome."}
     except Ocupado:
         return OCUPADO
     return 201, {"ok": True, "nome": nome}
@@ -1289,9 +1326,13 @@ def reconciliar(nome, base_texto, texto, limite_mb=0):
     if not _rec_lock.acquire(timeout=REC_ESPERA):
         return 503, {"estado": "ocupado", "erro": "Há outra sincronização a correr; tento outra vez daqui a pouco."}
     try:
-        if _espaco_cheio(limite_mb, len(texto.encode("utf-8"))):   # r14: a cópia offline é um ficheiro novo inteiro — conta para o tecto
-            return 413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."}
-        copia = _guardar_versao_offline(nome, texto)          # a versão offline nunca se perde, aconteça o que acontecer
+        try:
+            with trinco_quota(limite_mb):                      # r16 (H1): ver se cabe + gravar a cópia offline sob o mesmo trinco
+                if _espaco_cheio(limite_mb, len(texto.encode("utf-8"))):   # r14: a cópia offline é um ficheiro novo inteiro — conta para o tecto
+                    return 413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."}
+                copia = _guardar_versao_offline(nome, texto)  # a versão offline nunca se perde, aconteça o que acontecer
+        except Ocupado:
+            return OCUPADO
         actual, h_actual = _texto_hash(p)
         if actual == base_texto or actual == texto:
             c, r = gravar(nome, texto, h_actual, limite_mb)
@@ -1709,16 +1750,22 @@ class H(BaseHTTPRequestHandler):
         if not anexos.nome_ok(nome):
             return self._json(400, {"erro": "Nome de ficheiro inválido (letras, dígitos, espaços, . _ - e uma extensão conhecida)."})
         limite_mb = self.cfg.auth.espaco_max_mb
+        cheio = (413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."})
         if limite_mb and self.cfg.espaco_de(user).uso_bytes() + n > limite_mb * 1024 * 1024:
-            return self._json(413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."})
-        dados = self.rfile.read(n)
+            return self._json(*cheio)                 # recusa cedo, sem ler os MB do corpo (a decisão a sério é a de baixo)
+        dados = self.rfile.read(n)                    # r16: lido ANTES do trinco — um envio lento não prende as escritas da conta
         try:
-            with self._dentro(user):
-                final = anexos.guardar(config.actual(), nome, dados)
+            with self._dentro(user), trinco_quota(limite_mb):
+                # r16 (H1): outra vez, já com o trinco — é esta que conta (a resposta só sai depois de o largar)
+                final = None if _espaco_cheio(limite_mb, len(dados)) else anexos.guardar(config.actual(), nome, dados)
+        except Ocupado:
+            return self._json(*OCUPADO)
         except VerificacaoFalhou:
             return self._json(503, {"erro": MOTIVO_VERIFICACAO})
         except ValueError as e:
             return self._json(400, {"erro": _erro(e, tipo=False)})
+        if final is None:
+            return self._json(*cheio)
         return self._json(201, {"nome": final, "bytes": len(dados)})
 
     def do_PUT(self):
@@ -1826,9 +1873,14 @@ class H(BaseHTTPRequestHandler):
                         return self._json(400, {"erro": "Nada para guardar."})
                     if tem_segredo_nota(t):
                         return self._json(400, {"erro": "Parece uma password ou chave — não guardei. Usa um gestor de palavras-passe."})
-                    if _espaco_cheio(self.cfg.auth.espaco_max_mb, len(t.encode("utf-8"))):     # r14: a Entrada vive no espaço da conta
+                    try:
+                        with trinco_quota(self.cfg.auth.espaco_max_mb):                         # r16 (H1): ver se cabe + escrever, juntos
+                            # r14: a Entrada vive no espaço da conta
+                            r = None if _espaco_cheio(self.cfg.auth.espaco_max_mb, len(t.encode("utf-8"))) else motor(["guarda", t, "--de", "web"])
+                    except Ocupado:
+                        return self._json(*OCUPADO)
+                    if r is None:
                         return self._json(413, {"erro": f"Chegaste ao limite de espaço da tua conta ({self.cfg.auth.espaco_max_mb} MB)."})
-                    r = motor(["guarda", t, "--de", "web"])
                     return self._json(200, {"ok": r.returncode == 0, "mensagem": r.stdout.strip() or "guardado"})
                 if u.path == "/api/unir":
                     if ia_mod.actual("unir").chat_activo and self._ia_conta_cheia(user):        # r14: a fusão também é um pedido à IA
