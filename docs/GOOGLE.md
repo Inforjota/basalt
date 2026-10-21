@@ -70,6 +70,8 @@ server {
     location = /oauth2/auth {
         internal;
         proxy_pass http://127.0.0.1:4180;
+        proxy_pass_request_body off;                                          # o subpedido de autenticação vai sem corpo…
+        proxy_set_header Content-Length "";                                   # …e sem o Content-Length do pedido original (um auth que leia o corpo ficava pendurado)
         proxy_set_header Host                    $host;
         proxy_set_header X-Real-IP                $remote_addr;
         proxy_set_header X-Forwarded-For          $remote_addr;
@@ -106,10 +108,10 @@ server {
         proxy_set_header Host                       $host;
         proxy_set_header X-Forwarded-Proto           https;
         proxy_set_header X-Forwarded-For             $remote_addr;
-        # proxy_set_header SUBSTITUI o cabeçalho com o mesmo nome que o visitante tenha mandado (o dele nunca passa)
-        proxy_set_header X-Basalt-Email              $email;
         proxy_set_header X-Basalt-Sub                "";                      # ou $sub — ver o fim desta secção
-        include /etc/nginx/basalt-segredo.conf;                               # o segredo — ver nota abaixo
+        # o e-mail verdadeiro E o segredo vêm os dois do include (nota abaixo): não há maneira de pôr um sem o outro.
+        # proxy_set_header SUBSTITUI o cabeçalho com o mesmo nome que o visitante tenha mandado (o dele nunca passa)
+        include /etc/nginx/basalt-segredo.conf;
     }
 }
 ```
@@ -117,13 +119,20 @@ server {
 O segredo fica num ficheiro à parte, só legível pelo root (`chmod 600`), nunca no repositório nem no ficheiro do site:
 
 ```nginx
-# /etc/nginx/basalt-segredo.conf — o mesmo valor do BASALT_SEGREDO_PROXY do Basalt (passo 4)
+# /etc/nginx/basalt-segredo.conf — o e-mail confirmado pelo auth_request E o segredo (o mesmo valor do BASALT_SEGREDO_PROXY
+# do Basalt, passo 4), SEMPRE juntos: um location que inclua isto sem `auth_request` manda o e-mail vazio e o Basalt recusa
+proxy_set_header X-Basalt-Email         $email;
 proxy_set_header X-Basalt-Proxy-Segredo "COLA_AQUI_O_MESMO_VALOR";
 ```
 
-Em **todos** os `location` que vão para o Basalt põe a linha do `X-Basalt-Email`: com `$email` (vindo do
-`auth_request`) junto com o `include` do segredo, ou `""` sem o `include`, como no das rotas da IA. Um `location` que se esqueça do `include` deixa simplesmente de entrar
-(falta o segredo) — falha fechada, não aberta.
+Em **todos** os `location` que vão para o Basalt: ou `auth_request` + o `include` (que traz o e-mail verdadeiro e o segredo
+juntos), ou `proxy_set_header X-Basalt-Email "";` **sem** o `include`, como no das rotas da IA. Um `location` que se esqueça do
+`include` deixa simplesmente de entrar (falta o segredo) — falha fechada, não aberta. O que **abre** a porta é um `location`
+com o segredo mas sem a substituição do e-mail — por isso as duas linhas vivem no mesmo ficheiro — ou um `[auth] cabecalho`
+no `basalt.toml` com **outro nome** que não o que o nginx escreve (ex. `X-Auth-Request-Email`, o nome natural do
+oauth2-proxy): o nginx só substitui o cabeçalho que lhe mandam substituir, e o que o visitante escrever com o outro nome
+passa intacto, com o segredo colado (reproduzido no ensaio de 21/10/2026: `/api/eu` devolvia a conta forjada). O
+`cabecalho` fica `X-Basalt-Email`, como no passo 4, e a prova do §7 apanha os dois casos.
 
 **O `sub` da Google (recomendado).** Confere, além do e-mail, o identificador estável da conta Google — impede que
 um e-mail *gmail.com*/Workspace apagado e recriado por outra pessoa volte a coincidir com a conta antiga sem dar por nada
@@ -140,10 +149,12 @@ um e-mail *gmail.com*/Workspace apagado e recriado por outra pessoa volte a coin
 e no `basalt.toml` `[auth] cabecalho_sub = "X-Basalt-Sub"`. Duas notas:
 - Isto é específico do `--provider=google`. Com `--provider=oidc` (genérico), o `X-Auth-Request-User` vem do claim
   escolhido por `--user-id-claim` (omissão: `email`) — aí seria preciso `--user-id-claim=sub`, e confirmar no ensaio.
-- O Basalt é **fechado por omissão**: com `cabecalho_sub` configurado, uma conta que já tem `sub` gravado só entra se o
-  cabeçalho trouxer o mesmo valor. Se o nginx mandar `X-Basalt-Sub ""` (ou se desligares o `--set-xauthrequest`), essas
-  contas ficam de fora até o `sub` voltar a chegar — é esse o comportamento certo (nunca abre), mas convém saber.
-  As contas criadas à mão sem `sub` (ex. o admin) entram só pelo e-mail até terem um.
+- O Basalt é **fechado por omissão**: com `cabecalho_sub` configurado, uma conta nova só se cria se o `sub` chegar, e uma
+  conta que já tem `sub` gravado só entra se o cabeçalho trouxer o mesmo valor. Por isso, se puseres `cabecalho_sub` no
+  toml, as duas linhas do `$sub` em cima são **obrigatórias**, não opcionais: com o nginx a mandar `X-Basalt-Sub ""` (o
+  bloco tal como está em cima, ou o `--set-xauthrequest` desligado) ninguém cria conta e essas contas ficam de fora até o
+  `sub` voltar a chegar — é esse o comportamento certo (nunca abre), mas convém saber (ensaio de 21/10/2026: 403 a toda
+  a gente nova). As contas criadas à mão sem `sub` (ex. o admin) entram só pelo e-mail até terem um.
 
 **Sem proxy na mesma máquina** (oauth2-proxy e nginx em hosts diferentes do Basalt): acrescenta o IP/rede deles a
 `[auth] proxies_de_confianca` no `basalt.toml` (ver [INSTALAR.md §4](INSTALAR.md#4-na-rede-proxy-com-https)), senão o
@@ -164,6 +175,8 @@ cabecalho_sub = "X-Basalt-Sub"            # opcional: confere também o `sub` da
 criar_contas = true                        # conta nova no 1.º login de um e-mail autenticado pelo proxy
 dominios = ["exemplo.pt"]                  # opcional: só estes domínios criam conta (vazio = qualquer)
 max_contas = 200                           # opcional: tecto de contas (0 = sem tecto); as que já existem continuam a entrar
+                                           # (tecto, domínios, criar_contas e espaco_max_mb são relidos do toml em execução, como
+                                           # os [[utilizadores]]; mudar o modo, os cabeçalhos ou o segredo é reiniciar o serviço)
 espaco_max_mb = 500                        # r14: tecto de disco por conta — notas + anexos + cópia + dados (0 = sem tecto)
 
 [ia]
@@ -184,7 +197,10 @@ porque em modo `senha`/sem `criar_contas` quem cria a conta já está a decidir 
 - `espaco_max_mb` conta notas (`memoria/`, com os anexos), a cópia editável e `dados/` (Entrada, índice, cópias offline)
   — e vale por **todas** as portas de escrita: criar/gravar nota na página, `/api/sincronizar` (edição sem internet),
   anexos, a Entrada (`/api/guarda`) e as ferramentas de escrita do `/mcp`. Uma nota pode sempre **encolher**, mesmo com
-  o espaço cheio. O histórico git da memória não entra na conta (cresce pouco: só diferenças, comprimidas).
+  o espaço cheio. Conta **tudo** o que está na pasta do espaço — também o histórico git da memória (`memoria/.git`) e a
+  cópia editável (`copia/`, que repete cada nota): na prática 1 MB de tecto dá para menos de 500 kB de notas, e um espaço
+  com muitas versões enche mais depressa. É de propósito (excluir o git deixava encher o disco só com versões); dimensiona
+  o `espaco_max_mb` a contar com isso (medido a 21/10/2026: uma nota de 600 kB ocupou 1,2 MB do tecto logo ao ser gravada).
 - `pedidos_por_hora_por_conta` conta os pedidos à IA feitos por uma conta: o editor (`/api/ia`), a pergunta
   (`/api/pergunta`) e a fusão (`/api/unir`) partilham o mesmo balde. As propostas da IA na sincronização offline
   ficam sob o tecto do servidor `[ia] propostas_por_hora`, e a Entrada automática não é pedida pelo cliente.
@@ -192,8 +208,9 @@ porque em modo `senha`/sem `criar_contas` quem cria a conta já está a decidir 
 ## 5. Terminar sessão (sign-out)
 
 Em modo `cabecalho`, o Basalt não tem formulário de login nem senha — a sessão «é» a cookie do oauth2-proxy. O botão
-**Terminar sessão** da interface do Basalt chama `POST /api/sair`, que acaba a sessão do Basalt (o cookie dele), mas
-**não** termina a sessão da Google nem a do oauth2-proxy: sem mais nada, a pessoa seria autenticada outra vez no
+**Terminar sessão** da interface do Basalt chama `POST /api/sair`, que neste modo não tem sessão nenhuma do Basalt para
+acabar (não há cookie do Basalt; a única sessão é a do oauth2-proxy) e por isso **não** termina nada — nem a sessão da
+Google nem a do oauth2-proxy: sem mais nada, a pessoa seria autenticada outra vez no
 pedido seguinte, sem ver um ecrã de login. Para um sign-out completo, o link de "sair" tem de apontar para o
 oauth2-proxy, não para o Basalt:
 
@@ -223,29 +240,51 @@ python3 -m basalt --config /var/lib/basalt/basalt.toml utilizador exportar ana@g
 python3 -m basalt --config /var/lib/basalt/basalt.toml utilizador apagar ana@gmail.com      # pede para confirmar o e-mail
 ```
 
-## 7. Prova do ataque (curl) — o visitante não consegue escrever o próprio e-mail
+## 7. Prova do ataque — o visitante não consegue escrever o próprio e-mail
 
-A defesa inteira deste modo está em o nginx apagar o cabeçalho do visitante antes de pôr o verdadeiro, e o Basalt
-exigir o segredo do proxy. Para provar que funciona, dois testes com `curl`, direccionados ao Basalt como se fosses o
-nginx (sem passar pelo oauth2-proxy nem pelo segredo):
+A defesa inteira deste modo está em duas coisas diferentes — o nginx **substituir** o cabeçalho do visitante pelo verdadeiro,
+e o Basalt **exigir o segredo** do proxy — e cada uma prova-se no sítio certo. Um `curl https://basalt.exemplo.pt/api/eu`
+sem sessão devolve `302` para o login: é o `auth_request` a funcionar, e não prova nenhuma das duas (dava 302 na mesma com
+o nginx a deixar passar o cabeçalho do visitante — ensaio de 21/10/2026).
+
+**1. O segredo do Basalt** — no servidor, directamente à porta do Basalt, como se fosses o nginx (sem oauth2-proxy nem segredo):
 
 ```bash
-# 1. sem o segredo do proxy — mesmo mandando um e-mail válido, tem de ser recusado
-curl -i https://basalt.exemplo.pt/api/eu -H "X-Basalt-Email: admin@exemplo.pt"
+# sem o segredo do proxy — mesmo com um e-mail válido, tem de ser recusado
+curl -i http://127.0.0.1:8121/api/eu -H "X-Basalt-Email: admin@exemplo.pt"
 # esperado: 401 ou 403 (nunca 200 com a conta do admin)
 
-# 2. com o segredo errado — recusado da mesma forma
-curl -i https://basalt.exemplo.pt/api/eu \
-     -H "X-Basalt-Email: admin@exemplo.pt" \
-     -H "X-Basalt-Proxy-Segredo: qualquer-coisa-errada"
+# com o segredo errado — recusado da mesma forma
+curl -i http://127.0.0.1:8121/api/eu -H "X-Basalt-Email: admin@exemplo.pt" -H "X-Basalt-Proxy-Segredo: qualquer-coisa-errada"
 # esperado: 401 ou 403
 ```
 
-Se qualquer um destes devolver 200, **o nginx está a deixar passar o cabeçalho do cliente** (há um `location`
-com o `include` do segredo mas sem a linha `proxy_set_header X-Basalt-Email $email;` — o segredo só prova que o
-pedido passou pelo nginx, não que o e-mail é verdadeiro; o `include` e a linha do e-mail andam SEMPRE juntos) — corrige o nginx antes de pôr isto em produção. Este é exactamente o
-comportamento provado em `testes/test_login_google.py::test_sem_o_segredo_do_proxy_ninguem_entra`, que faz o mesmo
-ataque directamente ao servidor Basalt (sem precisar de um nginx real para correr a bateria de testes).
+Se der 200, o Basalt arrancou sem o `BASALT_SEGREDO_PROXY` (passo 4): com `criar_contas = true` nem arranca; sem
+`criar_contas` arranca, mas escreve um `aviso:` no arranque — vê o `journalctl -u basalt`.
+
+**2. A substituição no nginx** — pelo sítio público, COM a tua sessão (entra pela Google primeiro), a tentar passar por outra
+pessoa. A cookie `_oauth2_proxy` é a tua sessão: copia-a do browser (ferramentas de programador → Armazenamento/Application
+→ Cookies) e nunca a mandes a ninguém.
+
+```bash
+curl -s https://basalt.exemplo.pt/api/eu -b "_oauth2_proxy=COLA_AQUI_A_TUA_COOKIE" \
+     -H "X-Basalt-Email: outra-pessoa@exemplo.pt" -H "X-Basalt-Proxy-Segredo: qualquer-coisa"
+# esperado: 200 com o TEU e-mail (nunca o da outra pessoa; e nunca 401 — isso seria a tua própria sessão a falhar)
+```
+
+ou, sem sair do browser, na consola (F12) da página do Basalt já aberta:
+
+```js
+fetch("/api/eu", {headers: {"X-Basalt-Email": "outra-pessoa@exemplo.pt", "X-Basalt-Proxy-Segredo": "x"}}).then(r => r.json()).then(console.log)
+```
+
+Se aparecer o e-mail da outra pessoa, **o nginx está a deixar passar o cabeçalho do visitante**: há um `location` com o
+segredo mas sem a substituição do e-mail (o `include` do passo 3 traz as duas linhas juntas precisamente para isto não
+acontecer), ou o `[auth] cabecalho` do `basalt.toml` tem outro nome que não o que o nginx escreve — corrige antes de pôr
+isto em produção. O teste 1 está provado em `testes/test_login_google.py::test_sem_o_segredo_do_proxy_ninguem_entra` (o
+mesmo ataque, directo ao servidor Basalt); a forma do bloco nginx deste guia em `testes/test_guia_google.py` (o include
+leva o e-mail e o segredo, as rotas da IA apagam o e-mail, o `/oauth2/auth` vai sem corpo, e o bloco passa num `nginx -t`
+real quando há nginx na máquina).
 
 ## 8. RGPD e privacidade
 
