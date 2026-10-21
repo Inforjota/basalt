@@ -120,6 +120,15 @@ O_TEU_EMAIL` — na instalação com systemd, como o utilizador do serviço: `su
 autenticado (p. ex. `proxy_set_header X-Basalt-Email $upstream_http_x_auth_request_email;` com o oauth2-proxy). A rota `/mcp`
 não pode exigir esse login (ver [MCP.md](MCP.md)).
 
+**O segredo do proxy é obrigatório neste modo** (desde a r16): o servidor só arranca com a variável `BASALT_SEGREDO_PROXY`
+(o nome muda com `[auth] segredo_proxy_env`) com **pelo menos 32 caracteres** — gera-a com
+`python3 -c "import secrets; print(secrets.token_urlsafe(32))"` e põe-na no serviço (`Environment=BASALT_SEGREDO_PROXY=...` em
+`sistema/basalt.service`, ou `.env` no Docker Compose), nunca no `basalt.toml`. O proxy manda o **mesmo valor** no cabeçalho
+`X-Basalt-Proxy-Segredo`, junto com o e-mail, num ficheiro só do root (`proxy_set_header X-Basalt-Proxy-Segredo "…";` — ver
+[GOOGLE.md](GOOGLE.md) §3). Sem a variável, ou com menos de 32 caracteres, `basalt serve` sai com a razão (até à r15 só
+avisava, e qualquer processo que chegasse à porta entrava com o e-mail que escrevesse); os comandos de linha (`utilizador …`,
+`entrada`, `mcp` por stdio) não precisam dela. **A actualizar de uma versão anterior? Põe a variável e o proxy ANTES.**
+
 ### Traz a tua IA (Claude e ChatGPT pelo OAuth)
 
 Para ligar o Claude (site, Desktop, telemóvel) e o ChatGPT, o Basalt precisa de saber o seu endereço público **https**:

@@ -182,10 +182,13 @@ espaco_max_mb = 500                        # r14: tecto de disco por conta — n
 [ia]
 pedidos_por_hora = 200                     # tecto da IA para TODAS as contas juntas
 pedidos_por_hora_por_conta = 20            # r14: além desse, um tecto por conta — uma pessoa não esgota a IA de toda a gente
+                                           # (r16: sem esta linha, com criar_contas ou várias contas, já é min(20, pedidos_por_hora))
 ```
 
-A variável de ambiente é obrigatória com `criar_contas = true` e tem de ter **pelo menos 32 caracteres**
-(`basalt.toml` falha a validar sem isso — ver `basalt/config.py`, `AuthConfig.criar_contas`). Gera um valor com
+A variável de ambiente é **obrigatória em modo `cabecalho`** (desde a r16; até à r15 só com `criar_contas = true`) e tem de
+ter **pelo menos 32 caracteres**: sem ela o servidor (página e `/mcp`) não arranca — `basalt serve` sai com a razão (ver
+`Config.exigir_segredo_proxy` em `basalt/config.py`); os comandos de linha (`utilizador …`, `entrada`, `mcp` por stdio)
+continuam a correr sem ela. O nginx manda o mesmo valor no `X-Basalt-Proxy-Segredo` (passo 3). Gera um valor com
 `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` e põe-no no serviço systemd
 (`Environment=BASALT_SEGREDO_PROXY=...` em `sistema/basalt.service`, ou `.env` no Docker Compose) — **nunca** no
 `basalt.toml`, que pode ir para um repositório ou cópia de segurança partilhada. Se o segredo acabar escrito no toml
@@ -204,6 +207,8 @@ porque em modo `senha`/sem `criar_contas` quem cria a conta já está a decidir 
 - `pedidos_por_hora_por_conta` conta os pedidos à IA feitos por uma conta: o editor (`/api/ia`), a pergunta
   (`/api/pergunta`) e a fusão (`/api/unir`) partilham o mesmo balde. As propostas da IA na sincronização offline
   ficam sob o tecto do servidor `[ia] propostas_por_hora`, e a Entrada automática não é pedida pelo cliente.
+  Sem o valor (ou com 0), desde a r16 o tecto é automático: com `criar_contas = true` ou mais de uma conta,
+  `min(20, pedidos_por_hora)`; com uma só conta e sem `criar_contas`, nenhum (chega o do servidor).
 
 ## 5. Terminar sessão (sign-out)
 
@@ -259,8 +264,9 @@ curl -i http://127.0.0.1:8121/api/eu -H "X-Basalt-Email: admin@exemplo.pt" -H "X
 # esperado: 401 ou 403
 ```
 
-Se der 200, o Basalt arrancou sem o `BASALT_SEGREDO_PROXY` (passo 4): com `criar_contas = true` nem arranca; sem
-`criar_contas` arranca, mas escreve um `aviso:` no arranque — vê o `journalctl -u basalt`.
+Se der 200, quem respondeu não é um Basalt da r16 ou posterior: desde a r16 o modo `cabecalho` não arranca sem o
+`BASALT_SEGREDO_PROXY` (passo 4) — até à r15, sem `criar_contas`, arrancava só com um `aviso:` no registo. Confirma a versão
+instalada e, se o serviço não arrancar, o `journalctl -u basalt` diz porquê.
 
 **2. A substituição no nginx** — pelo sítio público, COM a tua sessão (entra pela Google primeiro), a tentar passar por outra
 pessoa. A cookie `_oauth2_proxy` é a tua sessão: copia-a do browser (ferramentas de programador → Armazenamento/Application

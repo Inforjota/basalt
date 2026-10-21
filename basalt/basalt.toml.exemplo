@@ -21,6 +21,9 @@ email = "basalt@localhost"
 modo = "senha"                     # senha = formulário próprio · cabecalho = o proxy já faz login (SSO) e manda o e-mail
                                    # · aberto = sem login, SÓ com escutar = 127.0.0.1
 cabecalho = "X-Basalt-Email"       # modo cabecalho: o proxy TEM de substituir este cabeçalho (nunca o do visitante)
+                                   # e o servidor só arranca com o segredo do proxy na variável BASALT_SEGREDO_PROXY (≥ 32
+                                   # caracteres, nunca aqui) e o mesmo valor mandado pelo proxy em X-Basalt-Proxy-Segredo
+                                   # (docs/GOOGLE.md §3)
 sessao_horas = 336                 # 14 dias
 tentativas = 5                     # falhas de login por IP em `janela_minutos`
 janela_minutos = 15
@@ -47,6 +50,8 @@ modelo_chat = "qwen2.5:7b"
 tempo_limite = 120
 propostas_por_hora = 12            # propostas de junção pela IA
 pedidos_por_hora = 40              # IA no editor (resumir, reescrever, corrigir, continuar)
+# pedidos_por_hora_por_conta = 20  # tecto de cada conta; sem ele: com várias contas (ou criar_contas) min(20, pedidos_por_hora),
+                                   # com uma só conta nenhum
 texto_maximo = 6000                # caracteres por pedido ao editor
 
 [ia.embeddings]                    # pesquisa por significado; sem isto a pesquisa é por palavras (BM25), sem IA

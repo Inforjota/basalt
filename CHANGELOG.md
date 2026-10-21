@@ -4,6 +4,33 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Isolamento entre contas, ronda r16 (21/10/2026)
+
+> **⚠️ Antes de actualizar:** se usas `modo = "cabecalho"`, configura `BASALT_SEGREDO_PROXY` (pelo menos 32 caracteres)
+> **e o mesmo valor no proxy**, no cabeçalho `X-Basalt-Proxy-Segredo` ([docs/GOOGLE.md](docs/GOOGLE.md) §3), **ANTES de
+> actualizar — senão o servidor não arranca.** Os modos `senha` e `aberto` não mudam.
+
+- **Modo `cabecalho` sem o segredo do proxy já não arranca** (o `basalt serve` e o `/mcp` por HTTP): a r15 só avisava no
+  registo e qualquer processo que chegasse à porta entrava com o e-mail que escrevesse no `X-Basalt-Email`. Sem a
+  variável, ou com menos de 32 caracteres, o `basalt serve` sai numa linha a dizer qual variável falta, quantos caracteres
+  tem e onde pôr o mesmo valor no proxy. Os comandos de linha (`utilizador …`, `entrada`, `mcp` por stdio) não falam com
+  o proxy e continuam a correr sem ele.
+- **O tecto de disco por conta (`[auth] espaco_max_mb`) aguenta pedidos em simultâneo:** «ver se cabe» e «escrever»
+  correm agora sob um trinco do espaço da conta (anexos, criar nota, gravar, a Entrada da página e do `/mcp`,
+  `criar_nota`/`escrever_nota`/`acrescentar_nota`). Até à r15, 8 anexos enviados ao mesmo tempo viam todos o mesmo uso,
+  passavam todos e o espaço chegava ao dobro do tecto — e o disco é de todas as contas. O trinco é por espaço: uma conta
+  cheia não atrasa as outras.
+- **Tecto de IA por conta automático com várias contas:** com `[ia] pedidos_por_hora_por_conta` omisso (ou 0) e mais de
+  uma conta no `basalt.toml` (ou `[auth] criar_contas = true`), cada conta fica com `min(20, pedidos_por_hora)` pedidos por
+  hora — uma conta já não esgota a IA de todas. Um valor maior que 0 no toml manda sempre; com uma só conta e sem criar
+  contas fica como antes (sem tecto por conta, só o do servidor). Conta-se em cada pedido: juntar uma 2.ª conta ao toml
+  (relido sem reiniciar) liga-o logo.
+- **Fila de escuta de 128 ligações** (era 5, a omissão do Python): uma rajada de ligações ao mesmo tempo (a página a
+  abrir com vários anexos, várias contas) já não leva ligações recusadas pelo sistema.
+- Testes novos: `testes/test_r16_quota_concorrente.py` (8 escritas em simultâneo com o «ver se cabe» lento de propósito:
+  falham os 4 no código da r15, com o espaço a chegar ao dobro do tecto de 1 MB), `testes/test_r16_ia_por_conta.py` e
+  `testes/test_r16_segredo_proxy.py`; os testes antigos em modo `cabecalho` passam a mandar o segredo, como o proxy.
+
 ### Revisão do login com a Google, ronda r15 (21/10/2026)
 - **`[auth]` relido sem reiniciar:** mudar no `basalt.toml` o `max_contas`, os `dominios`, o `criar_contas` ou o
   `espaco_max_mb` vale no pedido seguinte — antes, o tecto de contas e os domínios ficavam os do arranque até reiniciar

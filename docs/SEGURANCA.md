@@ -118,8 +118,10 @@
 ## O que NÃO protege (e o que fazer)
 
 - **TLS**: não faz. Um proxy (nginx/Caddy) com HTTPS à frente — ver [INSTALAR.md](INSTALAR.md).
-- **Modo `cabecalho`**: confia cegamente no cabeçalho de e-mail. Só com um proxy que o **substitui** sempre; sem isso, qualquer
-  visitante escolhe quem é.
+- **Modo `cabecalho`**: confia no cabeçalho de e-mail que chegue com o segredo do proxy (`X-Basalt-Proxy-Segredo` =
+  `BASALT_SEGREDO_PROXY`, obrigatório desde a r16: sem ele, ou com menos de 32 caracteres, o servidor não arranca). O proxy tem
+  de **substituir** sempre esse cabeçalho e guardar o segredo num ficheiro só dele; quem souber o segredo e chegar à porta
+  escolhe quem é.
 - **Modo `senha` atrás de um proxy, sem `anfitrioes`**: o `Host` não se confere (o proxy é que escolhe a quem chega). Põe o
   nome público em `[basalt] anfitrioes` para o servidor recusar os outros.
 - **Proxy noutra máquina ou no Docker**: a ligação não vem de loopback, por isso o `X-Forwarded-For` é ignorado e todos os
