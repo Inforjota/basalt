@@ -1951,6 +1951,10 @@ def indexar_se_vazio(cfg):
 
 
 class Servidor(ThreadingHTTPServer):
+    # r16: a fila de escuta do socketserver é 5 por omissão — 6 ou mais ligações ao mesmo tempo (a página abre várias, e com várias
+    # contas somam-se) e o sistema cortava algumas com um RST antes de o pedido chegar cá (o proxy à frente responde 502)
+    request_queue_size = 128
+
     def handle_error(self, request, client_address):
         """ronda 13: o socketserver escrevia o traceback inteiro no stderr — com a mensagem de cada excepção encadeada, que pode
         levar o nome de um ficheiro ou o caminho do pedido. Agora uma linha, mascarada; a ligação cortada pelo outro lado nem conta."""
