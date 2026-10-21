@@ -36,7 +36,7 @@ oauth2-proxy \
   --cookie-secret="$(python3 -c 'import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())')" \
   --cookie-secure=true \
   --http-address="127.0.0.1:4180" \
-  --upstream="http://127.0.0.1:8121" \
+  --upstream="static://202" \
   --set-xauthrequest=true \
   --pass-access-token=false \
   --pass-authorization-header=false \
@@ -46,6 +46,9 @@ oauth2-proxy \
 - `--email-domain="*"` deixa entrar qualquer conta Google; para restringir a um domínio de empresa (Google Workspace),
   põe o domínio (ex. `--email-domain=exemplo.pt`) — e, do lado do Basalt, `[auth] dominios = ["exemplo.pt"]` faz a
   mesma recusa outra vez, por garantia (ver §4).
+- `--upstream="static://202"`: neste desenho é o **nginx** que fala com o Basalt (§3); o oauth2-proxy só responde ao
+  `auth_request` e às rotas `/oauth2/*`. Um upstream «estático» garante que o oauth2-proxy **nunca** encaminha pedidos
+  ao Basalt por conta própria — se alguém um dia apontar uma rota directamente ao 4180, não há nada atrás.
 - `--set-xauthrequest=true` é o que faz o oauth2-proxy expor `X-Auth-Request-Email` (e `-User`, `-Groups`) nas respostas
   do `auth_request` do nginx — é daí que o nginx tira o e-mail verdadeiro para o injectar como `X-Basalt-Email`.
   **Nunca** apontar `proxy_set_header X-Basalt-Email` directamente a um cabeçalho que o cliente possa mandar.
@@ -122,11 +125,25 @@ Em **todos** os `location` que vão para o Basalt põe a linha do `X-Basalt-Emai
 `auth_request`) junto com o `include` do segredo, ou `""` sem o `include`, como no das rotas da IA. Um `location` que se esqueça do `include` deixa simplesmente de entrar
 (falta o segredo) — falha fechada, não aberta.
 
-Se quiseres o `sub` da Google como confirmação extra (impede que um e-mail *gmail.com* mudado de dono volte a
-coincidir com a conta antiga sem dar por nada — ver §4), o oauth2-proxy também expõe
-`X-Auth-Request-User` como subject id com certos provedores; confirma com `--set-xauthrequest=true` e
-`auth_request_set $sub $upstream_http_x_auth_request_user;`, e injecta-o como `X-Basalt-Sub` da mesma forma
-(substitui o do visitante, como os outros). ⚠️ Confirma no ensaio que esse valor é mesmo o `sub` da Google e não o e-mail; se for o e-mail, deixa `cabecalho_sub` vazio.
+**O `sub` da Google (recomendado).** Confere, além do e-mail, o identificador estável da conta Google — impede que
+um e-mail *gmail.com*/Workspace apagado e recriado por outra pessoa volte a coincidir com a conta antiga sem dar por nada
+(ver §4). Com `--provider=google` e `--set-xauthrequest=true`, o oauth2-proxy expõe esse `sub` em
+`X-Auth-Request-User` — é o código dele, não uma suposição: em `providers/google.go`, o `Redeem` guarda
+`User: c.Subject` (o claim `sub` do ID token) e `Email: c.Email`, e recusa ID tokens com `email_verified = false`
+(revisto 20/10/2026 na versão em `master`). No nginx, no `location /` em cima:
+
+```nginx
+        auth_request_set $sub   $upstream_http_x_auth_request_user;
+        proxy_set_header X-Basalt-Sub                $sub;                    # em vez de ""
+```
+
+e no `basalt.toml` `[auth] cabecalho_sub = "X-Basalt-Sub"`. Duas notas:
+- Isto é específico do `--provider=google`. Com `--provider=oidc` (genérico), o `X-Auth-Request-User` vem do claim
+  escolhido por `--user-id-claim` (omissão: `email`) — aí seria preciso `--user-id-claim=sub`, e confirmar no ensaio.
+- O Basalt é **fechado por omissão**: com `cabecalho_sub` configurado, uma conta que já tem `sub` gravado só entra se o
+  cabeçalho trouxer o mesmo valor. Se o nginx mandar `X-Basalt-Sub ""` (ou se desligares o `--set-xauthrequest`), essas
+  contas ficam de fora até o `sub` voltar a chegar — é esse o comportamento certo (nunca abre), mas convém saber.
+  As contas criadas à mão sem `sub` (ex. o admin) entram só pelo e-mail até terem um.
 
 **Sem proxy na mesma máquina** (oauth2-proxy e nginx em hosts diferentes do Basalt): acrescenta o IP/rede deles a
 `[auth] proxies_de_confianca` no `basalt.toml` (ver [INSTALAR.md §4](INSTALAR.md#4-na-rede-proxy-com-https)), senão o
@@ -163,7 +180,14 @@ por engano, `basalt estado`/o arranque recusa com `ConfigInvalida` a avisar para
 
 `espaco_max_mb` e `pedidos_por_hora_por_conta` são as duas defesas deste pacote contra uma conta de cliente (criada
 sozinha, sem ninguém a vigiar) encher o disco ou esgotar o tecto da IA para todos os outros — úteis sobretudo aqui,
-porque em modo `senha`/sem `criar_contas` quem cria a conta já está a decidir confiar nessa pessoa.
+porque em modo `senha`/sem `criar_contas` quem cria a conta já está a decidir confiar nessa pessoa. O que cada um cobre:
+- `espaco_max_mb` conta notas (`memoria/`, com os anexos), a cópia editável e `dados/` (Entrada, índice, cópias offline)
+  — e vale por **todas** as portas de escrita: criar/gravar nota na página, `/api/sincronizar` (edição sem internet),
+  anexos, a Entrada (`/api/guarda`) e as ferramentas de escrita do `/mcp`. Uma nota pode sempre **encolher**, mesmo com
+  o espaço cheio. O histórico git da memória não entra na conta (cresce pouco: só diferenças, comprimidas).
+- `pedidos_por_hora_por_conta` conta os pedidos à IA feitos por uma conta: o editor (`/api/ia`), a pergunta
+  (`/api/pergunta`) e a fusão (`/api/unir`) partilham o mesmo balde. As propostas da IA na sincronização offline
+  ficam sob o tecto do servidor `[ia] propostas_por_hora`, e a Entrada automática não é pedida pelo cliente.
 
 ## 5. Terminar sessão (sign-out)
 
@@ -191,7 +215,8 @@ isto é o que corresponde a "a pessoa deixa de poder entrar": se ela voltar a au
 e `criar_contas` continuar ligado, fica com uma conta **nova** (espaço vazio) — os dados antigos continuam em
 `apagados/`, por se precisares de os recuperar ou entregar. `basalt utilizador exportar EMAIL --para dados.zip`
 tira uma cópia das notas e anexos dessa conta (nunca o `basalt.toml` nem tokens) — útil para responder a um pedido de
-portabilidade de dados antes ou depois de apagar a conta.
+portabilidade de dados antes ou depois de apagar a conta. Se o espaço for **partilhado** com outra conta
+(`[basalt] espaco_partilhado = true`), a pasta fica onde está — é também da outra pessoa — e o comando di-lo.
 
 ```bash
 python3 -m basalt --config /var/lib/basalt/basalt.toml utilizador exportar ana@gmail.com --para /tmp/ana.zip

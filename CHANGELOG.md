@@ -26,6 +26,15 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
   produção, não em teste), oauth2-proxy, nginx (`auth_request` + apagar/injectar cabeçalhos), as chaves do
   `basalt.toml`, terminar sessão (`/oauth2/sign_out`), prova do ataque por `curl` e notas de RGPD a ligar com
   [SEGURANCA.md](docs/SEGURANCA.md) e [PRIVACIDADE.md](docs/PRIVACIDADE.md).
+- Revisão de segurança antes de publicar (20/10): **o tecto de disco vale por todas as portas** — gravar uma nota
+  existente (página, `/api/sincronizar`, `escrever_nota`/`acrescentar_nota` do `/mcp`), `criar_nota` do `/mcp` e a
+  Entrada (`/api/guarda`, `guardar_ideia`) contornavam o `espaco_max_mb`, que só o criar/anexos cumpria; uma nota pode
+  sempre encolher. **O tecto de IA por conta cobre também `/api/pergunta` e `/api/unir`** (o mesmo balde do editor; a
+  pergunta não tinha tecto nenhum). **`utilizador apagar` não move a pasta de um espaço partilhado** (`[basalt]
+  espaco_partilhado = true` — levava as notas da outra conta). **A conta criada no 1.º login fica com o espaço e o git
+  prontos**, como as do arranque. `docs/GOOGLE.md`: o `X-Auth-Request-User` **é** o `sub` com `--provider=google`
+  (confirmado no `providers/google.go`), nota sobre `--provider=oidc`/`--user-id-claim`, `--upstream=static://202`, e
+  o alcance exacto de cada tecto.
 
 ### Correcções da ronda 13c (20/10/2026)
 - **Uma nota em que o `[segredos] verificador` falha sempre já não trava a sincronização das outras:** com «no máximo uma
