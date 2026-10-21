@@ -24,6 +24,7 @@ from . import caminhos
 ENV_CONFIG = "BASALT_CONFIG"
 LOCAIS = ("./basalt.toml", "~/.config/basalt/basalt.toml", "/etc/basalt/basalt.toml")
 ESPACO_OMISSAO = "principal"
+ESPACOS_RESERVADOS = ("apagados",)   # r17: <dados>/apagados/ é a pasta das contas apagadas — um espaço com esse nome não se podia mover para lá
 FORNECEDORES = ("nenhum", "openai", "anthropic", "claude-cli")
 # IA por tarefa: [ia.unir] (o botão Unir e as fusões do `arrumar --auto`), [ia.arrumar] (decidir os pares de notas parecidas do
 # `arrumar --auto`) e [ia.entrada] (classificar as ideias da Entrada: o vigia do servidor e o `arrumar --auto`). Cada uma sobrepõe
@@ -283,6 +284,9 @@ class Config:
             vistos.add(e)
             if not ESPACO_RX_OK(u.espaco):
                 raise ConfigInvalida(f"nome de espaço inválido: {u.espaco!r} (letras, dígitos, _ e -)")
+            if u.espaco in ESPACOS_RESERVADOS:
+                raise ConfigInvalida(f"o nome de espaço «{u.espaco}» está reservado (é a pasta das contas apagadas, <dados>/{u.espaco}/) "
+                                     f"— dá outro `espaco` a {u.email}")
         donos: dict = {}                                 # ronda 8 (um espaço por utilizador): partilhar só explicitamente
         for u in self.utilizadores:
             if u.espaco in donos and not self.espaco_partilhado:

@@ -191,14 +191,19 @@ def gravar_toml(caminho: Path, texto: str):
         raise
 
 
-def editar_toml(caminho: Path, editar) -> str:
+def editar_toml(caminho: Path, editar, depois=None) -> str:
     """lê → `editar(texto)` → grava, TUDO com o trinco tomado: quem escreve parte sempre do ficheiro actual. Devolve o texto gravado.
     ronda 13: a linha de comandos lia o basalt.toml, pedia a senha no terminal (podia demorar) e gravava o texto velho — uma senha
-    mudada na página entretanto era desfeita sem ninguém dar por isso (e a sessão nova dessa pessoa morria na releitura)."""
+    mudada na página entretanto era desfeita sem ninguém dar por isso (e a sessão nova dessa pessoa morria na releitura).
+    r17: `depois()`, se vier, corre AINDA com o trinco tomado, logo a seguir à gravação — para o que tem de acontecer sem ninguém
+    pelo meio (o `utilizador apagar` move a pasta do espaço aqui: o `apagados eliminar`, que espera pelo mesmo trinco, nunca vê a
+    entrada registada com a pasta ainda por chegar)."""
     caminho = Path(caminho)
     with trinco_toml(caminho):
         novo = editar(caminho.read_text(encoding="utf-8"))
         gravar_toml(caminho, novo)
+        if depois is not None:
+            depois()
         return novo
 
 

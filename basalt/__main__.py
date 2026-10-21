@@ -62,13 +62,14 @@ def _escrever_toml(caminho: Path, texto: str):
         _falha(f"o basalt.toml ficaria inválido ({e}) — não mexi em {caminho}")
 
 
-def _editar_toml(caminho: Path, editar, cortadas=()):
+def _editar_toml(caminho: Path, editar, cortadas=(), depois=None):
     """ronda 13: ler → editar → gravar com o trinco tomado (ver auth.editar_toml). Antes lia-se o texto no início do comando e, se a
     página mudasse uma senha enquanto o terminal esperava pela nossa, a gravação do texto velho desfazia-a.
     ronda 13c: `cortadas` = os e-mails cujas ligações das IAs o `editar` já revogou na base (ronda 13b: antes de o toml mudar). Se a
-    gravação falhar depois disso, o corte fica (é a direcção segura) e o aviso di-lo — antes dizia só «não mexi no basalt.toml»."""
+    gravação falhar depois disso, o corte fica (é a direcção segura) e o aviso di-lo — antes dizia só «não mexi no basalt.toml».
+    r17: `depois()` corre com o trinco ainda tomado, depois de o toml estar gravado (não pode lançar: o toml JÁ mudou)."""
     try:
-        editar_toml(caminho, editar)
+        editar_toml(caminho, editar, depois)
     except KeyError as e:
         _falha(f"utilizador desconhecido: {e.args[0] if e.args else ''}")
     except (config.ConfigInvalida, ValueError, OSError) as e:   # ValueError = toml mal formado
@@ -110,7 +111,7 @@ def _espaco_para(cfg, email: str, pedido: str | None) -> str:
         return pedido
     base = _slug_espaco(email)
     n, i = base, 1
-    while n in donos:
+    while n in donos or n in config.ESPACOS_RESERVADOS:     # r17: «apagados@…» não pode cair na pasta das contas apagadas
         i += 1
         n = f"{base}_{i}"
     return n
@@ -326,7 +327,7 @@ def _apagar_conta(caminho: Path, email: str, conta_id: str | None = None, apagad
     partilham = sorted(x.email for x in cfg.utilizadores if x.espaco == u.espaco and x.email.lower() != u.email.lower())
     destino = None if partilham or not esp.raiz.exists() else apagados.destino_livre(cfg.dados, esp.nome)
 
-    cortadas, revogadas, registo = [], [], []
+    cortadas, revogadas, registo, nao_saiu = [], [], [], []
 
     def tirar(t):
         if not _bloco_de(t, email):
@@ -344,8 +345,22 @@ def _apagar_conta(caminho: Path, email: str, conta_id: str | None = None, apagad
             _falha(f"não consegui gravar o registo das contas apagadas ({e}) — não mexi no basalt.toml; as ligações das IAs de "
                    f"{email} já ficaram cortadas na base (isso fica) — repete o comando")
         return novo
+
+    def mover():
+        # com o trinco do toml AINDA tomado (a entrada do registo já diz para onde a pasta vai): o `apagados eliminar` espera pelo
+        # mesmo trinco e, quando o apanha, ou a pasta já lá está ou a entrada foi desfeita — antes movia-se depois de o largar e o
+        # `eliminar`, a correr nesse instante, via a pasta registada «já não existir», marcava a entrada eliminada e a pasta chegava
+        # a seguir, para ficar em apagados/ sem registo para sempre
+        if partilham or destino is None:
+            return
+        alvo = cfg.dados / destino
+        try:
+            alvo.parent.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(esp.raiz), str(alvo))
+        except OSError as e:                  # não pode lançar aqui (o toml já mudou): diz-se depois, fora do trinco
+            nao_saiu.append(e)
     try:
-        _editar_toml(caminho, tirar, cortadas)
+        _editar_toml(caminho, tirar, cortadas, depois=mover)
     except SystemExit:
         if registo:                       # a entrada foi gravada mas o basalt.toml não mudou: volta ao que era
             try:
@@ -361,10 +376,8 @@ def _apagar_conta(caminho: Path, email: str, conta_id: str | None = None, apagad
         msg += f"; a pasta {esp.raiz} ficou onde está — o espaço «{u.espaco}» é partilhado com {', '.join(partilham)}"
     elif destino is not None:
         alvo = cfg.dados / destino
-        try:
-            alvo.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(esp.raiz), str(alvo))
-        except OSError as e:
+        if nao_saiu:
+            e = nao_saiu[0]
             _falha(f"a conta foi apagada, mas a pasta {esp.raiz} não saiu do sítio ({e.strerror or e}) — move-a à mão para {alvo}: "
                    f"é aí que `basalt apagados eliminar` a vai buscar (entrada {entrada['id']})")
         msg += f"; a pasta foi para {alvo}"

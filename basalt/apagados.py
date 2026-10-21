@@ -309,21 +309,40 @@ def _conta_viva(cfg, sha: str):
     return next((u for u in cfg.utilizadores if email_sha256(u.email) == sha), None)
 
 
+def _espaco_ainda_no_sitio(cfg, dados: Path, espaco) -> bool:
+    """a pasta registada não existe — mas o espaço da conta apagada ainda está em <dados>/<espaco> e nenhuma conta do basalt.toml
+    o usa: a pasta não chegou a sair do sítio (um erro ao mover: outro disco, permissões). Isso NÃO é «a pasta já não existia»:
+    marcar a entrada eliminada deixava os dados lá para sempre, com o registo a dizer o contrário. Um espaço reutilizado por uma
+    conta nova (o mesmo e-mail dá o mesmo nome) é dela e não conta."""
+    if not espaco or not config.ESPACO_RX_OK(espaco) or espaco in config.ESPACOS_RESERVADOS:
+        return False
+    if any(u.espaco == espaco for u in cfg.utilizadores):
+        return False
+    return os.path.lexists(Path(dados) / espaco)
+
+
 def _eliminar_uma(caminho: Path, dados: Path, ident: str, dizer) -> str:
     """uma entrada: 'eliminada', 'voltou' ou 'ja' (já não está por eliminar). Uma recusa ou um erro sobe (a entrada fica por
-    eliminar e volta a tentar-se na próxima vez)."""
+    eliminar e volta a tentar-se na próxima vez).
+    Tudo o que decide (a entrada, o basalt.toml, se a pasta registada existe) lê-se com o trinco do toml tomado: o `utilizador
+    apagar` e o `reaplicar` registam a entrada, mudam o toml e MOVEM a pasta com esse trinco tomado, por isso aqui ou a pasta já
+    chegou ou a entrada ainda não existe — nunca a entrada com a pasta a caminho (que se tomava por «já não existia»)."""
     from . import oauth
     from .auth import revogar_sessoes, trinco_toml
-    with trinco(dados):
-        e = next((x for x in ler(dados) if x["id"] == ident), None)
-    if e is None or e.get("eliminado_em"):
-        return "ja"
-    alvo = _pasta_alvo(dados, e)
-    email = e.get("email") or ""
-    with trinco_toml(caminho):          # ninguém cria nem repõe uma conta a meio (o servidor e a linha de comandos esperam)
-        viva = _conta_viva(config.carregar(caminho), e["email_sha256"])
+    with trinco_toml(caminho):          # ninguém cria, apaga nem repõe uma conta a meio (o servidor e a linha de comandos esperam)
+        with trinco(dados):
+            e = next((x for x in ler(dados) if x["id"] == ident), None)
+        if e is None or e.get("eliminado_em"):
+            return "ja"
+        cfg = config.carregar(caminho)
+        viva = _conta_viva(cfg, e["email_sha256"])
         if viva is not None and viva.conta_id == (e.get("conta_id") or ""):
             return "voltou"
+        alvo = _pasta_alvo(dados, e)
+        if alvo is None and e.get("pasta") and _espaco_ainda_no_sitio(cfg, dados, e.get("espaco")):
+            raise Recusa(f"a pasta registada {e['pasta']} não existe, mas o espaço «{e['espaco']}» continua em {Path(dados) / e['espaco']} "
+                         f"(não chegou a sair do sítio) — move-o para {Path(dados) / e['pasta']} ou tira-o dali à mão; fica por eliminar")
+        email = e.get("email") or ""
         # há uma conta NOVA com o mesmo e-mail (outro conta_id): só sai da base o que nasceu antes do apagamento, e as sessões dela ficam
         ate = None if viva is None else instante(e["apagado_em"]) + 1
         ligacoes = oauth.eliminar_na_base(dados, email, ate) if email else 0
