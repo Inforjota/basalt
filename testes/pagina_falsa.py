@@ -78,7 +78,7 @@ def reset(**k):
     ESTADO.update(modo="ok", pacote=[], put=[], sinc_pedidos=0, nota_texto="S novo", nota_hash="H2", put_solta=None,
                   sinc_409=None, sinc_503=False, pacote_solta=None, pacote_pedidos=0, nota_solta=None, put_falha_rede=False,
                   nota_status=200, idioma="pt", pacote_uma=None, dono="d-ana", modo_auth="cabecalho", donos=[], sinc=[], sinc_base=[], sair=0, anexos=[],
-                  fonte_texto="TEXTO DA FONTE", fonte_status=200)
+                  fonte_texto="TEXTO DA FONTE", fonte_status=200, sair_url=None)
     ESTADO["sinc_solta"] = threading.Event()
     ESTADO.update(k)
 
@@ -129,6 +129,8 @@ class Servidor(BaseHTTPRequestHandler):
             eu = {"modo": ESTADO["modo_auth"], "email": "ana@exemplo.pt", "nome": "ana"}
             if ESTADO["dono"] is not None:                    # None = um servidor que não diz o dono
                 eu["dono"] = ESTADO["dono"]
+            if ESTADO["sair_url"] is not None:                # r21: [auth] sair_url (o «Terminar sessão» do modo cabecalho)
+                eu["sair_url"] = ESTADO["sair_url"]
             return eu
         if c == "/api/estado":
             return {"notas": 1, "ligacoes": 0, "entrada": 0, "pedacos": 0, "ultima_foto": "2026-10-06 10:00 · teste", "modelo": "modelo-teste"}

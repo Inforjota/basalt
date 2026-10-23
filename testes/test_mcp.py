@@ -259,7 +259,10 @@ def test_o_mcp_respeita_o_tecto_de_disco_da_conta(tmp_path, monkeypatch):
     grande = "x" * 390_000                                                            # abaixo dos 400 000 do «texto» do MCP
     d, erro = ferramenta(srv, u, "criar_nota", nome="n1", texto=grande)
     assert not erro and d["ok"]
-    (esp.copia / "enche.md").write_text("e" * 400_000, encoding="utf-8")             # ~790 KB usados; sobram ~250 KB
+    # r21 (QUOTA_COPIAS_v1): a n1 conta 2 vezes (a cópia + a memória, para onde o vigia a vai copiar) = 780 KB; o que se escreve
+    # à mão vai para as duas pastas (como depois do vigia), senão contava outra vez como «por igualar». Antes: 400 KB só na cópia.
+    for d in (esp.copia, esp.real):
+        (d / "enche.md").write_text("e" * 5_000, encoding="utf-8")                     # ~790 KB usados; sobram ~250 KB
     d, erro = ferramenta(srv, u, "criar_nota", nome="n2", texto=grande)                 # passava 1 MB
     assert erro and "limite" in d["erro"] and not (esp.copia / "n2.md").exists()
     d, erro = ferramenta(srv, u, "acrescentar_nota", nome="tarefas", texto=grande)
@@ -271,6 +274,7 @@ def test_o_mcp_respeita_o_tecto_de_disco_da_conta(tmp_path, monkeypatch):
     assert not erro and d2["ok"]
     d, erro = ferramenta(srv, u, "guardar_ideia", texto="cabe")
     assert not erro and d["ok"]
-    (esp.copia / "enche2.md").write_text("e" * 250_000, encoding="utf-8")            # sobram < 10 KB
+    for d in (esp.copia, esp.real):                                                   # r21: 2 × 125 KB (ver acima)
+        (d / "enche2.md").write_text("e" * 125_000, encoding="utf-8")                  # sobram < 10 KB
     d, erro = ferramenta(srv, u, "guardar_ideia", texto="i" * 19_000)
     assert erro and "limite" in d["erro"]

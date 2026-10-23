@@ -414,7 +414,11 @@ def cmd_apagados(a):
 
 def _exportar_utilizador(caminho: Path, email: str, a):
     """r14: zip das notas + anexos de uma conta (nunca o basalt.toml nem tokens — só `esp.real`, que é onde vivem as notas e
-    `anexos/`; a cópia editável e `dados/` — sessões, índice — ficam de fora de propósito)."""
+    `anexos/`; a cópia editável e `dados/` — sessões, índice — ficam de fora de propósito).
+    r21 (EXPORTAR_COPIA_v1, auditoria externa à r14, ponto 7): a web e o /mcp escrevem na cópia editável e o vigia só a leva
+    para a memória uns segundos depois (ou nunca, com o vigia parado): essas notas — novas, ou diferentes da memória — vão também
+    para `por-sincronizar/<nome>.md` (a versão da memória fica onde estava). Continua só de leitura: não corre o vigia. O que o
+    vigia não sincroniza (conflitos, .bak, ligações simbólicas, index.md…) fica de fora, como antes."""
     if not a.para:
         _falha("falta --para FICHEIRO.zip")
     cfg = config.carregar(caminho)
@@ -422,14 +426,44 @@ def _exportar_utilizador(caminho: Path, email: str, a):
     esp = cfg.espaco_de(u)
     destino = Path(a.para).expanduser().resolve()
     destino.parent.mkdir(parents=True, exist_ok=True)
-    n = 0
+    n = por_sinc = 0
     with zipfile.ZipFile(destino, "w", zipfile.ZIP_DEFLATED) as z:
         if esp.real.exists():
             for p in sorted(esp.real.rglob("*")):
                 if p.is_file() and not p.is_symlink():
                     z.write(p, p.relative_to(esp.real))
                     n += 1
+        for nome, dados in _por_sincronizar(esp):                 # r21 (EXPORTAR_COPIA_v1)
+            z.writestr(f"por-sincronizar/{nome}", dados)
+            n += 1
+            por_sinc += 1
     print(f"✓ {n} ficheiro(s) de {email} em {destino}")
+    if por_sinc:
+        print(f"  {por_sinc} nota(s) ainda por sincronizar (só na cópia editável) em por-sincronizar/")
+
+
+def _por_sincronizar(esp):
+    """r21 (EXPORTAR_COPIA_v1): (nome, bytes) das notas da cópia editável que o vigia ainda não levou para a memória — novas ou
+    diferentes. O mesmo filtro do vigia (`duasvias.nota`, sem ligações simbólicas); uma pasta recusada ou ilegível salta-se."""
+    from . import duasvias
+    try:
+        nomes = sorted(duasvias.notas_de(esp.copia)) if esp.copia.exists() else []
+    except OSError as e:
+        print(f"basalt: cópia editável ilegível ({e}) — o ZIP leva só a memória", file=sys.stderr)
+        return []
+    out = []
+    for nome in nomes:
+        try:
+            dados = caminhos.ler(esp.copia / nome)
+        except OSError:
+            continue
+        try:
+            igual = (esp.real / nome).is_file() and caminhos.ler(esp.real / nome) == dados
+        except OSError:
+            igual = False
+        if not igual:
+            out.append((nome, dados))
+    return out
 
 
 def _dentro_de_cada(cfg, a, fn):

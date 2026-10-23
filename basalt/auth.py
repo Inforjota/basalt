@@ -40,6 +40,8 @@ MAXMEM = 64 * 1024 * 1024             # o OpenSSL recusa acima de 32 MiB por omi
 # ronda 13: vivem aqui (e não em __main__) porque o servidor também os usa — importar `basalt.__main__` de dentro do processo lançado
 # com `python -m basalt` carregava o mesmo ficheiro uma segunda vez, como outro módulo ao lado de `__main__`.
 _BLOCO_RX = re.compile(r"(?ms)^\[\[utilizadores\]\][ \t]*\n(.*?)(?=^\[|\Z)")
+# r21 (SUB_PRIMEIRO_v1): o `sub` (Google) que se aceita gravar no toml — o mesmo critério da r14 para as contas novas
+SUB_RX = r"[A-Za-z0-9._:@|-]{1,255}"
 
 
 def _bloco_de(texto: str, email: str):
@@ -580,10 +582,54 @@ class Autenticador:
             u = self._criar_conta(email, sub)
         if u is None:
             return None
+        # r21 (SUB_PRIMEIRO_v1, auditoria externa à r14 ponto 1): uma conta SEM `sub` no toml aceitava qualquer `sub` — a conta
+        # Google desse e-mail apagada e recriada (outra pessoa) entrava nas notas da anterior. Agora fica com o `sub` do 1.º login
+        # que o traga («trust-on-first-use», gravado no toml) e daí em diante exige-se esse. Um pedido sem `sub` numa conta que
+        # ainda não tem nenhum entra como antes (só pelo e-mail) e não associa nada.
+        if self.cfg.auth.cabecalho_sub and not u.sub and sub:
+            u = self._associar_sub(email, sub)
+            if u is None:
+                return None
         # a conta Google desse e-mail foi apagada e recriada (Workspace) → é outra pessoa: não entra nas notas da anterior
-        if self.cfg.auth.cabecalho_sub and u.sub and not hmac.compare_digest(u.sub, sub):
+        # r21 (SUB_PRIMEIRO_v1): compara bytes — um `sub` com letras fora do ASCII rebentava o compare_digest (TypeError → 500)
+        if self.cfg.auth.cabecalho_sub and u.sub and not hmac.compare_digest(u.sub.encode("utf-8"), sub.encode("utf-8")):
             return None
         return u
+
+    def _associar_sub(self, email: str, sub: str) -> Utilizador | None:
+        """r21 (SUB_PRIMEIRO_v1): grava o `sub` deste login na conta (que ainda não tinha nenhum) e devolve-a; None = não entra.
+        Falha FECHADA: um `sub` com caracteres estranhos não se grava, e se o toml não se deixar gravar (só de leitura, não
+        carrega) recusa-se — aceitar sem gravar deixava o buraco aberto até ao login seguinte. Dentro do trinco das contas e
+        do toml: dois logins ao mesmo tempo com `sub` diferentes → só o primeiro fica com a conta."""
+        if self._origem is None or not re.fullmatch(SUB_RX, sub):
+            print(f"contas: {email} sem `sub` no basalt.toml e o deste login não se pode gravar — recusado", file=sys.stderr, flush=True)
+            return None
+        with self._criar_lock:
+            self.reler_se_mudou()
+            if self._fechado:
+                return None
+            u = self.cfg.utilizador(email)
+            if u is None:                                       # a conta saiu do toml entretanto
+                return None
+            if not u.sub:                                       # senão outro pedido associou-a entretanto: compara-se lá fora
+
+                def editar(texto):
+                    if chave_utilizador(texto, email, "sub"):   # alguém (outro pedido, a CLI, o admin) já pôs um `sub`: não se troca
+                        return texto
+                    return definir_chave_utilizador(texto, email, "sub", sub)
+                try:
+                    editar_toml(self._origem, editar)
+                except (OSError, config.ConfigInvalida, ValueError, KeyError) as e:
+                    print(f"contas: não consegui gravar o `sub` de {email} ({getattr(e, 'strerror', None) or e}) — recusado",
+                          file=sys.stderr, flush=True)
+                    return None
+                self.reler_se_mudou()
+                u = self.cfg.utilizador(email)
+                if u is None or not u.sub:
+                    return None
+                if u.sub == sub:
+                    print(f"contas: {email} ficou com o `sub` do 1.º login (Google)", file=sys.stderr, flush=True)
+            return u
 
     def _criar_conta(self, email: str, sub: str) -> Utilizador | None:
         """conta nova (espaço próprio com nome aleatório, sem senha, não admin) no basalt.toml, dentro do trinco do toml.
@@ -598,7 +644,7 @@ class Autenticador:
             return None
         if a.dominios and email.rsplit("@", 1)[1] not in a.dominios:
             return None
-        if a.cabecalho_sub and not re.fullmatch(r"[A-Za-z0-9._:@|-]{1,255}", sub or ""):
+        if a.cabecalho_sub and not re.fullmatch(SUB_RX, sub or ""):
             return None
         with self._criar_lock:
             self.reler_se_mudou()

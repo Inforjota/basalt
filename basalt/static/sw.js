@@ -2,7 +2,7 @@
 // quando não há rede, nunca esconde uma sessão expirada atrás de dados velhos.
 "use strict";
 
-var CACHE_VERSAO = "basalt-v15";      // sobe de versão quando a lógica de cache muda
+var CACHE_VERSAO = "basalt-v16";      // sobe de versão quando a lógica de cache muda (r21: SAIR_URL_v1 na página)
 // ronda 9 (achado 2 da ronda 7): a página só volta a ligar a cópia com um service worker que fale este protocolo (trinco partilhado
 // e geração gravada em cada entrada). Um SW antigo (v8, sem gerações) ainda a controlar a página não responde → não religa.
 // Protocolo 4 (ronda 9, achado G1 da ronda 2): uma cache da API por dono — um SW de protocolo 3 ainda tinha a cache comum.

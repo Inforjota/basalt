@@ -958,8 +958,14 @@ def gravar(nome, texto, base_hash, limite_mb=0):
                     return 409, {"erro": "A nota acabou de mudar na memória (um agente); espera uns segundos e recarrega.",
                                  "hash_actual": actual, "actual": b.decode("utf-8", "replace"), "pendente": True, "estado": "ocupado"}
             dados = texto.encode("utf-8")
-            if _espaco_cheio(limite_mb, max(0, len(dados) - len(b))):     # só o que a nota cresce conta (o tecto não tranca o encolher)
-                return 413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."}
+            # r21 (QUOTA_COPIAS_v1, auditoria externa à r14 pontos 3 e 4): encolher ou gravar ao mesmo tamanho NUNCA é recusado
+            # pelo tecto (antes via-se «uso + 0 > tecto» e, com o espaço já acima dele, nem encolher deixava). Crescer conta as DUAS
+            # cópias: o vigia vai pôr a memória igual a esta, por isso a nota passa a ocupar 2 × a maior das versões.
+            if len(dados) > len(b):
+                r_tam = len(caminhos.ler(pr)) if pr.exists() else 0
+                cresce = 2 * (max(len(dados), r_tam) - max(len(b), r_tam))
+                if cresce > 0 and _espaco_cheio(limite_mb, cresce):
+                    return 413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."}
             motivo = cas().escrever(p, dados, actual, "web")
             if motivo:
                 b = caminhos.ler(p) if caminhos.regular(p) else b""
@@ -972,8 +978,31 @@ def gravar(nome, texto, base_hash, limite_mb=0):
 
 def _espaco_cheio(limite_mb, bytes_novos) -> bool:
     """r14 ([auth] espaco_max_mb): True se o espaço ACTUAL (config.actual()) já não tem lugar para `bytes_novos` a mais.
-    limite_mb <= 0 = sem tecto."""
-    return bool(limite_mb) and config.actual().uso_bytes() + bytes_novos > limite_mb * 1024 * 1024
+    limite_mb <= 0 = sem tecto.
+    r21 (QUOTA_COPIAS_v1): conta também o que o vigia AINDA vai escrever para igualar as duas cópias das notas (`_por_igualar`)
+    — antes via-se só o disco de agora, e uma nota acabada de criar ou crescer na cópia dobrava de tamanho 10 s depois."""
+    if not limite_mb:
+        return False
+    esp = config.actual()
+    return esp.uso_bytes() + _por_igualar(esp) + bytes_novos > limite_mb * 1024 * 1024
+
+
+def _por_igualar(esp) -> int:
+    """r21 (QUOTA_COPIAS_v1): o máximo que o vigia (duasvias) ainda pode acrescentar ao disco para pôr as duas cópias de cada nota
+    iguais — Σ |cópia − memória| pelas notas que ele sincroniza (as mesmas de `duasvias.nota`: uma pasta só, sem subpastas).
+    Por excesso de propósito (uma nota apagada na cópia ainda conta até o vigia passar). Fica de fora o que o git da memória
+    cresce a cada gravação do vigia: é o risco que fica (GOOGLE.md §4) — e é por isso que encolher passa sempre."""
+    from . import duasvias
+    tam = {}
+    for i, pasta in enumerate((esp.copia, esp.real)):
+        try:
+            entradas = caminhos.listar_dir(pasta)
+        except OSError:                              # pasta por uma ligação simbólica (Recusado) ou sem acesso: o uso_bytes também a salta
+            continue
+        for nome, tipo, st in entradas:
+            if tipo == "f" and duasvias.nota(nome):
+                tam.setdefault(nome, [0, 0])[i] = st.st_size
+    return sum(abs(c - r) for c, r in tam.values())
 
 
 def criar(nome, texto, limite_mb=0):
@@ -987,7 +1016,7 @@ def criar(nome, texto, limite_mb=0):
     dados = (texto or "").encode("utf-8")
     try:
         with trinco_quota(limite_mb):                 # r16 (H1): ver se cabe e escrever sob o MESMO trinco (antes via-se fora dele)
-            if _espaco_cheio(limite_mb, len(dados)):
+            if _espaco_cheio(limite_mb, 2 * len(dados)):     # r21 (QUOTA_COPIAS_v1): o vigia vai copiá-la para a memória — conta 2 vezes
                 return 413, {"erro": f"Chegaste ao limite de espaço da tua conta ({limite_mb} MB)."}
             with trinco_copia():
                 if p.exists() or (REAL / f"{nome}.md").exists():
@@ -1546,10 +1575,19 @@ class H(BaseHTTPRequestHandler):
     def _ia_conta_cheia(self, user) -> bool:
         """r14 ([ia] pedidos_por_hora_por_conta) nas rotas que chamam a IA FORA do editor (/api/pergunta, /api/unir): True = já
         respondeu 429. Conta no mesmo balde do /api/ia — o tecto é «pedidos à IA por conta», por onde quer que entrem.
-        r16 (M1): o tecto é o de `tecto_ia_conta` (automático com várias contas), o mesmo do /api/ia."""
-        maximo = tecto_ia_conta(self.cfg, ia_mod.actual().cfg)
+        r16 (M1): o tecto é o de `tecto_ia_conta` (automático com várias contas), o mesmo do /api/ia.
+        r21 (IA_GLOBAL_v1, auditoria externa à r14 ponto 5): e depois o do SERVIDOR (`[ia] pedidos_por_hora`, todas as contas
+        juntas), no mesmo balde e pela mesma ordem do /api/ia — antes a pergunta e a fusão só viam o da conta, e várias contas
+        (ou uma só, sem tecto por conta) chamavam a IA sem limite. `pedidos_por_hora = 0` aqui continua a ser «sem tecto do
+        servidor» (como no automático da r16): no /api/ia o 0 já desligava o editor, mas quem o pôs não fica sem a pergunta."""
+        cfg_ia = ia_mod.actual().cfg
+        maximo = tecto_ia_conta(self.cfg, cfg_ia)
         if maximo and not _limite_horario_conta(_ia_usos_conta, user.email.lower(), maximo):
             self._json(429, {"erro": f"Já fizeste {maximo} pedidos à IA na última hora; espera um bocado."})
+            return True
+        total = cfg_ia.pedidos_por_hora                         # r21 (IA_GLOBAL_v1)
+        if total > 0 and not _limite_horario(_ia_usos, total):
+            self._json(429, {"erro": f"Já foram {total} pedidos à IA na última hora; espera um bocado."})
             return True
         return False
 
@@ -1661,9 +1699,12 @@ class H(BaseHTTPRequestHandler):
                 if u.path == "/api/etiquetas":                                              # autocompletar #etiquetas no editor
                     return self._json(200, {"etiquetas": etiquetas.do_espaco(config.actual())})
                 if u.path == "/api/eu":
-                    return self._json(200, {"email": user.email, "nome": user.nome or user.email.split("@")[0], "admin": user.admin,
-                                            "modo": self.cfg.auth.modo, "espaco": user.espaco, "lingua": self.cfg.lingua,
-                                            "ia": ia_mod.actual().descricao(), "dono": dono_de(user)})
+                    eu = {"email": user.email, "nome": user.nome or user.email.split("@")[0], "admin": user.admin,
+                          "modo": self.cfg.auth.modo, "espaco": user.espaco, "lingua": self.cfg.lingua,
+                          "ia": ia_mod.actual().descricao(), "dono": dono_de(user)}
+                    if self.cfg.auth.modo == "cabecalho" and self.cfg.auth.sair_url:
+                        eu["sair_url"] = self.cfg.auth.sair_url        # r21 (SAIR_URL_v1): o «Terminar sessão» do login Google
+                    return self._json(200, eu)
                 if u.path == "/api/estado": return self._json(200, estado())
                 if u.path == "/api/notas": return self._json(200, todas_notas())
                 if u.path == "/api/pacote": return self._json(200, pacote())                      # para funcionar sem internet

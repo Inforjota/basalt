@@ -154,7 +154,15 @@ e no `basalt.toml` `[auth] cabecalho_sub = "X-Basalt-Sub"`. Duas notas:
   toml, as duas linhas do `$sub` em cima são **obrigatórias**, não opcionais: com o nginx a mandar `X-Basalt-Sub ""` (o
   bloco tal como está em cima, ou o `--set-xauthrequest` desligado) ninguém cria conta e essas contas ficam de fora até o
   `sub` voltar a chegar — é esse o comportamento certo (nunca abre), mas convém saber (ensaio de 21/10/2026: 403 a toda
-  a gente nova). As contas criadas à mão sem `sub` (ex. o admin) entram só pelo e-mail até terem um.
+  a gente nova). As contas criadas à mão sem `sub` (ex. o admin) **ficam com o `sub` do 1.º login que o traga** (r21,
+  «trust-on-first-use»: o Basalt grava-o no `basalt.toml`, com o mesmo trinco das outras escritas) e daí em diante só entra
+  esse `sub` — uma conta Google com o mesmo e-mail apagada e recriada (outra pessoa) deixa de entrar nas notas da anterior.
+  Até lá, um pedido sem `sub` entra só pelo e-mail, como antes. Consequências: (1) quem entrar **primeiro** com esse e-mail
+  fica com a conta — cria a conta à mão pouco antes de a pessoa entrar, ou escreve-lhe já o `sub` (`sub = "…"` no bloco do
+  `[[utilizadores]]`); se ficou o `sub` errado, corrige-o (ou apaga a linha) no toml — é relido sozinho; (2) o `basalt.toml`
+  tem de poder ser gravado pelo serviço: se a gravação falhar, o login é **recusado** (fechado), não aceite sem gravar;
+  (3) um `sub` com caracteres fora de `A-Z a-z 0-9 . _ : @ | -` (ou com mais de 255) é recusado. Sem `cabecalho_sub` nada disto
+  acontece.
 
 **Sem proxy na mesma máquina** (oauth2-proxy e nginx em hosts diferentes do Basalt): acrescenta o IP/rede deles a
 `[auth] proxies_de_confianca` no `basalt.toml` (ver [INSTALAR.md §4](INSTALAR.md#4-na-rede-proxy-com-https)), senão o
@@ -178,9 +186,10 @@ max_contas = 200                           # opcional: tecto de contas (0 = sem 
                                            # (tecto, domínios, criar_contas e espaco_max_mb são relidos do toml em execução, como
                                            # os [[utilizadores]]; mudar o modo, os cabeçalhos ou o segredo é reiniciar o serviço)
 espaco_max_mb = 500                        # r14: tecto de disco por conta — notas + anexos + cópia + dados (0 = sem tecto)
+sair_url = "/oauth2/sign_out?rd=%2F"       # r21: o botão «Terminar sessão» vai aqui (sign-out do oauth2-proxy) — ver §5
 
 [ia]
-pedidos_por_hora = 200                     # tecto da IA para TODAS as contas juntas
+pedidos_por_hora = 200                     # tecto da IA para TODAS as contas juntas (r21: editor, pergunta e fusão)
 pedidos_por_hora_por_conta = 20            # r14: além desse, um tecto por conta — uma pessoa não esgota a IA de toda a gente
                                            # (r16: sem esta linha, com criar_contas ou várias contas, já é min(20, pedidos_por_hora))
 ```
@@ -199,35 +208,46 @@ sozinha, sem ninguém a vigiar) encher o disco ou esgotar o tecto da IA para tod
 porque em modo `senha`/sem `criar_contas` quem cria a conta já está a decidir confiar nessa pessoa. O que cada um cobre:
 - `espaco_max_mb` conta notas (`memoria/`, com os anexos), a cópia editável e `dados/` (Entrada, índice, cópias offline)
   — e vale por **todas** as portas de escrita: criar/gravar nota na página, `/api/sincronizar` (edição sem internet),
-  anexos, a Entrada (`/api/guarda`) e as ferramentas de escrita do `/mcp`. Uma nota pode sempre **encolher**, mesmo com
-  o espaço cheio. Conta **tudo** o que está na pasta do espaço — também o histórico git da memória (`memoria/.git`) e a
+  anexos, a Entrada (`/api/guarda`) e as ferramentas de escrita do `/mcp`. Uma nota pode sempre **encolher** (ou ser gravada
+  ao mesmo tamanho), mesmo com o espaço já acima do tecto (r21: antes dava 413). Desde a r21, criar ou fazer crescer uma nota
+  pela página ou pelo `/mcp` conta logo as **duas** cópias (a editável e a da memória, que o vigia escreve uns segundos depois)
+  e o que o vigia ainda tem por copiar: uma nota de N bytes pede 2N — na prática, o tecto de uma nota sozinha é metade do
+  `espaco_max_mb`. Conta **tudo** o que está na pasta do espaço — também o histórico git da memória (`memoria/.git`) e a
   cópia editável (`copia/`, que repete cada nota): na prática 1 MB de tecto dá para menos de 500 kB de notas, e um espaço
   com muitas versões enche mais depressa. É de propósito (excluir o git deixava encher o disco só com versões); dimensiona
   o `espaco_max_mb` a contar com isso (medido a 21/10/2026: uma nota de 600 kB ocupou 1,2 MB do tecto logo ao ser gravada).
 - `pedidos_por_hora_por_conta` conta os pedidos à IA feitos por uma conta: o editor (`/api/ia`), a pergunta
-  (`/api/pergunta`) e a fusão (`/api/unir`) partilham o mesmo balde. As propostas da IA na sincronização offline
+  (`/api/pergunta`) e a fusão (`/api/unir`) partilham o mesmo balde. Desde a r21 as três gastam também o `pedidos_por_hora`
+  do servidor (antes só o editor o via) — se o chat é muito usado, sobe-o; com `pedidos_por_hora = 0` o editor fica sem IA
+  (como antes) e a pergunta e a fusão ficam só com o tecto da conta. As propostas da IA na sincronização offline
   ficam sob o tecto do servidor `[ia] propostas_por_hora`, e a Entrada automática não é pedida pelo cliente.
   Sem o valor (ou com 0), desde a r16 o tecto é automático: com `criar_contas = true` ou mais de uma conta,
   `min(20, pedidos_por_hora)`; com uma só conta e sem `criar_contas`, nenhum (chega o do servidor).
 
 ## 5. Terminar sessão (sign-out)
 
-Em modo `cabecalho`, o Basalt não tem formulário de login nem senha — a sessão «é» a cookie do oauth2-proxy. O botão
-**Terminar sessão** da interface do Basalt chama `POST /api/sair`, que neste modo não tem sessão nenhuma do Basalt para
-acabar (não há cookie do Basalt; a única sessão é a do oauth2-proxy) e por isso **não** termina nada — nem a sessão da
-Google nem a do oauth2-proxy: sem mais nada, a pessoa seria autenticada outra vez no
-pedido seguinte, sem ver um ecrã de login. Para um sign-out completo, o link de "sair" tem de apontar para o
-oauth2-proxy, não para o Basalt:
+Em modo `cabecalho`, o Basalt não tem formulário de login nem senha — a sessão «é» a cookie do oauth2-proxy, e o
+`POST /api/sair` do Basalt não tem nada para acabar. Por isso, **sem configurar nada, o botão «Terminar sessão» não aparece**
+neste modo (até à r20 este parágrafo descrevia um botão que chamava o `/api/sair` — a página nunca o mostrou aqui).
 
-```
-https://basalt.exemplo.pt/oauth2/sign_out?rd=https%3A%2F%2Fbasalt.exemplo.pt%2F
+Desde a r21, põe no `[auth]` do `basalt.toml` o endereço de sign-out do oauth2-proxy:
+
+```toml
+[auth]
+sair_url = "/oauth2/sign_out?rd=%2F"
 ```
 
-(`/oauth2/sign_out` apaga a cookie do oauth2-proxy e redirecciona para `rd`; para também desligar a sessão da conta
-Google nesse browser, o `rd` pode apontar para o endpoint de logout da própria Google, mas isso desliga a Google
-inteira, não só este sítio — normalmente não vale a pena.) Isto é uma troca manual a fazer na instalação (não vem
-automático do `basalt utilizador apagar`, que é para a conta deixar de poder entrar, não para terminar a sessão de
-quem a esteja a usar nesse instante no browser — ver §6).
+Com ele o botão aparece, faz ao browser o mesmo que no modo `senha` (envia o que estava por enviar, tira a cópia das notas
+deste aparelho e guarda à parte o que não subiu) e depois vai a esse endereço: `/oauth2/sign_out` apaga a cookie do
+oauth2-proxy e volta para `rd` — que, sem cookie, pede outra vez o login da Google. Só se aceita um caminho deste sítio
+(`/…`, não `//…`) ou um endereço `https://…` completo (ex. `https://basalt.exemplo.pt/oauth2/sign_out?rd=https%3A%2F%2Fbasalt.exemplo.pt%2F`);
+outra coisa dá `ConfigInvalida` no arranque. É lido só no arranque (ao contrário dos `[[utilizadores]]`, não é relido em
+execução): reinicia o serviço depois de o pôr.
+
+Notas: (1) com `rd` para o endpoint de logout da Google desligas a Google inteira nesse browser, não só este sítio —
+normalmente não vale a pena; (2) se o oauth2-proxy tiver `--whitelist-domain`/`--cookie-domain` diferentes, o `rd` tem de
+estar dentro deles, senão ele recusa o redireccionamento; (3) isto termina a sessão de quem está no browser — para a conta
+deixar de poder entrar, ver §6.
 
 ## 6. Apagar e exportar uma conta
 
@@ -239,7 +259,9 @@ se ela voltar a autenticar-se com a mesma conta Google, e `criar_contas` continu
 recuperar ou entregar, e depois `basalt apagados eliminar --sim` (o timer `basalt-apagados`) apaga-os de vez sem tocar na
 conta nova. Cópias de segurança e `apagados reaplicar`: [INSTALAR.md](INSTALAR.md) § 6. `basalt utilizador exportar EMAIL --para dados.zip`
 tira uma cópia das notas e anexos dessa conta (nunca o `basalt.toml` nem tokens) — útil para responder a um pedido de
-portabilidade de dados antes ou depois de apagar a conta. Se o espaço for **partilhado** com outra conta
+portabilidade de dados antes ou depois de apagar a conta. Desde a r21 leva também, em `por-sincronizar/`, as notas que a
+pessoa escreveu pela página ou pelo `/mcp` e que o vigia ainda não tinha levado para a memória (novas, ou diferentes da
+versão da memória, que fica no sítio de sempre) — o comando diz quantas; não corre o vigia nem mexe em nada. Se o espaço for **partilhado** com outra conta
 (`[basalt] espaco_partilhado = true`), a pasta fica onde está — é também da outra pessoa — e o comando di-lo.
 
 ```bash

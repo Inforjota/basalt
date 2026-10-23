@@ -72,6 +72,9 @@ class AuthConfig:
     dominios: tuple = ()                # só estes domínios de e-mail criam conta (vazio = qualquer)
     max_contas: int = 0                 # tecto de contas (0 = sem tecto); as que existem continuam a entrar
     espaco_max_mb: int = 0               # r14: tecto de disco por conta (memoria+cópia+dados), em MB — 0 = sem tecto
+    # r21 (SAIR_URL_v1): no modo cabecalho, para onde vai o «Terminar sessão» (o sign-out do proxy, ex. "/oauth2/sign_out?rd=%2F");
+    # vazio = o botão fica escondido nesse modo, como antes. Só um caminho deste sítio («/…») ou um endereço https://
+    sair_url: str = ""
 
 
 @dataclass
@@ -327,10 +330,24 @@ class Config:
                 raise ConfigInvalida("[auth] max_contas não pode ser negativo")
         if self.auth.espaco_max_mb < 0:
             raise ConfigInvalida("[auth] espaco_max_mb não pode ser negativo")
+        if self.auth.sair_url and not sair_url_ok(self.auth.sair_url):          # r21 (SAIR_URL_v1)
+            raise ConfigInvalida(f"[auth] sair_url tem de ser um caminho deste sítio («/oauth2/sign_out?rd=%2F») ou um endereço "
+                                 f"https://, sem espaços — não {self.auth.sair_url!r}")
         if self.ia.pedidos_por_hora_por_conta < 0:
             raise ConfigInvalida("[ia] pedidos_por_hora_por_conta não pode ser negativo")
         if self.auth.modo != "aberto" and not self.utilizadores and not self.auth.criar_contas:
             raise ConfigInvalida("sem utilizadores: acrescenta [[utilizadores]] ou usa `basalt utilizador novo EMAIL`")
+
+
+def sair_url_ok(v) -> bool:
+    """r21 (SAIR_URL_v1): `[auth] sair_url` — a página faz `location.href = sair_url`, por isso nada de «javascript:», nem
+    «//outro-sitio» (ou «/\\outro», que o browser lê como «//»), nem http:// em claro: um caminho deste sítio ou um https:// com
+    anfitrião. Só ASCII visível (o resto vai %-codificado)."""
+    if not isinstance(v, str) or not re.fullmatch(r"[\x21-\x7e]{1,2000}", v) or "\\" in v:
+        return False
+    if v.startswith("/"):
+        return not v.startswith("//")
+    return bool(re.match(r"https://[A-Za-z0-9.-]+(:[0-9]{1,5})?([/?#]|$)", v))
 
 
 def ESPACO_RX_OK(nome: str) -> bool:
@@ -604,7 +621,8 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
                           cabecalho_segredo=str(a.get("cabecalho_segredo", "X-Basalt-Proxy-Segredo")),
                           cabecalho_sub=str(a.get("cabecalho_sub", "")), criar_contas=bool(a.get("criar_contas", False)),
                           dominios=tuple(str(x).strip().lower().lstrip("@") for x in (a.get("dominios") or []) if str(x).strip()),
-                          max_contas=int(a.get("max_contas", 0)), espaco_max_mb=int(a.get("espaco_max_mb", 0)))
+                          max_contas=int(a.get("max_contas", 0)), espaco_max_mb=int(a.get("espaco_max_mb", 0)),
+                          sair_url=a.get("sair_url", ""))                   # r21 (SAIR_URL_v1): validado em validar()
     if "segredo_proxy" in a:
         raise ConfigInvalida("[auth] segredo_proxy não vai no basalt.toml: põe-no na variável de ambiente "
                              f"{cfg.auth.segredo_proxy_env} (e só o proxy o conhece)")

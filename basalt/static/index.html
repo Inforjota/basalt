@@ -7218,20 +7218,25 @@ document.addEventListener("DOMContentLoaded", function(){
 </script>
 
 <script>
-/* Quem sou eu (/api/eu): só no modo «senha» aparece o botão «Terminar sessão». Em «cabecalho» o início de sessão é do
-   proxy à frente e em «aberto» não há sessão. Falhar aqui não estraga nada: o botão fica escondido. */
+/* Quem sou eu (/api/eu): no modo «senha» aparece o botão «Terminar sessão». Em «cabecalho» o início de sessão é do
+   proxy à frente e em «aberto» não há sessão. Falhar aqui não estraga nada: o botão fica escondido.
+   r21 (SAIR_URL_v1): em «cabecalho», se o basalt.toml tiver `[auth] sair_url` (o sign-out do proxy), o /api/eu diz-o e o botão
+   aparece: faz o mesmo de sempre ao browser e depois vai a esse endereço (não há sessão do Basalt para fechar no /api/sair). */
 (function(){
   fetch("/api/eu", {credentials:"same-origin", cache:"no-store"}).then(function(r){ return r.ok ? r.json() : null; }).then(function(eu){
     if(!eu) return;
     window.BASALT_EU = eu;
     var b = document.getElementById("sair-btn");
-    if(!b || eu.modo !== "senha") return;
+    var peloProxy = eu.modo === "cabecalho" && typeof eu.sair_url === "string" && eu.sair_url !== "";   // r21 (SAIR_URL_v1)
+    if(!b || (eu.modo !== "senha" && !peloProxy)) return;
     b.hidden = false;
     b.title = window.basaltTf("Terminar sessão ({quem})", {quem: eu.nome || eu.email});
     b.addEventListener("click", function(){
       b.disabled = true;
       // ronda 8: antes de sair, a cópia deste browser deixa de ser desta conta (o que estava por enviar fica guardado à parte)
-      Promise.resolve(window.basaltAntesDeSair ? window.basaltAntesDeSair() : null).catch(function(){}).then(function(){
+      var antes = Promise.resolve(window.basaltAntesDeSair ? window.basaltAntesDeSair() : null).catch(function(){});
+      if(peloProxy){ antes.then(function(){ location.href = eu.sair_url; }); return; }   // r21 (SAIR_URL_v1)
+      antes.then(function(){
         return fetch("/api/sair", {method:"POST", credentials:"same-origin", headers:{"X-Basalt":"1"}});
       }).catch(function(){}).then(function(){ location.href = "/entrar"; });
     });

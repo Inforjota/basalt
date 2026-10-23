@@ -4,6 +4,37 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Login Google, tecto de espaço e da IA, «Terminar sessão» e exportar, ronda r21 (23/10/2026)
+
+> **Depois de actualizar**, com login pela Google: (1) com `cabecalho_sub`, o `basalt.toml` tem de poder ser gravado pelo
+> serviço (as contas sem `sub` ficam com o do 1.º login); (2) para haver botão «Terminar sessão», põe
+> `sair_url = "/oauth2/sign_out?rd=%2F"` no `[auth]` e reinicia ([docs/GOOGLE.md](docs/GOOGLE.md) §5); (3) o
+> `[ia] pedidos_por_hora` passa a contar também a pergunta e a fusão — se o chat é muito usado, sobe-o. A página mudou: o
+> service worker passa a `basalt-v16` (a cache `basalt-v15` sai sozinha na primeira visita).
+
+Achados da auditoria externa à r14 que ainda se aplicavam (o da quota com escritas ao mesmo tempo já estava resolvido na r16):
+
+- **Contas sem `sub` com `cabecalho_sub` (trust-on-first-use):** aceitavam qualquer `sub` — uma conta Google com o mesmo e-mail,
+  apagada e recriada por outra pessoa, entrava nas notas da anterior. Agora a conta fica com o `sub` do 1.º login que o traga
+  (gravado no `basalt.toml` com o trinco do toml; com logins ao mesmo tempo só um fica) e daí em diante só entra esse. Um `sub`
+  com caracteres estranhos não se grava; se o toml não se deixar gravar, o login é recusado (fechado). Um pedido sem `sub` numa
+  conta ainda sem `sub` entra como antes, sem associar. Sem `cabecalho_sub` nada muda.
+- **`espaco_max_mb` com as duas cópias de cada nota:** a página e o `/mcp` escrevem na cópia editável e o vigia copia-a para a
+  memória uns segundos depois — uma nota que cabia uma vez passava o tecto logo a seguir. Criar ou fazer crescer uma nota conta
+  agora as duas cópias e o que o vigia ainda tem por copiar (uma nota de N bytes pede 2N).
+- **Encolher uma nota nunca é recusado pelo tecto** (nem gravá-la ao mesmo tamanho), também com o espaço já acima dele — antes
+  dava 413 sempre que o espaço já tinha passado o tecto (tecto baixado, git da memória a crescer).
+- **`[ia] pedidos_por_hora` vale para as três rotas da IA:** a pergunta (`/api/pergunta`) e a fusão (`/api/unir`) só viam o
+  tecto por conta; várias contas juntas (ou uma só, sem tecto por conta) chamavam a IA sem limite. Com `pedidos_por_hora = 0` a
+  pergunta e a fusão continuam a funcionar (só com o tecto da conta), como antes.
+- **«Terminar sessão» com login Google:** novo `[auth] sair_url` (um caminho deste sítio ou um `https://`; outra coisa dá
+  `ConfigInvalida`). Com ele, em modo `cabecalho`, o `/api/eu` diz o endereço e a página mostra o botão — envia o que falta, tira
+  a cópia deste browser e vai ao sign-out do oauth2-proxy. Sem ele, como antes (sem botão). O `GOOGLE.md` §5 descrevia um botão
+  que nunca aparecia neste modo; foi reescrito.
+- **`basalt utilizador exportar` leva o que ainda não foi sincronizado:** as notas da cópia editável que o vigia ainda não tinha
+  levado para a memória (novas ou diferentes) vão em `por-sincronizar/` dentro do ZIP; o comando diz quantas. Continua só de
+  leitura.
+
 ### Arrumar sozinho: o «arquivar» verifica os factos e não toca em notas já arquivadas, ronda r20 (23/10/2026)
 
 Auditoria da r19 (12 h depois, no lugar do auditor externo), sobre o código e sobre os 24 pares reais do ensaio de 23/10:
