@@ -4,6 +4,25 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Arrumar sozinho: o «arquivar» verifica os factos e não toca em notas já arquivadas, ronda r20 (23/10/2026)
+
+Auditoria da r19 (12 h depois, no lugar do auditor externo), sobre o código e sobre os 24 pares reais do ensaio de 23/10:
+
+- **O `arrumar --auto` só arquiva se a nota velha não tem nenhum facto que a principal não tenha** — números, datas, caminhos,
+  `código` e URLs, contados pela mesma função que já verifica o «unir» (100 %). A regra já estava no pedido à IA desde a r19,
+  mas só a IA a cumpria: o código arquivava o que ela mandasse, inclusive na direcção invertida (a principal debaixo da nota de
+  sessão). No ensaio, em todos os 24 pares cada nota tinha factos só dela; com esta verificação nenhum deles se arquiva, seja qual
+  for o modelo. Se faltam factos, as notas ficam **ligadas** e o motivo diz quais (ex.: «a velha tem factos que a principal não
+  tem (3; ex.: /opt/x.py, 25/09)»).
+- **Uma nota já arquivada não volta à IA com nota nenhuma.** A r19 só saltava o par (principal, velha); a velha — sem marca, como
+  os arquivos de 25/09 — emparelhada com uma terceira nota ia à IA todas as noites e podia ser arquivada outra vez, debaixo da nota
+  errada (no ensaio, a `session_…05_22` com a `session_…05_24`). Agora, uma vez por corrida, lêem-se as notas com a marca
+  «🗄 Arquivada» e os alvos de «Histórico: [[X]]» em qualquer nota, e qualquer par com uma delas salta.
+- **O tecto de 3 fusões e 3 arquivos é por dia**, contado pelo registo dos pares decididos — uma segunda corrida no mesmo dia
+  (à mão, ou o timer `Persistent=true` depois de um reinício) começava do zero e dava mais 3 de cada.
+- **Uma nota apagada enquanto a IA pensava** (a chamada pode demorar até 2×600 s) salta o par; a r19 só a apanhava antes da
+  chamada e, depois dela, a leitura seguinte rebentava e acabava a noite sem registo. Um `git` em falta continua a rebentar.
+
 ### Arrumar sozinho: o «arquivar» passa a ter os travões do «unir», ronda r19 (23/10/2026)
 
 - **O `arrumar --auto` só arquiva** (tirar uma nota do índice e marcá-la como histórico) com confiança ≥ 0,85, nenhuma das duas
