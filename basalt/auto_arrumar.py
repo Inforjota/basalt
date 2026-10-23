@@ -7,8 +7,9 @@ Para cada par parecido (basalt.arrumar), a IA da tarefa «arrumar» decide ([ia.
   unir     dizem o mesmo → funde (basalt.unir, como o botão Unir), SÓ se: confiança ≥ 0.85, nenhuma mexida nas últimas 6 h,
            nenhuma ⭐⭐⭐, juntas ≤ 30 000 caracteres, verificação com 100 % dos factos; máx. 3 por noite. Senão → ligar.
   deixar   já ligadas / não relacionadas
-Dúvida (confiança < 0.6 ou resposta estragada) → não mexe; vai para o resumo, para o dono da memória decidir.
-Pares em que uma das notas já está arquivada (marca «🗄 Arquivada») não voltam à IA (ronda 19).
+Dúvida (confiança < 0.6, fora de [0, 1] ou resposta estragada) → não mexe; vai para o resumo, para o dono da memória decidir.
+Pares em que uma das notas já está arquivada (marca «🗄 Arquivada» numa, ou «Histórico: [[a outra]]» na principal) não voltam à IA;
+pares em que uma nota deixou de existir a meio da noite (uma fusão apagou-a) saltam-se (ronda 19).
 Cada alteração: fotografia git antes + commit + «trabalho» em <dados>/unir/ → aparece na página (Arrumar → últimas fusões) com
 botão Desfazer. Resumo: <dados>/auto-arrumar/ultimo.json (e no stdout). Pares já decididos não voltam a ser avaliados durante 30 dias.
 
@@ -61,6 +62,12 @@ def corpo(t):
     return re.sub(r"^---\n.*?\n---\n", "", t, count=1, flags=re.S)
 
 
+def _ja_arquivadas(a, b, ta, tb):
+    """o par já foi decidido por quem arquivou: uma tem a marca «🗄 Arquivada», OU a outra tem «Histórico: [[esta]]» (é o que o
+    arquivar() escreve na principal; os arquivos de 25/09 só deixaram este sinal — a velha não tem marca e voltava à IA)."""
+    return MARCA_ARQUIVADA in ta or MARCA_ARQUIVADA in tb or f"Histórico: [[{b}]]" in ta or f"Histórico: [[{a}]]" in tb
+
+
 def estrela3(n):
     if not (REAL / "MEMORY.md").exists():          # PORTE: sem índice não há ⭐⭐⭐ (antes dava erro)
         return False
@@ -91,8 +98,10 @@ NOTA B: {b} ({len(tb)} caracteres) — {desc(tb)}
         try:
             d = _ia.actual("arrumar").chat_json(prompt, tempo=600)   # PORTE: antes um modelo local fixo; agora [ia.arrumar] ou [ia]
             if isinstance(d, dict) and d.get("acao") in ("unir", "arquivar", "ligar", "deixar") and d.get("manter") in (a, b):
-                d["confianca"] = float(d.get("confianca", 0))
-                return d
+                c = float(d.get("confianca", 0))
+                if 0.0 <= c <= 1.0:             # ronda 19: json.loads aceita NaN/Infinity, e «nan < 0.85» é falso — passava todos os travões
+                    d["confianca"] = c
+                    return d
         except (_ia.IAIndisponivel, ValueError, TypeError):
             time.sleep(20)
     return {"acao": "duvida", "manter": a, "confianca": 0.0, "motivo": "a IA não deu uma resposta válida"}
@@ -194,7 +203,11 @@ def _correr():
         ant = decididos.get(chave)
         if ant and (agora - ant.get("ts", 0)) < DIAS_DECIDIDO * 86400:
             continue
-        if any(MARCA_ARQUIVADA in ler(n) for n in (a, b)):              # ronda 19: já decidido por quem arquivou — não volta à IA
+        if not all((REAL / f"{n}.md").exists() for n in (a, b)):       # ronda 19: uma fusão desta noite apaga a nota fundida, e a
+            print(f"= {a} ↔ {b}: uma delas já não existe — salto")     # mesma nota está em vários pares (antes: FileNotFoundError
+            continue                                                   # matava o ciclo e perdia o decididos.json da noite)
+        ta0, tb0 = ler(a), ler(b)
+        if _ja_arquivadas(a, b, ta0, tb0):                             # ronda 19: já decidido por quem arquivou — não volta à IA
             print(f"= {a} ↔ {b}: uma delas já está arquivada — não mexo")
             continue
         d = decidir(a, b)

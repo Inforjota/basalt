@@ -9,9 +9,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 - **O `arrumar --auto` só arquiva** (tirar uma nota do índice e marcá-la como histórico) com confiança ≥ 0,85, nenhuma das duas
   notas mexida nas últimas 6 h, nenhuma ⭐⭐⭐ no índice e no máximo 3 por noite — os mesmos travões que o «unir» já tinha.
   Se algum falha, as notas ficam **ligadas** (só se acrescenta; nada sai do índice).
-- **Pares com uma nota já arquivada** (marca «🗄 Arquivada») não voltam a ser enviados à IA.
+- **Pares com uma nota já arquivada** não voltam a ser enviados à IA: marca «🗄 Arquivada» numa delas, **ou** «Histórico:
+  [[a outra]]» na principal (os arquivos feitos antes da marca existir só deixaram este sinal e voltavam à IA todas as noites).
 - **O pedido à IA** deixa de empurrar para arquivar notas de sessão/snapshot: só se arquiva se todos os factos da nota velha
   estão na principal; se ela tem factos só dela, liga-se.
+- **Uma confiança fora de [0, 1]** (a IA pode responder `NaN` ou `Infinity`, que o JSON do Python aceita e que não é «< 0,85»)
+  conta como resposta estragada → dúvida, nunca acção.
+- **Uma nota apagada a meio da noite** (uma fusão apaga a nota que entrou na outra; a mesma nota está em vários pares) faz
+  saltar o par, em vez de parar a arrumação inteira e perder o registo dos pares já decididos.
 - Num ensaio com uma memória real (24 pares, modelo `sonnet`), a versão anterior arquivaria 2 notas ⭐⭐⭐; esta liga-as.
 
 ### Contas apagadas: de vez aos 30 dias e não voltam com uma cópia, ronda r17 (21/10/2026)

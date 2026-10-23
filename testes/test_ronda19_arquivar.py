@@ -100,3 +100,50 @@ def test_o_prompt_pede_os_factos_da_velha_na_principal(mem, monkeypatch):
     monkeypatch.setattr(auto_arrumar._ia, "actual", lambda tarefa: IA())
     auto_arrumar.decidir("a", "b")
     assert "todos os factos da velha" in visto[0] and "é quase sempre arquivar" not in visto[0]
+
+
+# ── revisão Fable (23/10): três buracos encontrados no 3146c37 ──────────────────────────────────────────────────────────────
+
+def test_par_ja_arquivado_so_com_historico_na_principal_nao_vai_a_ia(mem, monkeypatch, capsys):
+    """caso real (par 5 do ensaio): arquivado a 25/09 — a principal tem «Histórico: [[velha]]», a velha saiu do índice mas
+    NÃO tem a marca «🗄 Arquivada». Só pela marca, o par voltava à IA todas as noites (o re-ensaio r19 mostra-o: LIGAR 0.70)."""
+    _notas(mem, "principal", "velha", "x", "y", indice="- [principal](principal.md) — x\n- [x](x.md) — x\n- [y](y.md) — y\n")
+    p = mem.real / "principal.md"
+    p.write_text(CAB.format(n="principal") + "T.\n\nHistórico: [[velha]] (registo antigo, arquivado pelo Basalt a 2026-09-25)\n", encoding="utf-8")
+    os.utime(p, (VELHO, VELHO))
+    out, pedidos = _correr(monkeypatch, capsys, [("principal", "velha"), ("x", "y")],
+                           {("x", "y"): {"acao": "ligar", "manter": "x", "confianca": 0.9, "motivo": "m"}})
+    assert pedidos == [("x", "y")], pedidos
+    assert "já está arquivada" in out
+
+
+def test_nota_apagada_a_meio_da_noite_salta_o_par_em_vez_de_matar_o_ciclo(mem, monkeypatch, capsys):
+    """o unir.aplicar APAGA a nota fundida; a mesma nota aparece em vários pares (no ensaio, a nota geral de um projecto estava em 4 pares). Um par
+    posterior com ela tem de ser saltado — não rebentar o ciclo (que perdia o decididos.json e o resumo da noite)."""
+    _notas(mem, "a", "b", "c", "d", "e", "f")
+    monkeypatch.setattr(auto_arrumar.arr, "duplicados", lambda: [(0.97, "a", "b"), (0.97, "c", "d"), (0.97, "e", "f")])
+    pedidos = []
+
+    def decidir(x, y):
+        pedidos.append((x, y))
+        if (x, y) == ("a", "b"):
+            (mem.real / "c.md").unlink()          # «uma fusão desta noite levou a c»
+        return {"acao": "ligar", "manter": x, "confianca": 0.9, "motivo": "m"}
+    monkeypatch.setattr(auto_arrumar, "decidir", decidir)
+    auto_arrumar._correr()
+    out = capsys.readouterr().out
+    assert pedidos == [("a", "b"), ("e", "f")], pedidos
+    assert "já não existe" in out and "LIGAR    e ↔ f" in out, out
+
+
+@pytest.mark.parametrize("c", [float("nan"), float("inf"), 7.0, -0.5])
+def test_confianca_fora_de_0_1_e_duvida_nao_arquiva(mem, monkeypatch, c):
+    """json.loads aceita NaN/Infinity e «nan < 0.85» é FALSO: uma confiança assim passava a porta da dúvida e todos os travões."""
+    _notas(mem, "a", "b")
+
+    class IA:
+        def chat_json(self, prompt, tempo=0):
+            return {"acao": "arquivar", "manter": "a", "confianca": c}
+    monkeypatch.setattr(auto_arrumar._ia, "actual", lambda tarefa: IA())
+    d = auto_arrumar.decidir("a", "b")
+    assert d["acao"] == "duvida" and d["confianca"] == 0.0, d
