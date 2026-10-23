@@ -4,6 +4,16 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Arrumar sozinho: o «arquivar» passa a ter os travões do «unir», ronda r19 (23/10/2026)
+
+- **O `arrumar --auto` só arquiva** (tirar uma nota do índice e marcá-la como histórico) com confiança ≥ 0,85, nenhuma das duas
+  notas mexida nas últimas 6 h, nenhuma ⭐⭐⭐ no índice e no máximo 3 por noite — os mesmos travões que o «unir» já tinha.
+  Se algum falha, as notas ficam **ligadas** (só se acrescenta; nada sai do índice).
+- **Pares com uma nota já arquivada** (marca «🗄 Arquivada») não voltam a ser enviados à IA.
+- **O pedido à IA** deixa de empurrar para arquivar notas de sessão/snapshot: só se arquiva se todos os factos da nota velha
+  estão na principal; se ela tem factos só dela, liga-se.
+- Num ensaio com uma memória real (24 pares, modelo `sonnet`), a versão anterior arquivaria 2 notas ⭐⭐⭐; esta liga-as.
+
 ### Contas apagadas: de vez aos 30 dias e não voltam com uma cópia, ronda r17 (21/10/2026)
 
 > **Depois de actualizar**, com várias contas: liga o timer `basalt-apagados` ([docs/INSTALAR.md](docs/INSTALAR.md) §3) e,

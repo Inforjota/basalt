@@ -2,11 +2,13 @@
 
 Para cada par parecido (basalt.arrumar), a IA da tarefa «arrumar» decide ([ia.arrumar] por cima de [ia]; a fusão é da de [ia.unir]):
   ligar    mesmo projecto, partes diferentes → põe [[ligação]] nas duas (só acrescenta; nada se perde)
-  arquivar uma é registo velho (sessão/snapshot) da outra → a principal ganha «Histórico: [[velha]]» e a velha sai do MEMORY.md
+  arquivar uma é registo velho (sessão/snapshot) da outra → a principal ganha «Histórico: [[velha]]» e a velha sai do MEMORY.md,
+           SÓ se: confiança ≥ 0.85, nenhuma mexida nas últimas 6 h, nenhuma ⭐⭐⭐; máx. 3 por noite. Senão → ligar (ronda 19).
   unir     dizem o mesmo → funde (basalt.unir, como o botão Unir), SÓ se: confiança ≥ 0.85, nenhuma mexida nas últimas 6 h,
            nenhuma ⭐⭐⭐, juntas ≤ 30 000 caracteres, verificação com 100 % dos factos; máx. 3 por noite. Senão → ligar.
   deixar   já ligadas / não relacionadas
 Dúvida (confiança < 0.6 ou resposta estragada) → não mexe; vai para o resumo, para o dono da memória decidir.
+Pares em que uma das notas já está arquivada (marca «🗄 Arquivada») não voltam à IA (ronda 19).
 Cada alteração: fotografia git antes + commit + «trabalho» em <dados>/unir/ → aparece na página (Arrumar → últimas fusões) com
 botão Desfazer. Resumo: <dados>/auto-arrumar/ultimo.json (e no stdout). Pares já decididos não voltam a ser avaliados durante 30 dias.
 
@@ -25,6 +27,8 @@ REAL = Via("real")                      # PORTE: antes caminhos fixos; agora as 
 ESTADO = Via("auto_arrumar")
 JOBS = Via("jobs_unir")
 MAX_UNIR, MAX_CHARS, HORAS_QUIETA, DIAS_DECIDIDO = 3, 30000, 6, 30
+MAX_ARQUIVAR = 3                        # ronda 19: o arquivar tem os mesmos travões do unir
+MARCA_ARQUIVADA = "🗄 Arquivada"
 SIMULAR = False
 HOJE = datetime.date.today().isoformat()
 
@@ -72,7 +76,8 @@ def decidir(a, b):
 {{"acao":"unir|arquivar|ligar|deixar","manter":"<nome da nota principal>","confianca":0.0-1.0,"motivo":"uma frase curta em português de Portugal"}}
 - unir: as duas dizem essencialmente o mesmo (uma repete a outra ou é um subconjunto dela) e juntas ficam uma nota coerente.
 - arquivar: uma é um registo velho (de uma sessão, snapshot, fotografia de estado) já ultrapassado pela outra, que é a principal.
-  Se o nome de uma tem session_/sessao_/snapshot/handoff e a outra é a nota geral do mesmo projecto, é quase sempre arquivar.
+  SÓ se todos os factos da velha (números, datas, nomes, comandos, ficheiros) também estão na principal. Se a velha tem factos
+  que só ela tem, é ligar — mesmo que o nome tenha session_/snapshot/handoff.
 - ligar: mesmo projecto/tema mas partes diferentes (funcionalidades, fases, ferramentas diferentes) — devem ficar separadas e ligadas.
 - deixar: não têm relação útil.
 Na dúvida entre unir e ligar, escolhe ligar. "manter" = a principal (a mais geral/actual, não a de sessão).
@@ -143,7 +148,7 @@ def arquivar(principal, velha):
             tp2 = rel.sub(hist, tp, count=1) if rel.search(tp) else tp.rstrip("\n") + f"\n\n{hist}\n"
             mudou = _escrever(principal, tp2, hp) or mudou
         tv, hv = _ler2(velha)
-        if "🗄 Arquivada" not in tv:
+        if MARCA_ARQUIVADA not in tv:
             marca = f"> 🗄 Arquivada pelo Basalt a {HOJE}: registo antigo. A informação actual está em [[{principal}]].\n\n"
             m = re.match(r"^---\n.*?\n---\n\n?", tv, flags=re.S)
             tv2 = tv[:m.end()] + marca + tv[m.end():] if m else marca + tv
@@ -183,11 +188,14 @@ def _correr():
     ret = retidas.nomes_retidos(REAL)
     pares = [(s, a, b) for s, a, b in arr.duplicados() if ":" not in a and ":" not in b and a not in ret and b not in ret
              and (REAL / f"{a}.md").exists() and (REAL / f"{b}.md").exists()]
-    feitos, duvidas, unidas = [], [], 0
+    feitos, duvidas, unidas, arquivadas = [], [], 0, 0
     for s, a, b in pares:
         chave = "|".join(sorted((a, b)))
         ant = decididos.get(chave)
         if ant and (agora - ant.get("ts", 0)) < DIAS_DECIDIDO * 86400:
+            continue
+        if any(MARCA_ARQUIVADA in ler(n) for n in (a, b)):              # ronda 19: já decidido por quem arquivou — não volta à IA
+            print(f"= {a} ↔ {b}: uma delas já está arquivada — não mexo")
             continue
         d = decidir(a, b)
         manter = d["manter"]; outra = b if manter == a else a
@@ -196,15 +204,18 @@ def _correr():
             duvidas.append({"notas": [a, b], "sugestao": acao, "motivo": motivo, "confianca": d["confianca"]})
             print(f"? {a} ↔ {b}: dúvida ({acao} {d['confianca']:.2f}) — {motivo}")
             continue
-        if acao == "unir":                                             # travões — qualquer um falha → ligar
+        if acao in ("unir", "arquivar"):                               # travões — qualquer um falha → ligar (ronda 19: também no arquivar)
             ta, tb = ler(manter), ler(outra)
-            travao = ("já houve 3 fusões esta noite" if unidas >= MAX_UNIR else
+            travao = ("já houve 3 fusões esta noite" if acao == "unir" and unidas >= MAX_UNIR else
+                      "já houve 3 arquivos esta noite" if acao == "arquivar" and arquivadas >= MAX_ARQUIVAR else
                       "confiança < 0.85" if d["confianca"] < 0.85 else
                       "uma delas foi mexida nas últimas 6 h" if any(agora - (REAL / f"{n}.md").stat().st_mtime < HORAS_QUIETA * 3600 for n in (a, b)) else
                       "uma delas é ⭐⭐⭐" if estrela3(a) or estrela3(b) else
-                      "juntas ficavam grandes demais" if len(ta) + len(tb) > MAX_CHARS else "")
+                      "juntas ficavam grandes demais" if acao == "unir" and len(ta) + len(tb) > MAX_CHARS else "")
             if travao:
-                acao, motivo = "ligar", f"{motivo} (não uni: {travao})"
+                acao, motivo = "ligar", f"{motivo} (não {'uni' if acao == 'unir' else 'arquivei'}: {travao})"
+            elif acao == "arquivar":
+                arquivadas += 1
         print(f"{'[simulação] ' if SIMULAR else ''}{acao.upper():8} {manter} ↔ {outra} ({d['confianca']:.2f}) — {motivo}")
         if SIMULAR:
             feitos.append({"acao": acao, "notas": [manter, outra], "motivo": motivo}); continue
