@@ -30,6 +30,10 @@ seguintes já estava resolvido na ronda 13c):
   «arranque incompleto» e os vigias arrancam na mesma.
 - **Arrumar sozinho:** uma reindexação que não acabava (ou saía com erro) no fim da noite rebentava antes do resumo — o que se
   ligou, uniu ou arquivou ficava por dizer. Agora avisa e o resumo sai na mesma, com a nota da reindexação.
+- **Fornecedor de embeddings que não responde:** com o Ollama ocupado por outro trabalho, cada nota mudada esperava até 9 vezes
+  o `tempo_limite` (3 tamanhos × 3 tentativas) e a reindexação podia levar horas. Agora, ao 2.º «sem resposta», a reindexação
+  pára de pedir vectores nessa corrida: as notas que faltam ficam com o vector anterior e entram na próxima. Uma recusa por
+  tamanho (HTTP 5xx) continua a tentar um texto mais curto.
 
 ### Login Google, tecto de espaço e da IA, «Terminar sessão» e exportar, ronda r21 (23/10/2026)
 

@@ -44,6 +44,12 @@ class EmbErro(Exception):
     pass
 
 
+class EmbSemResposta(EmbErro):
+    """EMB_SEM_RESPOSTA_v1: o fornecedor não respondeu (tempo esgotado / sem ligação). Encurtar o texto não ajuda e o
+    pedaço seguinte esperaria o mesmo — 24/10 04:10 o Ollama ocupado com outro lote fez o indexar passar os 1800 s
+    (9 tentativas × 120 s por pedaço)."""
+
+
 def _prefixo(papel):
     # PORTE: o prefixo `search_query:`/`search_document:` é do nomic-embed-text (a omissão); outros modelos não o querem
     if "nomic" not in (ia().cfg.embeddings_modelo or "").lower():
@@ -60,7 +66,7 @@ def embed(texto, papel="document"):
     """Vector normalizado (array 'f'). O nomic-embed-text pede prefixo — sem ele os valores ficam todos altos e o disparate
     «parece» tudo (ver --autoteste do limiar). Tenta mais curto se o fornecedor recusar (HTTP 5xx); 3 falhas transitórias →
     EmbErro (o indexador salta esse pedaço)."""
-    px, ult = _prefixo(papel), ""
+    px, ult, mudo = _prefixo(papel), "", 0
     for limite in (6000, 2000, 600):
         for _ in range(3):
             try:
@@ -72,6 +78,9 @@ def embed(texto, papel="document"):
                     break            # pedaço recusado por este tamanho → tenta mais curto
                 if m:
                     raise EmbErro(ult)
+                mudo += 1            # EMB_SEM_RESPOSTA_v1: sem resposta 2× → desisto já (não encurto: não é o tamanho)
+                if mudo >= 2:
+                    raise EmbSemResposta(ult)
     raise EmbErro(ult)
 
 
@@ -201,7 +210,7 @@ def indexar():
     c = db(); itens = fontes()
     usar = _com_embeddings()
     tinha = {(a, b): (h, n or 0) for a, b, h, n in c.execute("SELECT fonte,ref,hash,length(vec) FROM pedaco")}
-    vistos, novos, falhas = set(), 0, []
+    vistos, novos, falhas, mudo = set(), 0, [], None
     for fonte, ref, titulo, trecho in itens:
         vistos.add((fonte, ref)); h = _hash(trecho)
         h0, n0 = tinha.get((fonte, ref), (None, 0))
@@ -209,8 +218,12 @@ def indexar():
             continue
         vec = b""
         if usar:
+            if mudo:                                     # EMB_SEM_RESPOSTA_v1: o fornecedor calou-se nesta corrida →
+                falhas.append((ref, mudo)); continue     # os restantes ficam com a versão anterior (estão em `vistos`)
             try:
                 vec = embed(trecho).tobytes()
+            except EmbSemResposta as e:
+                mudo = str(e); falhas.append((ref, mudo)); continue
             except EmbErro as e:
                 falhas.append((ref, str(e))); continue     # salta este pedaço; volta na próxima corrida
         c.execute("INSERT OR REPLACE INTO pedaco (fonte,ref,titulo,trecho,hash,vec,atualizado) "
@@ -227,7 +240,8 @@ def indexar():
     tot = c.execute("SELECT count(*) FROM pedaco").fetchone()[0]
     print(f"índice: {tot} pedaços · {novos} (re){'embebidos' if usar else 'indexados'} · {len(apagar)} removidos" +
           ("" if usar else " · só por palavras (sem fornecedor de embeddings)") +
-          (f" · {len(falhas)} saltados: {', '.join(r for r,_ in falhas[:5])}" if falhas else ""))
+          (f" · {len(falhas)} saltados: {', '.join(r for r,_ in falhas[:5])}" if falhas else "") +
+          (f" · fornecedor de embeddings sem resposta ({mudo}) — o resto fica para a próxima corrida" if mudo else ""))
 
 
 def _excluidas():
