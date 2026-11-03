@@ -351,6 +351,8 @@ class Autenticador:
                 novo = config.carregar(self._origem)
             except (config.ConfigInvalida, OSError, ValueError) as e:
                 self._fechado = str(e) or e.__class__.__name__   # ronda 10 (G3 da r3): fechar ANTES de a marca nova se ver
+                if getattr(self, "oauth", None) is not None:
+                    self.oauth.toml_fechou()                   # r22 (FECHADO_GERACAO_v1): o pedido já autenticado não cria ligações
                 self._marca = marca
                 print(f"basalt.toml mudou mas não carrega ({e}): ninguém entra até o corrigires", file=sys.stderr, flush=True)
                 return False

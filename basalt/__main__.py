@@ -90,6 +90,20 @@ def _revogar_ligacoes(dados, email: str) -> int:
                "(tenta outra vez, com o utilizador do serviço)")
 
 
+def _revogar_depois(dados, email: str) -> None:
+    """r22 (REVOGA_DEPOIS_DO_TOML_v1, achado R1 do Astra à r13b): no `depois` do `_editar_toml` — o basalt.toml JÁ mudou e o trinco
+    ainda está tomado. Revoga outra vez o que nasceu entre a primeira revogação e a troca (o servidor a correr ainda tinha a conta
+    antiga): reiniciado antes de reler, com o toml antigo reposto, isso valia. Não pode lançar (o toml já mudou): se a base não
+    deixar, diz-se — o servidor revoga-as na próxima releitura."""
+    import sqlite3
+    from . import oauth
+    try:
+        oauth.revogar_na_base(dados, email)
+    except (oauth.Ocupado, sqlite3.Error, OSError) as e:
+        print(f"aviso: não consegui revogar outra vez as ligações das IAs de {email} na base ({e}); o servidor revoga-as quando "
+              "reler o basalt.toml (não o reponhas à mão antes disso)", file=sys.stderr, flush=True)
+
+
 def _cfg(a):
     """a configuração de --config/BASALT_CONFIG, ACTIVADA para todo o processo (ambiente dos filhos + IA de [ia]). Ronda 8 (--config para tudo): cada
     subcomando lia as notas de --config mas a IA, o sig e as fontes_extra reliam a configuração pelo ambiente — podia ser outra."""
@@ -256,7 +270,7 @@ def cmd_utilizador(a):
             _revogar_ligacoes(cfg.dados, email)   # ronda 13b: ligações de uma conta antiga com este e-mail não passam para a nova
             cortadas.append(email)
             return acrescentar_utilizador(t, bloco)
-        _editar_toml(caminho, novo, cortadas)
+        _editar_toml(caminho, novo, cortadas, depois=lambda: _revogar_depois(cfg.dados, email))   # r22 REVOGA_DEPOIS_DO_TOML_v1
         cfg = config.carregar(caminho)
         e = cfg.espaco_de(cfg.utilizador(email)).criar()
         if cfg.git:
@@ -279,7 +293,7 @@ def cmd_utilizador(a):
             _revogar_ligacoes(dados, email)   # ronda 13b: gravado antes de o toml mudar (o servidor pode reiniciar antes de o reler)
             cortadas.append(email)
             return novo
-        _editar_toml(caminho, senha, cortadas)
+        _editar_toml(caminho, senha, cortadas, depois=lambda: _revogar_depois(dados, email))      # r22 REVOGA_DEPOIS_DO_TOML_v1
         print(f"✓ senha de {email} guardada")
     elif a.sub == "mcp-token":
         token, h = auth.gerar_token()
@@ -360,7 +374,7 @@ def _apagar_conta(caminho: Path, email: str, conta_id: str | None = None, apagad
         except OSError as e:                  # não pode lançar aqui (o toml já mudou): diz-se depois, fora do trinco
             nao_saiu.append(e)
     try:
-        _editar_toml(caminho, tirar, cortadas, depois=mover)
+        _editar_toml(caminho, tirar, cortadas, depois=lambda: (_revogar_depois(cfg.dados, email), mover()))   # r22 REVOGA_DEPOIS_DO_TOML_v1
     except SystemExit:
         if registo:                       # a entrada foi gravada mas o basalt.toml não mudou: volta ao que era
             try:

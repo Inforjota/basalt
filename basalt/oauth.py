@@ -441,6 +441,7 @@ class OAuth:
         # ligação confere que a conta não mudou desde que o pedido se autenticou (nem apagada e recriada igual, a meio do pedido)
         self._geracao = 0
         self._mudou: dict[str, int] = {}
+        self._fechou_em = 0                                # r22 (FECHADO_GERACAO_v1): a geração da última vez que o toml fechou
 
     # ── base ──
     def _ligar(self) -> sqlite3.Connection:
@@ -584,6 +585,15 @@ class OAuth:
             except (Ocupado, sqlite3.Error, OSError) as e:
                 _avisar("revogacao_pendente", erro=e.__class__.__name__)      # sem a mensagem: pode trazer o caminho
 
+    def toml_fechou(self) -> None:
+        """r22 (FECHADO_GERACAO_v1, achado R2 do Astra à r13b): o Autenticador chama isto (dentro do trinco dele) quando o basalt.toml
+        mudou e não carrega (a última conta apagada, um erro). A porta fecha, mas um pedido JÁ autenticado ainda criava a ligação
+        (token pessoal, «Permitir») com a conta de antes — e, com a conta reposta igual, essa ligação valia. Sobe a geração: quem
+        se autenticou antes do fecho não cria nada. Não revoga nada (fechar e reabrir igual não muda contas)."""
+        with self._lock:
+            self._geracao += 1
+            self._fechou_em = self._geracao
+
     def revogacoes_pendentes(self) -> bool:
         """ronda 13b: há contas mudadas cujas ligações ainda não ficaram revogadas na base?"""
         with self._lock:
@@ -598,11 +608,21 @@ class OAuth:
     def _mesma_conta(self, u, desde: int) -> bool:
         """ronda 13b: dentro da Transacao que cria uma ligação (já com as revogações pendentes gravadas): a conta autenticada no
         início do pedido ainda existe igual (espaço, senha) e não mudou desde a geração `desde` — apagada e recriada igual a meio
-        do pedido também conta como mudada. Antes criava-se com o Utilizador do início, que podia já não existir."""
+        do pedido também conta como mudada. Antes criava-se com o Utilizador do início, que podia já não existir.
+        r22 (REVOGA_DEPOIS_DO_TOML_v1, achado R1): o basalt.toml do disco já não é o que o servidor leu (a CLI acabou de o trocar e
+        ainda ninguém o releu) → Ocupado (503, tenta outra vez — o pedido seguinte relê). Isto corre dentro da Transacao: ou a CLI
+        troca o toml depois desta verificação e a revogação que ela faz a seguir (à espera desta transacção) apanha o que se criou,
+        ou trocou antes e isto recusa. Antes um pedido autenticado antes da troca criava a ligação depois da segunda revogação.
+        r22 (FECHADO_GERACAO_v1, achado R2): com o toml fechado, ou fechado depois de `desde`, nada se cria."""
+        marca = getattr(self.aut, "_marca_do_toml", None)
+        if marca is not None and marca() not in (None, getattr(self.aut, "_marca", None)):
+            raise Ocupado("o basalt.toml mudou e ainda não foi relido")
+        if getattr(self.aut, "_fechado", ""):
+            return False
         if self._familia_viva(u.email.lower(), u.espaco, self._cred(u)) is None:
             return False
         with self._lock:
-            return self._mudou.get(u.email.lower(), 0) <= desde
+            return self._mudou.get(u.email.lower(), 0) <= desde and self._fechou_em <= desde
 
     def _rever(self, conn) -> None:
         """ronda 13: as revogações pendentes — as famílias das contas marcadas (nascidas até à mudança) e, no arranque, todas as que
