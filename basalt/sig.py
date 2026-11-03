@@ -242,6 +242,7 @@ def indexar():
           ("" if usar else " · só por palavras (sem fornecedor de embeddings)") +
           (f" · {len(falhas)} saltados: {', '.join(r for r,_ in falhas[:5])}" if falhas else "") +
           (f" · fornecedor de embeddings sem resposta ({mudo}) — o resto fica para a próxima corrida" if mudo else ""))
+    return mudo                  # ARRUMAR_RC_v1 (r22): quem corre a tarefa (`basalt indexar`, `arrumar --auto`) sai com código 3
 
 
 def _excluidas():
@@ -631,7 +632,11 @@ def main(argv=None):
 
 def _comando(a):
     if a[0] == "indexar":
-        return indexar()
+        mudo = indexar()
+        if mudo:                         # ARRUMAR_RC_v1 (r22): o `_reindexar` do auto_arrumar só vê a falha pelo código de saída
+            print(f"indexar: ficou a meio — o fornecedor de embeddings não respondeu ({mudo})", file=sys.stderr)
+            sys.exit(3)
+        return None
     if a[0] == "estado":
         return estado()
     if a[0] == "procura":

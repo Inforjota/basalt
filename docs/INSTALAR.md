@@ -68,6 +68,9 @@ com o `basalt.toml` de lá. Se puseres o código noutro sítio, ajusta o `PYTHON
 `basalt arrumar --auto` às 04:10, com o mesmo utilizador e o mesmo endurecimento do serviço. Por cada espaço faz o que o servidor faz à Entrada
 (se `[entrada] automatica` estiver ligada), arruma as notas parecidas, reindexa e refaz as categorias; a Entrada e as notas parecidas
 precisam de uma IA configurada (`[ia]`, ou a de cada tarefa — § 5); sem ela só reindexa e refaz as categorias. Para ver o que faria sem escrever nada: `basalt arrumar --auto --simular`.
+Se o índice ficar a meio (o fornecedor de embeddings não respondeu) ou a reindexação do fim da noite falhar, sai com o
+código 3 e o porquê no registo (`journalctl -u basalt-arrumar`): o que a noite fez fica gravado e as notas que faltam
+entram na indexação seguinte. O `basalt indexar` faz o mesmo.
 
 O timer `basalt-apagados` corre `basalt apagados eliminar --dias 30 --sim` todos os dias às 04:40 (com um atraso ao acaso até
 15 min; `Persistent=true` faz a corrida perdida se a máquina esteve desligada), com o mesmo utilizador e o mesmo endurecimento,

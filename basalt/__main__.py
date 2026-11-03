@@ -487,14 +487,26 @@ def _dentro_de_cada(cfg, a, fn):
             fn(esp)
 
 
+def _sair_se_falhou(falhas, quem):
+    """ARRUMAR_RC_v1 (r22): o cron/timer só vê o código de saída. O índice que ficou a meio (o fornecedor de embeddings calou-se)
+    ou a reindexação do auto_arrumar que falhou → código 3 com o porquê no stderr; o que se fez antes já está gravado."""
+    if falhas:
+        print(f"{quem}: " + " · ".join(falhas), file=sys.stderr)
+        sys.exit(3)
+
+
 def cmd_indexar(a):
     from . import sig
     cfg = _cfg(a)
+    falhas = []
 
     def um(esp):
         print(f"[{esp.nome}] ", end="", flush=True)
-        sig.indexar()
+        mudo = sig.indexar()
+        if mudo:
+            falhas.append(f"[{esp.nome}] o índice ficou a meio: o fornecedor de embeddings não respondeu ({mudo})")
     _dentro_de_cada(cfg, a, um)
+    _sair_se_falhou(falhas, "indexar")
 
 
 def cmd_procurar(a):
@@ -521,6 +533,8 @@ def cmd_arrumar(a):
     from . import entrada as entrada_mod
     from . import ia as ia_mod
 
+    falhas = []
+
     def um(esp):
         if a.auto:
             # ronda 9 (achado M6 da ronda 2): o timer nocturno faz o mesmo que o servidor numa volta do vigia — a Entrada (web.processar_entrada) —
@@ -540,15 +554,20 @@ def cmd_arrumar(a):
                               file=sys.stderr)
                 if par.chat_activo:
                     auto_arrumar.SIMULAR = bool(a.simular)
-                    auto_arrumar._correr()
+                    aviso = auto_arrumar._correr()
+                    if aviso:
+                        falhas.append(f"[{esp.nome}] {aviso}")
                 else:
                     print(f"[{esp.nome}] notas parecidas: sem IA ([{_seccao_ia(par)}] fornecedor = \"nenhum\"); não decidi nenhum par.",
                           file=sys.stderr)
             if not a.simular:
-                sig.indexar()
+                mudo = sig.indexar()
+                if mudo:
+                    falhas.append(f"[{esp.nome}] a reindexação ficou a meio: o fornecedor de embeddings não respondeu ({mudo})")
                 categorias.main()
         arrumar.relatorio()
     _dentro_de_cada(cfg, a, um)
+    _sair_se_falhou(falhas, "arrumar")
 
 
 def _seccao_ia(x):

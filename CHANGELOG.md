@@ -34,6 +34,10 @@ seguintes já estava resolvido na ronda 13c):
   o `tempo_limite` (3 tamanhos × 3 tentativas) e a reindexação podia levar horas. Agora, ao 2.º «sem resposta», a reindexação
   pára de pedir vectores nessa corrida: as notas que faltam ficam com o vector anterior e entram na próxima. Uma recusa por
   tamanho (HTTP 5xx) continua a tentar um texto mais curto.
+- **Código de saída quando o índice fica a meio:** o cron e o timer correm `basalt indexar` e `basalt arrumar --auto`, que
+  ignoravam a falha da reindexação — e, com o fornecedor de embeddings calado, a reindexação acabava com código 0. Uma noite
+  como a de 24/10 passava como «tudo bem». Agora os dois saem com o código 3 e dizem porquê no stderr; o que se fez antes
+  fica gravado e o relatório sai na mesma.
 - **Ligações que não mandam nada:** uma ligação aberta sem pedido (ou com meio pedido) ficava a ocupar um fio do servidor para
   sempre. Agora o servidor fecha-a ao fim de 60 s sem dados; um envio lento continua a passar (o prazo conta por cada pedaço
   recebido, não pelo pedido inteiro).
