@@ -84,3 +84,20 @@ def test_controlo_reindexacao_bem_sucedida_resumo_sem_aviso(ligadas, monkeypatch
     assert _correr() is None
     s = capsys.readouterr()
     assert chamadas == [1800] and RESUMO in s.out and "reindexação" not in s.out + s.err, (s.out, s.err)
+
+
+def test_reindexacao_que_falha_sai_com_codigo_3(ligadas, monkeypatch, capsys):
+    # REINDEX_RC_v1: o resumo sai na mesma, mas o main devolve 3 para o cron/timer marcar a noite como falhada
+    _reindex(monkeypatch, lambda args, *a, **k: subprocess.CompletedProcess(args, 1, b"", b"x\n"))
+    monkeypatch.setattr(auto_arrumar.config, "definir_processo", lambda *a, **k: None)
+    monkeypatch.setattr(auto_arrumar._ia, "actual", lambda *a, **k: type("I", (), {"chat_activo": True})())
+    assert auto_arrumar.main([]) == 3
+    assert RESUMO in capsys.readouterr().out
+
+
+def test_controlo_reindexacao_bem_sucedida_sai_com_0(ligadas, monkeypatch, capsys):
+    _reindex(monkeypatch, lambda args, *a, **k: subprocess.CompletedProcess(args, 0, b"", b""))
+    monkeypatch.setattr(auto_arrumar.config, "definir_processo", lambda *a, **k: None)
+    monkeypatch.setattr(auto_arrumar._ia, "actual", lambda *a, **k: type("I", (), {"chat_activo": True})())
+    assert auto_arrumar.main([]) is None
+    assert RESUMO in capsys.readouterr().out

@@ -210,7 +210,8 @@ def main(argv=None):
         config.definir_processo(config.espaco_de_processo())
         if not _ia.actual("arrumar").chat_activo:
             return print("auto_arrumar precisa de uma IA: defina [ia] fornecedor (ou [ia.arrumar]) no basalt.toml. Nada feito.", file=sys.stderr)
-        _correr()
+        if _correr():                                   # REINDEX_RC_v1 (r22): a noite correu mas a reindexação falhou → código 3,
+            return 3                                    # para quem corre a tarefa (cron/timer) dar por ela; o resumo já saiu
     except config.ConfigInvalida as e:
         sys.exit(f"configuração inválida: {e}")
 
@@ -316,6 +317,7 @@ def _correr():
         print(f"Basalt arrumou a memória: {conta['unir']} unidas, {conta['arquivar']} arquivadas, {conta['ligar']} ligadas"
               + (f"; {len(duvidas)} caso(s) para decidir" if duvidas else "") + ". Desfazer: na página do Basalt → Arrumar."
               + (f" {aviso}" if aviso else ""))
+    return aviso or None
 
 
 def _reindexar():
@@ -339,4 +341,4 @@ def _reindexar():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
