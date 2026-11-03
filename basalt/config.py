@@ -33,6 +33,10 @@ TAREFAS_IA = ("unir", "arrumar", "entrada")
 # sem a sua sub-tabela, uma tarefa usa a de outra antes de cair em [ia]: a Entrada era classificada pela de [ia.arrumar] antes de
 # haver [ia.entrada], e assim continua para quem não a declarar (entrada → arrumar → [ia])
 RECURSO_IA = {"entrada": "arrumar"}
+# r23 (IA_RESERVA_v1): [ia.reserva] — outro fornecedor para quando o de uma tarefa não responde (tempo esgotado, sem ligação, HTTP 5xx
+# ou 429). Ex.: a ponte/API como principal e o Ollama local como reserva. Os mesmos campos de uma tarefa, mas NADA se herda de [ia]
+# além do tempo_limite (url, modelo e chave são só os da reserva: a chave do principal nunca vai para outro endereço).
+RESERVA_IA = "reserva"
 CAMPOS_TAREFA = ("fornecedor", "url", "modelo_chat", "chave_env", "chave_ficheiro", "tempo_limite")
 MODOS_AUTH = ("cabecalho", "senha", "aberto")
 IDIOMAS = ("pt", "en", "auto")
@@ -95,12 +99,28 @@ class IAConfig:
     embeddings_modelo: str = "nomic-embed-text"
     embeddings_chave_env: str = ""      # "" = a mesma do chat
     tarefas: dict = field(default_factory=dict)   # [ia.unir], [ia.arrumar], [ia.entrada] tal como vêm do toml (só em [ia])
+    reserva: dict = field(default_factory=dict)   # r23: [ia.reserva] tal como vem do toml (vale para [ia] e para todas as tarefas)
     seccao: str = "ia"                  # de onde vem esta configuração, para as mensagens ("ia" ou "ia.unir"…)
     proprios: frozenset = frozenset()   # os campos que a tarefa declarou ela própria (o resto veio de [ia])
 
     def embeddings_activos(self) -> bool:
         f = self.embeddings_fornecedor or ("openai" if self.fornecedor == "openai" else "nenhum")
         return f != "nenhum"
+
+    def para_reserva(self) -> "IAConfig | None":
+        """r23 (IA_RESERVA_v1): a configuração de [ia.reserva], ou None sem ela (ou com fornecedor "nenhum"). Só o tempo_limite vem
+        de cima; o resto é o que a reserva declarar."""
+        r = self.reserva
+        if not isinstance(r, dict) or not isinstance(r.get("fornecedor"), str) or r["fornecedor"] in ("", "nenhum"):
+            return None
+        d = {k: r[k] for k in ("fornecedor", "url", "modelo_chat", "chave_env", "chave_ficheiro") if isinstance(r.get(k), str)}
+        tempo = r.get("tempo_limite")
+        if isinstance(tempo, bool) or not isinstance(tempo, int) or tempo <= 0:
+            tempo = self.tempo_limite
+        return _substituir(self, fornecedor=d["fornecedor"], url=d.get("url", ""), modelo_chat=d.get("modelo_chat", ""),
+                           chave_env=d.get("chave_env", ""), chave_ficheiro=d.get("chave_ficheiro", ""), tempo_limite=tempo,
+                           tarefas={}, reserva={}, seccao="ia.reserva", proprios=frozenset(d) | ({"tempo_limite"} if "tempo_limite" in r else set()),
+                           embeddings_fornecedor="nenhum")
 
     def para(self, tarefa: str) -> "IAConfig":
         """a configuração de IA para uma tarefa: [ia] com o que [ia.<tarefa>] declarar por cima. Sem a sub-tabela é a da tarefa de
@@ -277,6 +297,19 @@ class Config:
                 raise ConfigInvalida(f"[ia.{nome}] fornecedor tem de ser um de {FORNECEDORES}, não {c.fornecedor!r}")
             if c.fornecedor == "openai" and not c.url:
                 raise ConfigInvalida(f"[ia.{nome}] fornecedor openai precisa de url (ex.: http://127.0.0.1:11434/v1)")
+        r = self.ia.reserva                              # r23: [ia.reserva] — as mesmas regras de uma tarefa
+        for k in r:
+            if k not in CAMPOS_TAREFA:
+                raise ConfigInvalida(f"[ia.reserva] {k}: aqui só se pode pôr " + ", ".join(CAMPOS_TAREFA))
+        for k in ("fornecedor", "url", "modelo_chat", "chave_env", "chave_ficheiro"):
+            if k in r and not isinstance(r[k], str):
+                raise ConfigInvalida(f"[ia.reserva] {k} tem de ser texto entre aspas")
+        if "tempo_limite" in r and (isinstance(r["tempo_limite"], bool) or not isinstance(r["tempo_limite"], int) or r["tempo_limite"] <= 0):
+            raise ConfigInvalida(f"[ia.reserva] tempo_limite tem de ser um número inteiro de segundos, não {r['tempo_limite']!r}")
+        if r and r.get("fornecedor", "nenhum") not in FORNECEDORES:
+            raise ConfigInvalida(f"[ia.reserva] fornecedor tem de ser um de {FORNECEDORES}, não {r.get('fornecedor')!r}")
+        if r.get("fornecedor") == "openai" and not r.get("url"):
+            raise ConfigInvalida("[ia.reserva] fornecedor openai precisa de url (ex.: http://127.0.0.1:11434/v1)")
         if self.auth.modo == "aberto" and self.escutar not in ("127.0.0.1", "::1", "localhost"):
             raise ConfigInvalida("[auth] modo aberto só com escutar = 127.0.0.1 — qualquer pessoa na rede entraria")
         vistos = set()
@@ -643,7 +676,8 @@ def carregar(caminho: str | Path | None = None, ambiente: dict | None = None, va
         embeddings_url=amb.get("BASALT_EMB_URL") or amb.get("EMB_URL") or e.get("url", ""),
         embeddings_modelo=amb.get("BASALT_EMB_MODELO") or e.get("modelo", "nomic-embed-text"),
         embeddings_chave_env=e.get("chave_env", ""),
-        tarefas={k: dict(v) for k, v in i.items() if isinstance(v, dict) and k != "embeddings"},
+        tarefas={k: dict(v) for k, v in i.items() if isinstance(v, dict) and k not in ("embeddings", RESERVA_IA)},
+        reserva=dict(i[RESERVA_IA]) if isinstance(i.get(RESERVA_IA), dict) else {},
     )
     if cfg.ia.embeddings_url and not cfg.ia.embeddings_fornecedor:    # compatibilidade: EMB_URL do Ollama (…/api/embeddings)
         cfg.ia.embeddings_fornecedor = "ollama" if "/api/" in cfg.ia.embeddings_url or ":11434" in cfg.ia.embeddings_url else "openai"

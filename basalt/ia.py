@@ -25,6 +25,11 @@ class IAIndisponivel(RuntimeError):
     """não há fornecedor configurado, ou ele não respondeu — quem chama decide o que fazer sem IA."""
 
 
+class IARecusa(IAIndisponivel):
+    """r23 (IA_RECUSA_v1): o modelo recusou responder (stop_reason refusal/content_filter e texto vazio). Não é avaria: a reserva
+    não se tenta e a mensagem é neutra (nunca o texto da nota nem o motivo do fornecedor)."""
+
+
 class IASemResposta(IAIndisponivel):
     """EMB_MUDO_SO_SILENCIO_v1 (r22): o fornecedor NÃO respondeu — tempo esgotado ou ligação recusada/cortada, sem código HTTP.
     Os outros IAIndisponivel (HTTP, «não é JSON», «não devolveu embedding», sem chave…) são respostas: o fornecedor está lá."""
@@ -106,7 +111,9 @@ def _post_json(url: str, corpo: dict, cabecalhos: dict, tempo: int) -> dict:
         if e.code in _REDIRECTS:
             raise IAIndisponivel(_mascarar(f"{origem}: HTTP {e.code} — redireccionou para outro endereço e não o sigo (a chave iria "
                                            f"com o pedido). Põe em [ia] url o endereço final.", cabecalhos))
-        raise IAIndisponivel(_mascarar(f"{origem}: HTTP {e.code} {_mensagem_http(e.code, e.read(2000))}".rstrip(), cabecalhos))
+        x = IAIndisponivel(_mascarar(f"{origem}: HTTP {e.code} {_mensagem_http(e.code, e.read(2000))}".rstrip(), cabecalhos))
+        x.codigo = e.code                          # r23: a reserva só entra com 5xx/429 (um 4xx é configuração: não se esconde)
+        raise x
     except (urllib.error.URLError, TimeoutError, OSError) as e:
         raise IASemResposta(_mascarar(f"sem resposta de {url}: {getattr(e, 'reason', e)}", cabecalhos))
     except ValueError:
@@ -142,6 +149,7 @@ class IA:
     def __init__(self, cfg: IAConfig):
         self.cfg = cfg
         self._tarefas: dict = {}
+        self._reserva = False                      # r23: por construir (None = sem [ia.reserva])
 
     def para(self, tarefa: str) -> "IA":
         """a IA de uma tarefa ([ia.<tarefa>] por cima de [ia]); sem sub-tabela, a da tarefa de recurso (o MESMO objecto: a Entrada
@@ -181,7 +189,17 @@ class IA:
                 x = self.para(t)
                 d["tarefas"][t] = {"chat": x.cfg.fornecedor, "modelo": x.modelo if x.chat_activo else "", "propria": x is not self,
                                    "de": x.cfg.seccao}
+        r = self.reserva()
+        if r is not None:
+            d["reserva"] = {"chat": r.cfg.fornecedor, "modelo": r.modelo}
         return d
+
+    def reserva(self) -> "IA | None":
+        """r23 (IA_RESERVA_v1): a IA de [ia.reserva] (a mesma para [ia] e todas as tarefas), ou None."""
+        if self._reserva is False:
+            c = self.cfg.para_reserva() if hasattr(self.cfg, "para_reserva") else None
+            self._reserva = type(self)(c) if c is not None else None
+        return self._reserva
 
     # ── chat ──
     def chat(self, prompt: str, sistema: str = "", json_: bool = False, tempo: int | None = None) -> str:
@@ -191,6 +209,21 @@ class IA:
         if "tempo_limite" in self.cfg.proprios:       # [ia.<tarefa>] tempo_limite: quem configurou a tarefa manda
             tempo = self.cfg.tempo_limite
         tempo = tempo or self.cfg.tempo_limite
+        try:
+            return self._chat_principal(prompt, sistema, json_, tempo)
+        except IARecusa:
+            raise
+        except IAIndisponivel as e:
+            r = self.reserva()
+            transitorio = isinstance(e, IASemResposta) or (getattr(e, "codigo", 0) or 0) >= 500 or getattr(e, "codigo", 0) == 429
+            if r is None or not transitorio or r.cfg.seccao == self.cfg.seccao:
+                raise
+            try:                                   # a reserva usa o seu tempo_limite: o principal já gastou o dele
+                return r._chat_principal(prompt, sistema, json_, r.cfg.tempo_limite)
+            except IAIndisponivel as e2:
+                raise IAIndisponivel(f"{e} · e a reserva ([ia.reserva] {r.cfg.fornecedor}) também falhou: {e2}") from e2
+
+    def _chat_principal(self, prompt, sistema, json_, tempo):
         f = self.cfg.fornecedor
         if f == "openai":
             return self._openai(prompt, sistema, json_, tempo)
@@ -236,16 +269,20 @@ class IA:
             if not self.cfg.chave_env and not self.cfg.chave_ficheiro:
                 raise IAIndisponivel(f"sem chave: declara chave_env ou chave_ficheiro em [{self.cfg.seccao}]")
             raise IAIndisponivel(f"sem chave: define a variável {self.cfg.chave_env} (ou [{self.cfg.seccao}] chave_ficheiro)")
-        corpo = {"model": self.cfg.modelo_chat or "claude-sonnet-5-5", "max_tokens": 8192, "temperature": 0,
+        # r23 (SEM_TEMPERATURE_v1): sem `temperature` — os modelos 5.5 recusam-na (HTTP 400 em todos os pedidos)
+        corpo = {"model": self.cfg.modelo_chat or "claude-sonnet-5-5", "max_tokens": 8192,
                  "messages": [{"role": "user", "content": prompt + ("\nResponde APENAS com JSON válido." if json_ else "")}]}
         if sistema:
             corpo["system"] = sistema
         r = _post_json((self.cfg.url or "https://api.anthropic.com").rstrip("/") + "/v1/messages", corpo,
                        {"x-api-key": k, "anthropic-version": "2023-06-01"}, tempo)
         try:
-            return sem_cerca("".join(b.get("text", "") for b in r["content"] if b.get("type") == "text"))
-        except (KeyError, TypeError):
+            txt = "".join(b.get("text", "") for b in r["content"] if b.get("type") == "text")
+        except (KeyError, TypeError, AttributeError):
             raise IAIndisponivel("resposta inesperada da Anthropic")
+        if not txt.strip() and r.get("stop_reason") in ("refusal", "content_filter"):
+            raise IARecusa("o modelo recusou responder a este pedido")
+        return sem_cerca(txt)
 
     def _ambiente_cli(self):
         """ronda 13: o `claude` corre com o ambiente mínimo (config.ambiente_minimo) — sem as chaves que o processo tenha.

@@ -233,6 +233,12 @@ cada tarefa e de onde vem. Uma tarefa desligada não leva as outras: `[ia.unir] 
 `arrumar --auto` passa a ligar as notas parecidas em vez de as fundir); `[ia.arrumar] fornecedor = "nenhum"` desliga só os pares
 (a Entrada continua a ser classificada pela de `[ia.entrada]`, e o índice e as categorias continuam a ser refeitos).
 
+**IA de reserva (opcional).** `[ia.reserva]` (os mesmos campos de uma tarefa) recebe a pergunta quando o fornecedor de `[ia]` ou
+de uma tarefa não responde — tempo esgotado, sem ligação, HTTP 5xx ou 429. Serve, por exemplo, para usar uma API paga como
+principal e o Ollama local como reserva. Nada vem de `[ia]` além do `tempo_limite` (a chave do principal nunca vai para a
+reserva). Um erro 4xx (chave errada, modelo que não existe) não passa à reserva, para não esconder um erro de configuração, e uma
+recusa do modelo também não: aparece como «o modelo recusou responder a este pedido».
+
 ## 6. Cópias de segurança
 
 Copia `<dados>` inteiro (notas + git + índice + sessões). O índice reconstrói-se com `basalt indexar`; as notas são

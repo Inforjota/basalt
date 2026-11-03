@@ -4,6 +4,14 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### IA de reserva e modelos 5.5 pela Messages API, ronda r23 (03/11/2026)
+
+- **`[ia.reserva]`:** um segundo fornecedor para quando o de `[ia]` ou de uma tarefa não responde (tempo esgotado, sem ligação,
+  HTTP 5xx ou 429). Não herda url, modelo nem chave de `[ia]`. Um 4xx e a recusa do modelo não passam à reserva.
+- **`fornecedor = "anthropic"`:** o pedido deixa de levar `temperature` (os modelos 5.5 recusavam todos os pedidos com HTTP 400).
+- **Recusa do modelo:** resposta vazia com `stop_reason` `refusal`/`content_filter` passa a dar «o modelo recusou responder a este
+  pedido», em vez de um texto vazio.
+
 ### Ligações das IAs com a conta a mudar, a nota que se redesenha, categorias e arranque, ronda r22 (24/10/2026)
 
 > **Depois de actualizar:** a página mudou — o service worker passa a `basalt-v18` (as caches `basalt-v16`/`basalt-v17` saem

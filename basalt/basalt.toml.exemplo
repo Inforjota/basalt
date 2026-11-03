@@ -70,6 +70,10 @@ modelo = "nomic-embed-text"
 # modelo_chat = "qwen2.5:3b"
 # (a chave de [ia] só passa para a tarefa se o fornecedor E o url forem os mesmos; senão declara chave_env/chave_ficheiro aqui.
 #  Os limites por hora são os de [ia], para todas. As categorias, o editor e a pergunta com fontes usam sempre [ia].)
+# [ia.reserva]                     # opcional: para onde vai a pergunta quando o fornecedor de [ia] ou de uma tarefa NÃO responde
+# fornecedor = "openai"            # (tempo esgotado, sem ligação, HTTP 5xx ou 429) — p. ex. uma API como principal e o Ollama local
+# url = "http://127.0.0.1:11434/v1"  # como reserva. Nada vem de [ia] além do tempo_limite: a chave do principal nunca vai para cá.
+# modelo_chat = "qwen2.5:7b-instruct-q4_K_M"   # Um erro 4xx (chave, modelo) e a recusa do modelo NÃO passam à reserva.
 
 [entrada]
 automatica = true                  # ideias de fontes de confiança são arrumadas sozinhas (com Desfazer)
