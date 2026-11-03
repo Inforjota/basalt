@@ -2076,7 +2076,7 @@ def _arranque(cfg, vigias):
     """a sincronização inicial e as notas retidas, depois os vigias (pela ordem de sempre). Ronda 13b: corre num fio, com o servidor
     já a atender — um [segredos] verificador lento prendia o arranque (um tempo limite por nota). Uma falha dele adia o resto do
     arranque sem novas chamadas; até lá, excl() calcula na 1.ª vez que se pede e falha fechado (a cópia só tem notas verificadas).
-    r22 (ARRANQUE_INCOMPLETO_v1, achado R6 do Astra à r13b): uma excepção fora dos blocos protegidos já não impede os vigias de
+    r22 (ARRANQUE_INCOMPLETO_v1, achado R6 da revisão externa à r13b): uma excepção fora dos blocos protegidos já não impede os vigias de
     arrancar — o que falhou dá um ALERTA «arranque incompleto» (stderr e [avisos] comando) e os vigias arrancam na mesma (a exclusão
     como depois de um verificador falhado: repete cedo)."""
     from . import duasvias

@@ -1,4 +1,4 @@
-"""r22 — o que a revisão externa da r13b (Astra, 23/10) ainda encontrou no «Traz a tua IA» (basalt/oauth.py, CLI):
+"""r22 — o que a revisão externa da r13b (23/10) ainda encontrou no «Traz a tua IA» (basalt/oauth.py, CLI):
 
   R1. (grave) a CLI (`utilizador senha`/`apagar`) revoga as ligações na base e SÓ DEPOIS substitui o basalt.toml. Com o servidor a
       correr, uma ligação criada nesse intervalo (a conta ainda com a senha antiga) ficava viva: reiniciar antes da releitura,

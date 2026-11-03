@@ -91,7 +91,7 @@ def _revogar_ligacoes(dados, email: str) -> int:
 
 
 def _revogar_depois(dados, email: str) -> None:
-    """r22 (REVOGA_DEPOIS_DO_TOML_v1, achado R1 do Astra à r13b): no `depois` do `_editar_toml` — o basalt.toml JÁ mudou e o trinco
+    """r22 (REVOGA_DEPOIS_DO_TOML_v1, achado R1 da revisão externa à r13b): no `depois` do `_editar_toml` — o basalt.toml JÁ mudou e o trinco
     ainda está tomado. Revoga outra vez o que nasceu entre a primeira revogação e a troca (o servidor a correr ainda tinha a conta
     antiga): reiniciado antes de reler, com o toml antigo reposto, isso valia. Não pode lançar (o toml já mudou): se a base não
     deixar, diz-se — o servidor revoga-as na próxima releitura."""

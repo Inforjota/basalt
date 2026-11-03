@@ -4,6 +4,33 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ## [Por lançar]
 
+### Ligações das IAs com a conta a mudar, a nota que se redesenha, categorias e arranque, ronda r22 (24/10/2026)
+
+> **Depois de actualizar:** a página mudou — o service worker passa a `basalt-v17` (a cache `basalt-v16` sai sozinha na
+> primeira visita). Nada mais a fazer.
+
+Achados da revisão externa à r13b que ainda se aplicavam (o da nota que fazia o verificador de segredos falhar e prendia as
+seguintes já estava resolvido na ronda 13c):
+
+- **`basalt utilizador senha`/`novo`/`apagar` com o servidor a correr:** a CLI cortava as ligações das IAs e só depois trocava o
+  `basalt.toml`; uma ligação criada nesse intervalo sobrevivia a um reinício com o toml antigo reposto. Agora a CLI corta outra
+  vez depois de o toml novo estar gravado, e criar uma ligação confere, dentro da transacção, que o toml do disco é o que o
+  servidor leu (senão responde 503 e a aplicação tenta outra vez).
+- **Apagar a última conta:** o toml sem contas fecha a porta, mas um pedido já autenticado ainda criava a ligação. Agora o toml
+  fechado conta como mudança de contas e a ligação é recusada.
+- **A nota de uma conta depois de entrar outra (ou de a cópia trancar):** o «Cancelar» do editor, o fim de «Gravar» e o «Juntar
+  à mão» de um conflito voltavam a desenhar a nota sem verificar a cópia — só a 1.ª vez era verificada. Agora todas as vezes; a
+  pré-visualização do editor também não se desenha se a cópia mudou enquanto preparava as notas embutidas (diz porquê; o texto
+  fica no editor).
+- **Categorias das fontes externas:** a chave sem «#» gravada para um «repo#12» sozinho tapava o «repo#13» quando o #12 saía do
+  índice; e dois pedidos com o mesmo título juntavam-se como se fossem uma nota partida. A chave antiga só vale agora para o mesmo
+  texto, e uma nota partida tem de começar no «#0».
+- **Arranque:** uma falha no fio do arranque (por exemplo `BASALT_VIGIA_SEGUNDOS=10s`) deixava o servidor a responder sem
+  sincronização, sem refresco das notas retidas e sem Entrada. O valor inválido avisa e fica nos 10 s; outra falha dá o aviso
+  «arranque incompleto» e os vigias arrancam na mesma.
+- **Arrumar sozinho:** uma reindexação que não acabava (ou saía com erro) no fim da noite rebentava antes do resumo — o que se
+  ligou, uniu ou arquivou ficava por dizer. Agora avisa e o resumo sai na mesma, com a nota da reindexação.
+
 ### Login Google, tecto de espaço e da IA, «Terminar sessão» e exportar, ronda r21 (23/10/2026)
 
 > **Depois de actualizar**, com login pela Google: (1) com `cabecalho_sub`, o `basalt.toml` tem de poder ser gravado pelo

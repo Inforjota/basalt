@@ -1,4 +1,4 @@
-"""r22 — achado R5 (menor) da revisão externa da r13b (Astra, 23/10): categorias das fontes externas (basalt/categorias.py).
+"""r22 — achado R5 (menor) da revisão externa da r13b (23/10): categorias das fontes externas (basalt/categorias.py).
 
   a) a chave sem «#» que a ronda 13 gravava para um «repo#12» sozinho («pedidos:repo») tapava o «repo#13» quando o #12 saía do
      índice e o #13 ficava sozinho: nunca ganhava categoria. Agora a chave de antes só vale para o item com o mesmo texto (hash).

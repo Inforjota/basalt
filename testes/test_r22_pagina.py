@@ -1,4 +1,4 @@
-"""r22 (página) — achado R3 (grave) da revisão externa da r13b (Astra, 23/10), em Chromium do Playwright contra `pagina_falsa.py`.
+"""r22 (página) — achado R3 (grave) da revisão externa da r13b (23/10), em Chromium do Playwright contra `pagina_falsa.py`.
 
 A ronda 13b verificava a cópia (conta, outra conta, geração, época, tranca) antes de desenhar a nota — mas só na 1.ª vez:
 `renderNotaCompleta()` deitava o verificador fora depois de o usar. Voltar à leitura pelo «Cancelar» do editor, ou o fim de

@@ -1,6 +1,6 @@
-"""r22 — achado R6 (menor) da revisão externa da r13b (Astra, 23/10): uma excepção no fio do arranque (`web._arranque`), fora dos
+"""r22 — achado R6 (menor) da revisão externa da r13b (23/10): uma excepção no fio do arranque (`web._arranque`), fora dos
 blocos protegidos, matava o arranque dos vigias com o HTTP vivo — sem sincronização periódica, sem refresco das notas retidas,
-sem Entrada. Reprodução do Astra: BASALT_VIGIA_SEGUNDOS=10s → ValueError → nenhum dos 4 fios arrancava. Agora o valor inválido
+sem Entrada. Reprodução da revisão: BASALT_VIGIA_SEGUNDOS=10s → ValueError → nenhum dos 4 fios arrancava. Agora o valor inválido
 avisa e fica nos 10 s; outra falha dá um ALERTA «arranque incompleto» e os vigias arrancam na mesma.
 
 Cada teste de comportamento falha no 15beb01 por asserção (a excepção do arranque é apanhada no teste); o controlo passa nos dois.

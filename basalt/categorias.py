@@ -141,7 +141,7 @@ def _itens_externos(pedacos):
     itens = {}
     for f, r, t, x in pedacos:
         base, cardinal, suf = r.partition("#")
-        # r22 (CHAVE_EXACTA_v1, achado R5 do Astra à r13b): uma nota partida começa no «#0» (como as do `basalt.sig`) — «repo#12» e
+        # r22 (CHAVE_EXACTA_v1, achado R5 da revisão externa à r13b): uma nota partida começa no «#0» (como as do `basalt.sig`) — «repo#12» e
         # «repo#13» com o mesmo título («Bug») são dois pedidos e ficam cada um com a sua chave (antes juntavam-se em «pedidos:repo»)
         partida = (cardinal and suf.isdigit() and len(titulos[(f, base)]) == 1 and len(refs[(f, base)]) > 1
                    and f"{base}#0" in refs[(f, base)])

@@ -586,7 +586,7 @@ class OAuth:
                 _avisar("revogacao_pendente", erro=e.__class__.__name__)      # sem a mensagem: pode trazer o caminho
 
     def toml_fechou(self) -> None:
-        """r22 (FECHADO_GERACAO_v1, achado R2 do Astra à r13b): o Autenticador chama isto (dentro do trinco dele) quando o basalt.toml
+        """r22 (FECHADO_GERACAO_v1, achado R2 da revisão externa à r13b): o Autenticador chama isto (dentro do trinco dele) quando o basalt.toml
         mudou e não carrega (a última conta apagada, um erro). A porta fecha, mas um pedido JÁ autenticado ainda criava a ligação
         (token pessoal, «Permitir») com a conta de antes — e, com a conta reposta igual, essa ligação valia. Sobe a geração: quem
         se autenticou antes do fecho não cria nada. Não revoga nada (fechar e reabrir igual não muda contas)."""
