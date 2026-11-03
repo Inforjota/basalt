@@ -2058,10 +2058,52 @@ def criar_servidor(cfg, host=None, porta=None):
     return srv
 
 
+def _segundos_vigia() -> int:
+    """r22 (ARRANQUE_INCOMPLETO_v1): BASALT_VIGIA_SEGUNDOS que não é um número inteiro ≥ 1 («10s») avisa e fica nos 10 de sempre —
+    antes dava ValueError no fio do arranque e nenhum vigia arrancava (o HTTP continuava a atender, sem sincronização)."""
+    bruto = os.environ.get("BASALT_VIGIA_SEGUNDOS", "10")
+    try:
+        if int(bruto) >= 1:
+            return int(bruto)
+    except ValueError:
+        pass
+    print(f"aviso: BASALT_VIGIA_SEGUNDOS={bruto[:20]!r} não é um número de segundos (inteiro, ≥ 1) — uso 10", file=sys.stderr,
+          flush=True)
+    return 10
+
+
 def _arranque(cfg, vigias):
     """a sincronização inicial e as notas retidas, depois os vigias (pela ordem de sempre). Ronda 13b: corre num fio, com o servidor
     já a atender — um [segredos] verificador lento prendia o arranque (um tempo limite por nota). Uma falha dele adia o resto do
-    arranque sem novas chamadas; até lá, excl() calcula na 1.ª vez que se pede e falha fechado (a cópia só tem notas verificadas)."""
+    arranque sem novas chamadas; até lá, excl() calcula na 1.ª vez que se pede e falha fechado (a cópia só tem notas verificadas).
+    r22 (ARRANQUE_INCOMPLETO_v1, achado R6 do Astra à r13b): uma excepção fora dos blocos protegidos já não impede os vigias de
+    arrancar — o que falhou dá um ALERTA «arranque incompleto» (stderr e [avisos] comando) e os vigias arrancam na mesma (a exclusão
+    como depois de um verificador falhado: repete cedo)."""
+    from . import duasvias
+
+    def incompleto(msg):
+        try:
+            duasvias.alerta(f"arranque incompleto: {msg}")
+        except Exception:                                   # o aviso nunca impede o resto do arranque
+            print(f"ALERTA: arranque incompleto: {msg}", file=sys.stderr, flush=True)
+    try:
+        falhou = _arranque_inicial(cfg, vigias)
+    except Exception as e:
+        falhou = True
+        incompleto(f"a sincronização/exclusão iniciais falharam ({_erro(e)[:200]}) — os vigias arrancam na mesma e repetem")
+    fios = [("vigia_copia", vigia_copia, (cfg, _segundos_vigia()))] if vigias else []
+    fios += [("vigia_exclusao", vigia_exclusao, (cfg, falhou)),      # r14: falhou → repete ao fim de 60 s
+             ("indexar_se_vazio", indexar_se_vazio, (cfg,)),
+             ("vigia_entrada", vigia_entrada, (cfg,))]                 # entrada automática (só com IA de chat)
+    for nome, alvo, args in fios:
+        try:
+            threading.Thread(target=alvo, args=args, daemon=True, name=f"basalt-{nome}").start()
+        except Exception as e:
+            incompleto(f"o {nome} não arrancou ({_erro(e)[:200]})")
+
+
+def _arranque_inicial(cfg, vigias) -> bool:
+    """o 1.º ciclo de sincronização e a lista das notas retidas de cada espaço; True = alguma falhou (a exclusão repete cedo)."""
     from . import duasvias, segredos
     with segredos.uma_falha_por_ciclo():
         if vigias:
@@ -2081,12 +2123,7 @@ def _arranque(cfg, vigias):
             except Exception as e:
                 falhou = True
                 print("exclusão inicial:", _erro(e)[:200], flush=True)
-    if vigias:
-        segundos = int(os.environ.get("BASALT_VIGIA_SEGUNDOS", "10"))
-        threading.Thread(target=vigia_copia, args=(cfg, segundos), daemon=True).start()
-    threading.Thread(target=vigia_exclusao, args=(cfg, falhou), daemon=True).start()   # r14: falhou → repete ao fim de 60 s
-    threading.Thread(target=indexar_se_vazio, args=(cfg,), daemon=True).start()
-    threading.Thread(target=vigia_entrada, args=(cfg,), daemon=True).start()          # entrada automática (só com IA de chat)
+    return falhou
 
 
 def servir(cfg, vigias=True, host=None, porta=None):
