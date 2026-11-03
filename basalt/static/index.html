@@ -4994,7 +4994,7 @@ async function montarNotasShell(main, alvoInicial){
     if(await verificar()) return;                      // ronda 13b: o último await antes de desenhar (a época persistente)
     nota.dono = donoVista;                             // ronda 10 (G1): a edição fica presa a esta conta
     if(conflito){
-      renderConflito(nota, conflito, centro, contexto, geracaoVista);
+      renderConflito(nota, conflito, centro, contexto, geracaoVista, verificar);   // r22 (VERIFICA_SEMPRE_v1): o «Juntar à mão» também
       return;
     }
     if(filaItem){
@@ -5078,7 +5078,7 @@ function criarAdaptadorTextarea(textarea){
 /* o conflito usa SEMPRE um par coerente (texto do servidor + hash desse texto). Com rede, é a versão que
    acabou de chegar do servidor (a que o utilizador vê); sem rede, a guardada no conflito. «Juntar à mão» não apaga o conflito
    antes de a gravação acabar; a proposta da IA (se houver) só se grava se o utilizador carregar nela. */
-function renderConflito(nota, conflito, centro, contexto, geracaoVista){
+function renderConflito(nota, conflito, centro, contexto, geracaoVista, verificar){
   var fresco = !OFFLINE_ESTADO.semRede && typeof nota.texto === "string" && !!nota.hash;
   var actualTexto = fresco ? nota.texto : (conflito.actual || "");
   var actualHash = fresco ? nota.hash : (conflito.hash_actual || "");
@@ -5178,17 +5178,22 @@ function renderConflito(nota, conflito, centro, contexto, geracaoVista){
       conflitoQuando: conflito.quando  // … e só se ainda for ESTE conflito (não um mais novo, de outro separador)
     };
     ABRIR_EM_EDICAO = nota.nome;
-    renderNotaCompleta(notaMesclada, centro, contexto);
+    renderNotaCompleta(notaMesclada, centro, contexto, verificar);   // r22 (VERIFICA_SEMPRE_v1)
   });
 }
 
 function renderNotaCompleta(nota, centro, contexto, verificar){
+  var retratoVista = (RETRATO_DE && RETRATO_DE.get(nota)) || retratoCopia();   // r22 (VERIFICA_SEMPRE_v1): a da pré-visualização
   async function renderVer(){
     var corpo = stripFrontmatter(nota.texto);
     await prepararMarkdown(corpo);
-    // ronda 13b (achado 3 da r13): a 1.ª vez que se desenha, a vista que a abriu volta a verificar a cópia (preparar o markdown
-    // espera pelos embeds, o KaTeX, o Mermaid) — mudou → não se desenha nada desta nota
-    if(verificar){ var v = verificar; verificar = null; if(await v()) return; }
+    // ronda 13b (achado 3 da r13): a vista que a abriu volta a verificar a cópia (preparar o markdown espera pelos embeds, o
+    // KaTeX, o Mermaid) — mudou → não se desenha nada desta nota. r22 (VERIFICA_SEMPRE_v1, achado R3 da revisão da r13b): TODAS
+    // as vezes que se desenha, não só a 1.ª — o «Cancelar» do editor e o fim de «Gravar» desenhavam a nota de A com a conta B
+    if(verificar && await verificar()){
+      if(ABRIR_EM_EDICAO === nota.nome) ABRIR_EM_EDICAO = null;   // r22: o «Juntar à mão» (ou a nota nova) de A não abre o editor na de B
+      return;
+    }
     var anotado = anotarEstrutura(renderMarkdown(corpo));
     var larguraTotal = lerBool("basalt-largura-total", false);
     centro.innerHTML =
@@ -5309,6 +5314,10 @@ function renderNotaCompleta(nota, centro, contexto, verificar){
     function atualizarPreview(texto){
       var corpo = stripFrontmatter(texto);
       prepararMarkdown(corpo).then(function(){
+        // r22 (VERIFICA_SEMPRE_v1, achado R3): a conta ou a cópia mudou enquanto se preparava (embeds) → não se desenha; o
+        // texto fica no editor (para copiar ou gravar, que já tratam da outra conta), a pré-visualização diz porquê
+        var mudou = copiaMudouDesde(retratoVista, null);
+        if(mudou){ preview.innerHTML = '<p class="dim-note">' + escapeHtml(erroVistaMudou(mudou).message) + '</p>'; return; }
         preview.innerHTML = renderMarkdown(corpo);
         processarMermaidEm(preview);
       });

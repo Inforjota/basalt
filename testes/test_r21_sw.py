@@ -11,7 +11,7 @@ pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="precisa do
 
 
 def test_versao_da_cache_e_v16_e_o_activate_tira_as_da_v15_mas_guarda_as_marcas_e_a_epoca():
-    assert VER == "basalt-v16", VER
+    assert int(VER.rsplit("v", 1)[1]) >= 16, VER                 # r22: v17 (o test_r22_sw.py confere a versão exacta)
     r = sw([], evento="activate", caches={"basalt-v15-app": ["/"], "basalt-v15-vendor": ["/static/vendor/x.js"],
                                           "basalt-v15-api-d-a": ["/api/notas"], "basaltcfg-epoca": ["/__epoca"],
                                           "basaltcfg-apagadas-d-a": ["/api/nota?nome=x"]})
