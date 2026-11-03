@@ -34,6 +34,9 @@ seguintes já estava resolvido na ronda 13c):
   o `tempo_limite` (3 tamanhos × 3 tentativas) e a reindexação podia levar horas. Agora, ao 2.º «sem resposta», a reindexação
   pára de pedir vectores nessa corrida: as notas que faltam ficam com o vector anterior e entram na próxima. Uma recusa por
   tamanho (HTTP 5xx) continua a tentar um texto mais curto.
+- **Ligações que não mandam nada:** uma ligação aberta sem pedido (ou com meio pedido) ficava a ocupar um fio do servidor para
+  sempre. Agora o servidor fecha-a ao fim de 60 s sem dados; um envio lento continua a passar (o prazo conta por cada pedaço
+  recebido, não pelo pedido inteiro).
 
 ### Login Google, tecto de espaço e da IA, «Terminar sessão» e exportar, ronda r21 (23/10/2026)
 

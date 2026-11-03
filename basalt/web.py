@@ -1468,6 +1468,10 @@ def ip_do_pedido(ip: str, xff: str | None, proxies=()) -> str:
 
 class H(BaseHTTPRequestHandler):
     server_version = "basalt"
+    # r22 (LIGACAO_MUDA_v1): sem isto, uma ligação que abre e não manda nada (ou manda meio pedido) prendia um fio para sempre —
+    # o ThreadingHTTPServer não deixa as outras à espera, mas os fios mudos somam-se. 60 s por operação no socket (não pelo pedido
+    # todo): chega para um envio lento no telemóvel; um keep-alive parado fecha-se e o browser volta a abrir.
+    timeout = 60
     sys_version = ""
     cfg = None                      # postos por criar_servidor() numa subclasse
     aut = None
