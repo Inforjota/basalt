@@ -34,6 +34,10 @@ seguintes já estava resolvido na ronda 13c):
   o `tempo_limite` (3 tamanhos × 3 tentativas) e a reindexação podia levar horas. Agora, ao 2.º «sem resposta», a reindexação
   pára de pedir vectores nessa corrida: as notas que faltam ficam com o vector anterior e entram na próxima. Uma recusa por
   tamanho (HTTP 5xx) continua a tentar um texto mais curto.
+- **Procurar com o fornecedor de embeddings calado:** a procura devia cair para as palavras, mas esperava 2 × `tempo_limite`
+  (240 s com os 120 s por omissão) e a página desistia antes, aos 60 s, sem resultados; o aviso «já tens uma nota assim»
+  prendia um fio do servidor o mesmo tempo. O vector da pergunta espera agora no máximo 20 s por tentativa (ou o
+  `tempo_limite`, se for menor); a indexação continua com o `tempo_limite`.
 - **Código de saída quando o índice fica a meio:** o cron e o timer correm `basalt indexar` e `basalt arrumar --auto`, que
   ignoravam a falha da reindexação — e, com o fornecedor de embeddings calado, a reindexação acabava com código 0. Uma noite
   como a de 24/10 passava como «tudo bem». Agora os dois saem com o código 3 e dizem porquê no stderr; o que se fez antes

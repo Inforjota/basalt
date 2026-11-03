@@ -62,15 +62,28 @@ def _normalizar(v):
     return array("f", [x / n for x in v] if n else v)
 
 
-def embed(texto, papel="document"):
+# EMB_PERGUNTA_CURTA_v1 (r22, adenda A2): o vector de uma PERGUNTA tem alguém à espera — a procura da página é morta aos 60 s
+# (web.motor) e o aviso «já tens uma nota assim» prende um fio do servidor. Com o tempo_limite de [ia] (120 s) e 2 tentativas
+# eram 240 s e a página nunca chegava às palavras. A pergunta espera no máximo isto por tentativa; o indexar continua com o
+# tempo_limite (corre de noite, sem ninguém à espera).
+TEMPO_PERGUNTA = 20
+
+
+def _tempo_pergunta():
+    t = getattr(getattr(ia(), "cfg", None), "tempo_limite", None)
+    return min(TEMPO_PERGUNTA, t) if isinstance(t, int) and t > 0 else TEMPO_PERGUNTA
+
+
+def embed(texto, papel="document", tempo=None):
     """Vector normalizado (array 'f'). O nomic-embed-text pede prefixo — sem ele os valores ficam todos altos e o disparate
     «parece» tudo (ver --autoteste do limiar). Tenta mais curto se o fornecedor recusar (HTTP 5xx); 3 falhas transitórias →
-    EmbErro (o indexador salta esse pedaço)."""
+    EmbErro (o indexador salta esse pedaço). `tempo`: segundos por tentativa (None = o tempo_limite de [ia])."""
     px, ult, mudo = _prefixo(papel), "", 0
+    kw = {"tempo": tempo} if tempo else {}
     for limite in (6000, 2000, 600):
         for _ in range(3):
             try:
-                return _normalizar(ia().embeddings([px + texto[:limite]])[0])
+                return _normalizar(ia().embeddings([px + texto[:limite]], **kw)[0])
             except IAIndisponivel as e:
                 ult = str(e)[:80]
                 m = re.search(r"HTTP (\d{3})", str(e))
@@ -374,7 +387,7 @@ def _pontuar(termo, linhas):
     para as palavras em vez de falhar (antes era erro)."""
     if _com_embeddings():
         try:
-            q = embed(termo, "query")
+            q = embed(termo, "query", tempo=_tempo_pergunta())   # EMB_PERGUNTA_CURTA_v1
         except EmbErro as e:
             print(f"  aviso: sem embeddings agora ({e}) — procuro por palavras", file=sys.stderr)
             q = None

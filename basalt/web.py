@@ -1050,7 +1050,8 @@ def parecidas_texto(nome, texto):
         if sig._com_embeddings():
             desc = (re.search(r"^description:\s*(.*)$", texto, re.M) or [None, ""])[1]
             corpo = re.sub(r"^---\n.*?\n---\n", "", texto[:8000], count=1, flags=re.S)
-            vs = [sig.embed((f"[{nome}] {desc}\n" if i == 0 else "") + b) for i, b in enumerate(sig._partir(corpo)[:4])]
+            tempo = sig._tempo_pergunta()      # EMB_PERGUNTA_CURTA_v1: há um fio do servidor à espera
+            vs = [sig.embed((f"[{nome}] {desc}\n" if i == 0 else "") + b, tempo=tempo) for i, b in enumerate(sig._partir(corpo)[:4])]
             v = arr._normal([sum(x) / len(vs) for x in zip(*vs)]) if vs else None
             if v is None:
                 return {"parecidas": []}
