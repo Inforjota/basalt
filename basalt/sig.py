@@ -74,13 +74,30 @@ def _tempo_pergunta():
     return min(TEMPO_PERGUNTA, t) if isinstance(t, int) and t > 0 else TEMPO_PERGUNTA
 
 
+CURTO = 600     # o texto mais curto que o embed tenta
+
+
+def _curto_ou_mudo(px, texto, kw, ult):
+    """EMB_ENCURTA_SE_LENTO_v1 (r22, achado m4/A1-b): 2 tempos esgotados na INDEXAÇÃO podem ser do tamanho (CPU lento, 6000
+    caracteres a passar do tempo_limite) — antes do EMB_SEM_RESPOSTA_v1 acabava por tentar mais curto e passava; sem isto a
+    corrida parava todas as noites no mesmo pedaço. Uma tentativa com o texto curto; calado outra vez → mudo."""
+    try:
+        return _normalizar(ia().embeddings([px + texto[:CURTO]], **kw)[0])
+    except IASemResposta as e:
+        raise EmbSemResposta(str(e)[:80] or ult)
+    except IAIndisponivel as e:
+        raise EmbErro(str(e)[:80] or ult)      # respondeu (não está mudo), mas recusou: salta só este pedaço
+
+
 def embed(texto, papel="document", tempo=None):
     """Vector normalizado (array 'f'). O nomic-embed-text pede prefixo — sem ele os valores ficam todos altos e o disparate
     «parece» tudo (ver --autoteste do limiar). Tenta mais curto se o fornecedor recusar (HTTP 5xx); 3 falhas transitórias →
-    EmbErro (o indexador salta esse pedaço). `tempo`: segundos por tentativa (None = o tempo_limite de [ia])."""
+    EmbErro (o indexador salta esse pedaço). `tempo`: segundos por tentativa (None = o tempo_limite de [ia]). Sem resposta 2× →
+    EmbSemResposta; na indexação (`tempo` None) antes disso uma tentativa com o texto curto (EMB_ENCURTA_SE_LENTO_v1) — com
+    `tempo` (alguém à espera) o tecto fica nas 2 tentativas."""
     px, ult, mudo = _prefixo(papel), "", 0
     kw = {"tempo": tempo} if tempo else {}
-    for limite in (6000, 2000, 600):
+    for limite in (6000, 2000, CURTO):
         for _ in range(3):
             try:
                 return _normalizar(ia().embeddings([px + texto[:limite]], **kw)[0])
@@ -90,6 +107,8 @@ def embed(texto, papel="document", tempo=None):
                 # pedaço parava a corrida inteira nesse pedaço
                 ult = str(e)[:80]; mudo += 1
                 if mudo >= 2:
+                    if tempo is None and len(texto[:limite]) > CURTO:
+                        return _curto_ou_mudo(px, texto, kw, ult)
                     raise EmbSemResposta(ult)
             except IAIndisponivel as e:
                 ult = str(e)[:80]

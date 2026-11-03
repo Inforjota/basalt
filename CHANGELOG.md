@@ -36,6 +36,8 @@ seguintes já estava resolvido na ronda 13c):
   pára de pedir vectores nessa corrida: as notas que faltam ficam com o vector anterior e entram na próxima. Uma recusa por
   tamanho (HTTP 5xx) continua a tentar um texto mais curto. Só conta como «sem resposta» o silêncio (tempo esgotado ou ligação sem
   código HTTP): uma resposta errada («não devolveu embedding», «não é JSON») salta só essa nota, não pára a corrida.
+  E um tempo esgotado que é do tamanho (máquina lenta com um texto comprido) tenta uma vez o texto curto antes de dar o
+  fornecedor por calado — senão a reindexação parava todas as noites na mesma nota.
 - **Procurar com o fornecedor de embeddings calado:** a procura devia cair para as palavras, mas esperava 2 × `tempo_limite`
   (240 s com os 120 s por omissão) e a página desistia antes, aos 60 s, sem resultados; o aviso «já tens uma nota assim»
   prendia um fio do servidor o mesmo tempo. O vector da pergunta espera agora no máximo 20 s por tentativa (ou o

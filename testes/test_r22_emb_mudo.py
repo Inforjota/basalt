@@ -5,6 +5,12 @@ também «o Ollama não devolveu embedding» e «não é JSON», que são respos
 inteira nesse pedaço (os seguintes ficavam sem vector). Agora só conta o silêncio: tempo esgotado ou ligação sem código HTTP
 (`ia.IASemResposta`, lançado pelo `_post_json`).
 
+EMB_ENCURTA_SE_LENTO_v1 (A1-b): antes do EMB_SEM_RESPOSTA_v1, um tempo esgotado por causa do TAMANHO (CPU lento, 6000
+caracteres a passar do `tempo_limite`) acabava por tentar um texto mais curto, que passava. Desde então parava ao 2.º tempo
+esgotado sem encurtar — e, como a ordem das fontes é sempre a mesma, todas as noites no mesmo pedaço. Agora, na indexação, antes
+de dar o fornecedor por mudo tenta uma vez com o texto curto (600). Na pergunta (alguém à espera: `tempo` dado) o tecto continua
+a ser 2 tentativas (EMB_PERGUNTA_CURTA_v1).
+
 Contra um fornecedor HTTP real (nada de fakes na classificação do erro): os testes de comportamento falham no 0e88faf; os
 controlos passam nos dois."""
 import json
@@ -106,3 +112,40 @@ def test_controlo_ligacao_recusada_e_silencio():
             sig.embed("um texto qualquer")
     finally:
         ia.definir(None)
+
+
+# ───────────────────────── A1-b: tempo esgotado por tamanho → tenta o texto curto antes de dar «mudo» ─────────────────────────
+LONGO = "Os barcos do porto precisam de manutenção antes de Outubro. " * 50      # ~3000 caracteres
+
+
+def test_tempo_esgotado_pelo_tamanho_tenta_o_texto_curto(forn):
+    forn.lento_acima_de, forn.lento_s = 700, 2           # textos compridos passam do tempo_limite (1 s); curtos respondem já
+    v = sig.embed(LONGO)
+    assert v and len(v) == 3
+    assert forn.pedidos[-1] <= 700 and len(forn.pedidos) == 3, f"pedidos (comprimentos): {forn.pedidos}"
+
+
+def test_nota_comprida_lenta_nao_para_a_corrida_todas_as_noites(memoria, forn):
+    forn.lento_acima_de, forn.lento_s = 700, 2
+    nota(memoria, "a-comprida", "Os barcos do porto precisam de manutenção antes de Outubro, com velas e cordas novas. " * 10)
+    nota(memoria, "b-curta", "As velas novas chegam amanhã.")
+    mudo = sig.indexar()
+    vecs = dict(sig.db().execute("SELECT ref, vec FROM pedaco"))
+    assert vecs.get("a-comprida#0") and vecs.get("b-curta#0"), f"ficou sem vector ({mudo!r}): {sorted(k for k, v in vecs.items() if v)}"
+    assert mudo is None
+
+
+def test_controlo_pergunta_lenta_continua_a_2_tentativas(forn):
+    """controlo (EMB_PERGUNTA_CURTA_v1): com alguém à espera, o texto curto extra não entra — 2 × tempo é o tecto."""
+    forn.lento_acima_de, forn.lento_s = 700, 2
+    with pytest.raises(sig.EmbSemResposta):
+        sig.embed(LONGO, "query", tempo=1)
+    assert len(forn.pedidos) == 2, f"pedidos (comprimentos): {forn.pedidos}"
+
+
+def test_controlo_fornecedor_lento_em_tudo_continua_mudo(forn):
+    """controlo: lento também no texto curto → mudo (3 tentativas, não 9)."""
+    forn.lento_acima_de, forn.lento_s = 0, 2
+    with pytest.raises(sig.EmbSemResposta):
+        sig.embed(LONGO)
+    assert len(forn.pedidos) <= 3, f"pedidos (comprimentos): {forn.pedidos}"
