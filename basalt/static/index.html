@@ -5311,12 +5311,16 @@ function renderNotaCompleta(nota, centro, contexto, verificar){
       if(EDITOR_ACTIVO === editorApi) EDITOR_ACTIVO = null;
     }
 
+    var previewVez = 0;
     function atualizarPreview(texto){
-      var corpo = stripFrontmatter(texto);
-      prepararMarkdown(corpo).then(function(){
+      var corpo = stripFrontmatter(texto), vez = ++previewVez;
+      prepararMarkdown(corpo).then(async function(){
         // r22 (VERIFICA_SEMPRE_v1, achado R3): a conta ou a cópia mudou enquanto se preparava (embeds) → não se desenha; o
-        // texto fica no editor (para copiar ou gravar, que já tratam da outra conta), a pré-visualização diz porquê
-        var mudou = copiaMudouDesde(retratoVista, null);
+        // texto fica no editor (para copiar ou gravar, que já tratam da outra conta), a pré-visualização diz porquê.
+        // r22 (PREVIEW_EPOCA_v1, achado m1 da auditoria de 24/10): também a época PERSISTENTE (outro separador que trocou de
+        // conta antes de chegar o «storage» ou o aviso do service worker) — leituraMudou() lê-a como último await
+        var mudou = await leituraMudou(retratoVista, [nota]);
+        if(vez !== previewVez) return;          // entretanto pediu-se outra (o await pode trocar a ordem): desenha a mais nova
         if(mudou){ preview.innerHTML = '<p class="dim-note">' + escapeHtml(erroVistaMudou(mudou).message) + '</p>'; return; }
         preview.innerHTML = renderMarkdown(corpo);
         processarMermaidEm(preview);

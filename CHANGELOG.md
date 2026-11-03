@@ -6,8 +6,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-PT/1.1.0/); versões [
 
 ### Ligações das IAs com a conta a mudar, a nota que se redesenha, categorias e arranque, ronda r22 (24/10/2026)
 
-> **Depois de actualizar:** a página mudou — o service worker passa a `basalt-v17` (a cache `basalt-v16` sai sozinha na
-> primeira visita). Nada mais a fazer.
+> **Depois de actualizar:** a página mudou — o service worker passa a `basalt-v18` (as caches `basalt-v16`/`basalt-v17` saem
+> sozinhas na primeira visita). Nada mais a fazer.
 
 Achados da revisão externa à r13b que ainda se aplicavam (o da nota que fazia o verificador de segredos falhar e prendia as
 seguintes já estava resolvido na ronda 13c):
@@ -21,7 +21,8 @@ seguintes já estava resolvido na ronda 13c):
 - **A nota de uma conta depois de entrar outra (ou de a cópia trancar):** o «Cancelar» do editor, o fim de «Gravar» e o «Juntar
   à mão» de um conflito voltavam a desenhar a nota sem verificar a cópia — só a 1.ª vez era verificada. Agora todas as vezes; a
   pré-visualização do editor também não se desenha se a cópia mudou enquanto preparava as notas embutidas (diz porquê; o texto
-  fica no editor).
+  fica no editor). Também quando a troca de conta noutro separador só se vê ainda na época guardada (antes do aviso
+  do browser): a pré-visualização lê-a antes de se desenhar.
 - **Categorias das fontes externas:** a chave sem «#» gravada para um «repo#12» sozinho tapava o «repo#13» quando o #12 saía do
   índice; e dois pedidos com o mesmo título juntavam-se como se fossem uma nota partida. A chave antiga só vale agora para o mesmo
   texto, e uma nota partida tem de começar no «#0».
