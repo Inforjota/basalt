@@ -194,9 +194,15 @@ def test_chave_sem_cardinal_de_antes_nao_tapa_as_refs_novas(com_notas):
 
 
 def test_controlo_chave_sem_cardinal_de_antes_vale_para_o_item_unico(com_notas):
+    """r22: a chave de antes traz o hash que a ronda 13 gravou com ela — sha1 do texto do item («a»); só vale para ESTE item (ver
+    test_r22_categorias: a do «repo#12» que saiu do índice já não tapa o «repo#13»). Antes o controlo usava o hash «x»."""
+    import hashlib
     from basalt import categorias
     _por_no_indice(com_notas.esp, [("pedidos", "repo#12", "Pedido 12", "a")])
     _cats(com_notas, {"nota_viva": ["Trabalho"], "pedidos:repo": ["Pessoal"]})
+    d = _cats_lidas(com_notas)
+    d["pedidos:repo"]["hash"] = hashlib.sha1(b"a").hexdigest()
+    com_notas.esp.categorias.write_text(json.dumps(d), encoding="utf-8")
     categorias.main()
     d = _cats_lidas(com_notas)
     assert d["pedidos:repo"]["cats"] == ["Pessoal"] and "pedidos:repo#12" not in d, sorted(d)

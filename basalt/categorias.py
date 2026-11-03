@@ -141,7 +141,10 @@ def _itens_externos(pedacos):
     itens = {}
     for f, r, t, x in pedacos:
         base, cardinal, suf = r.partition("#")
-        partida = cardinal and suf.isdigit() and len(titulos[(f, base)]) == 1 and len(refs[(f, base)]) > 1
+        # r22 (CHAVE_EXACTA_v1, achado R5 do Astra à r13b): uma nota partida começa no «#0» (como as do `basalt.sig`) — «repo#12» e
+        # «repo#13» com o mesmo título («Bug») são dois pedidos e ficam cada um com a sua chave (antes juntavam-se em «pedidos:repo»)
+        partida = (cardinal and suf.isdigit() and len(titulos[(f, base)]) == 1 and len(refs[(f, base)]) > 1
+                   and f"{base}#0" in refs[(f, base)])
         k = _chave(f, base if partida else r)
         itens.setdefault(k, (t, []))[1].append(x)
     return itens
@@ -195,11 +198,14 @@ def _categorizar_externas(pedacos, ja: dict) -> dict:
         # tapava o «repo#13» para sempre; e uma nota partida já está feita se o seu pedaço único de antes tinha a chave exacta.
         # ronda 13c: só se é mesmo uma nota partida — uma ref REAL sem «#» («repo», a página, com o seu título) tem a sua própria
         # chave em por_base e não fica feita pela do «repo#12» que chegou antes (ficava sem categoria para sempre)
+        # r22 (CHAVE_EXACTA_v1, achado R5): a chave sem «#» de antes só vale se for DESTE item (o mesmo texto: o hash que se gravou
+        # com ela) — a do «repo#12» que já saiu do índice tapava o «repo#13» que ficou sozinho, e ele nunca ganhava categoria
         base = k.split("#")[0]
-        if k in ja or (base in ja and por_base.get(base) == {k}) or (
+        corpo = "\n".join(trechos)
+        h = hashlib.sha1(corpo.encode()).hexdigest()
+        if k in ja or (base in ja and por_base.get(base) == {k} and isinstance(ja[base], dict) and ja[base].get("hash") == h) or (
                 "#" not in k and k not in por_base.get(k, ()) and any(x in ja for x in por_base.get(k, ()))):
             continue
-        corpo = "\n".join(trechos)
         if tem_segredo_texto(k) or tem_segredo_texto(titulo) or tem_segredo_texto(corpo):
             continue
         if ia().chat_activo:
@@ -210,7 +216,7 @@ def _categorizar_externas(pedacos, ja: dict) -> dict:
         m = pelo_modelo(f"Nome: {titulo or nome}\nFonte: {k.split(':', 1)[0]}\n\n{corpo[:700]}")
         r = pelo_nome(nome, "")
         cats = validar((m[:1] + r + m[1:]) if m else r) or ["Diversos"]
-        novo[k] = {"cats": cats, "hash": hashlib.sha1(corpo.encode()).hexdigest()}
+        novo[k] = {"cats": cats, "hash": h}
     return novo
 
 
