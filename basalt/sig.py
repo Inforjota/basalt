@@ -27,7 +27,7 @@ except ImportError:
 from . import caminhos, config, retidas
 from . import entrada as entrada_mod      # «entrada» aqui é o comando do CLI
 from .config import Via
-from .ia import IA, IAIndisponivel, actual as ia, definir as definir_ia   # noqa: F401  (IA, definir_ia: para quem importa o sig)
+from .ia import IA, IAIndisponivel, IASemResposta, actual as ia, definir as definir_ia   # noqa: F401  (IA, definir_ia: para quem importa o sig)
 from .lexical import IndiceLexical
 from .segredos import SegredoEmClaro, retidos, tem_segredo_nota, tem_segredo_texto
 
@@ -84,6 +84,13 @@ def embed(texto, papel="document", tempo=None):
         for _ in range(3):
             try:
                 return _normalizar(ia().embeddings([px + texto[:limite]], **kw)[0])
+            except IASemResposta as e:
+                # EMB_SEM_RESPOSTA_v1: sem resposta 2× → desisto já (não encurto: não é o tamanho). EMB_MUDO_SO_SILENCIO_v1:
+                # só conta o silêncio (tempo esgotado / sem ligação) — um «não é JSON» ou «não devolveu embedding» de um só
+                # pedaço parava a corrida inteira nesse pedaço
+                ult = str(e)[:80]; mudo += 1
+                if mudo >= 2:
+                    raise EmbSemResposta(ult)
             except IAIndisponivel as e:
                 ult = str(e)[:80]
                 m = re.search(r"HTTP (\d{3})", str(e))
@@ -91,9 +98,7 @@ def embed(texto, papel="document", tempo=None):
                     break            # pedaço recusado por este tamanho → tenta mais curto
                 if m:
                     raise EmbErro(ult)
-                mudo += 1            # EMB_SEM_RESPOSTA_v1: sem resposta 2× → desisto já (não encurto: não é o tamanho)
-                if mudo >= 2:
-                    raise EmbSemResposta(ult)
+                # outro erro sem código (respondeu, mas mal): como antes da r22 — outra vez, e depois mais curto
     raise EmbErro(ult)
 
 

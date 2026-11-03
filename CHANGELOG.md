@@ -34,7 +34,8 @@ seguintes já estava resolvido na ronda 13c):
 - **Fornecedor de embeddings que não responde:** com o Ollama ocupado por outro trabalho, cada nota mudada esperava até 9 vezes
   o `tempo_limite` (3 tamanhos × 3 tentativas) e a reindexação podia levar horas. Agora, ao 2.º «sem resposta», a reindexação
   pára de pedir vectores nessa corrida: as notas que faltam ficam com o vector anterior e entram na próxima. Uma recusa por
-  tamanho (HTTP 5xx) continua a tentar um texto mais curto.
+  tamanho (HTTP 5xx) continua a tentar um texto mais curto. Só conta como «sem resposta» o silêncio (tempo esgotado ou ligação sem
+  código HTTP): uma resposta errada («não devolveu embedding», «não é JSON») salta só essa nota, não pára a corrida.
 - **Procurar com o fornecedor de embeddings calado:** a procura devia cair para as palavras, mas esperava 2 × `tempo_limite`
   (240 s com os 120 s por omissão) e a página desistia antes, aos 60 s, sem resultados; o aviso «já tens uma nota assim»
   prendia um fio do servidor o mesmo tempo. O vector da pergunta espera agora no máximo 20 s por tentativa (ou o

@@ -25,6 +25,11 @@ class IAIndisponivel(RuntimeError):
     """não há fornecedor configurado, ou ele não respondeu — quem chama decide o que fazer sem IA."""
 
 
+class IASemResposta(IAIndisponivel):
+    """EMB_MUDO_SO_SILENCIO_v1 (r22): o fornecedor NÃO respondeu — tempo esgotado ou ligação recusada/cortada, sem código HTTP.
+    Os outros IAIndisponivel (HTTP, «não é JSON», «não devolveu embedding», sem chave…) são respostas: o fornecedor está lá."""
+
+
 def sem_cerca(txt: str) -> str:
     return re.sub(r"^```(?:markdown|md|json)?\n|\n```$", "", (txt or "").strip())
 
@@ -103,7 +108,7 @@ def _post_json(url: str, corpo: dict, cabecalhos: dict, tempo: int) -> dict:
                                            f"com o pedido). Põe em [ia] url o endereço final.", cabecalhos))
         raise IAIndisponivel(_mascarar(f"{origem}: HTTP {e.code} {_mensagem_http(e.code, e.read(2000))}".rstrip(), cabecalhos))
     except (urllib.error.URLError, TimeoutError, OSError) as e:
-        raise IAIndisponivel(_mascarar(f"sem resposta de {url}: {getattr(e, 'reason', e)}", cabecalhos))
+        raise IASemResposta(_mascarar(f"sem resposta de {url}: {getattr(e, 'reason', e)}", cabecalhos))
     except ValueError:
         raise IAIndisponivel(f"{url}: resposta não é JSON")
 

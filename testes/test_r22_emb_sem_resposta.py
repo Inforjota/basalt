@@ -5,7 +5,7 @@ versão anterior, nada é apagado). Um HTTP 5xx continua a encurtar o texto (é 
 import pytest
 
 from basalt import ia, sig
-from basalt.ia import IAIndisponivel
+from basalt.ia import IAIndisponivel, IASemResposta
 from conftest import FM
 
 
@@ -19,7 +19,8 @@ class IAMuda:
 
     def embeddings(self, textos, tempo=None):
         self.pedidos += 1
-        raise IAIndisponivel(self.erro)
+        # «sem resposta» é o que o _post_json lança com tempo esgotado / sem ligação (IASemResposta); o resto é IAIndisponivel
+        raise (IASemResposta if self.erro.startswith("sem resposta") else IAIndisponivel)(self.erro)
 
 
 class IABoa(IAMuda):
