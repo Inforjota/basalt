@@ -309,14 +309,33 @@ def _correr():
     caminhos.escrever_atomico(dec_f, json.dumps(decididos, ensure_ascii=False, indent=1).encode("utf-8"))
     caminhos.escrever_atomico(Path(ESTADO) / "ultimo.json",
                               json.dumps({"data": HOJE, "feitos": feitos, "duvidas": duvidas}, ensure_ascii=False, indent=1).encode("utf-8"))
-    if any(f.get("commit") for f in feitos):       # reindexar: tirar do índice o que se uniu/arquivou
-        subprocess.run([sys.executable, "-m", "basalt.sig", "indexar"], capture_output=True, timeout=1800, cwd="/tmp",
-                       env=config.ambiente_filho())
+    aviso = _reindexar() if any(f.get("commit") for f in feitos) else ""   # tirar do índice o que se uniu/arquivou
     if feitos or duvidas:
         conta = {k: sum(1 for f in feitos if f["acao"] == k and f.get("commit")) for k in ("unir", "arquivar", "ligar")}
         # PORTE: antes avisava por um alerta externo; agora é só o resumo no stdout (quem corre a tarefa decide para onde vai)
         print(f"Basalt arrumou a memória: {conta['unir']} unidas, {conta['arquivar']} arquivadas, {conta['ligar']} ligadas"
-              + (f"; {len(duvidas)} caso(s) para decidir" if duvidas else "") + ". Desfazer: na página do Basalt → Arrumar.")
+              + (f"; {len(duvidas)} caso(s) para decidir" if duvidas else "") + ". Desfazer: na página do Basalt → Arrumar."
+              + (f" {aviso}" if aviso else ""))
+
+
+def _reindexar():
+    """r22 (REINDEX_FALHA_v1): uma reindexação que não acaba em 1800 s rebentava com TimeoutExpired ANTES do resumo (o que se
+    uniu/arquivou nessa noite ficava por dizer) e uma que saía com erro passava calada. Agora avisa no stderr e devolve a frase
+    para o resumo, que sai na mesma; as mudanças já estão gravadas e a próxima indexação apanha-as."""
+    try:
+        r = subprocess.run([sys.executable, "-m", "basalt.sig", "indexar"], capture_output=True, timeout=1800, cwd="/tmp",
+                           env=config.ambiente_filho())
+    except subprocess.TimeoutExpired:
+        porque, fim = "não acabou em 1800 s", ""
+    except OSError as e:
+        porque, fim = f"não arrancou ({type(e).__name__})", ""
+    else:
+        if r.returncode == 0:
+            return ""
+        porque = f"saiu com o código {r.returncode}"
+        fim = ((r.stderr or b"").decode("utf-8", "replace").strip().splitlines() or [""])[-1][:300]
+    print(f"auto-arrumar: a reindexação {porque}" + (f": {fim}" if fim else ""), file=sys.stderr)
+    return f"Atenção: a reindexação {porque}; a pesquisa pode mostrar as notas de antes até à próxima indexação."
 
 
 if __name__ == "__main__":
