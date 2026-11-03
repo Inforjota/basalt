@@ -218,8 +218,10 @@ class IA:
             transitorio = isinstance(e, IASemResposta) or (getattr(e, "codigo", 0) or 0) >= 500 or getattr(e, "codigo", 0) == 429
             if r is None or not transitorio or r.cfg.seccao == self.cfg.seccao:
                 raise
-            try:                                   # a reserva usa o seu tempo_limite: o principal já gastou o dele
-                return r._chat_principal(prompt, sistema, json_, r.cfg.tempo_limite)
+            # a reserva espelha a regra do principal: o seu tempo_limite se o declarar, senão o do chamador
+            tr = r.cfg.tempo_limite if "tempo_limite" in r.cfg.proprios else tempo
+            try:
+                return r._chat_principal(prompt, sistema, json_, tr)
             except IAIndisponivel as e2:
                 raise IAIndisponivel(f"{e} · e a reserva ([ia.reserva] {r.cfg.fornecedor}) também falhou: {e2}") from e2
 
@@ -274,8 +276,11 @@ class IA:
                  "messages": [{"role": "user", "content": prompt + ("\nResponde APENAS com JSON válido." if json_ else "")}]}
         if sistema:
             corpo["system"] = sistema
-        r = _post_json((self.cfg.url or "https://api.anthropic.com").rstrip("/") + "/v1/messages", corpo,
-                       {"x-api-key": k, "anthropic-version": "2023-06-01"}, tempo)
+        base = (self.cfg.url or "https://api.anthropic.com").rstrip("/")
+        cab = {"x-api-key": k, "anthropic-version": "2023-06-01"}
+        if "api.anthropic.com" not in base:      # PONTE_PRAZO_v1: uma ponte/proxy desiste antes de nós (sem cascata que ninguém lê)
+            cab["X-Ponte-Prazo"] = str(max(5, int(tempo) - 5))
+        r = _post_json(base + "/v1/messages", corpo, cab, tempo)
         try:
             txt = "".join(b.get("text", "") for b in r["content"] if b.get("type") == "text")
         except (KeyError, TypeError, AttributeError):

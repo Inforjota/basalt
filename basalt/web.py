@@ -1151,6 +1151,8 @@ def ia(acao, texto, contexto="", conta="", cfg_srv=None):
                   + f"\n=== TEXTO ===\n{texto}")
         try:
             out = re.sub(r"^```(?:markdown|md)?\n|\n```$", "", cfg_ia.chat(prompt, tempo=180).strip())
+        except ia_mod.IARecusa:
+            return 502, {"erro": "A IA recusou responder a este pedido."}
         except ia_mod.IAIndisponivel:
             return 502, {"erro": "A IA demorou demasiado ou respondeu mal; tenta outra vez."}
         if not out:

@@ -137,9 +137,27 @@ def test_toml_reserva_le_se_e_nao_e_uma_tarefa(tmp_path, monkeypatch):
     ('fornecedor = "magia"\n', "fornecedor tem de ser"),
     ('fornecedor = "openai"\nurl = "http://x/v1"\nlimite = 3\n', "só se pode pôr"),
     ('fornecedor = "openai"\nurl = "http://x/v1"\ntempo_limite = 0\n', "tempo_limite"),
+    ('url = "http://x/v1"\nmodelo_chat = "qwen"\n', "falta o fornecedor"),
 ])
 def test_toml_reserva_invalida_e_recusada(tmp_path, monkeypatch, linhas, erro):
     p = toml(tmp_path, '[ia]\nfornecedor = "nenhum"\n[ia.reserva]\n' + linhas)
     monkeypatch.setenv("BASALT_CONFIG", str(p))
     with pytest.raises(ConfigInvalida, match=erro):
         config.carregar()
+
+
+def test_reserva_sem_tempo_proprio_usa_o_do_chamador(monkeypatch):
+    rede = Rede(IASemResposta("sem resposta"), OLLAMA_OK); monkeypatch.setattr(ia, "_post_json", rede)
+    sem_tempo = {k: v for k, v in RESERVA.items() if k != "tempo_limite"}
+    assert ia_ponte(monkeypatch, sem_tempo).chat("olá", tempo=45) == "resposta do ollama"
+    assert rede.pedidos[1][3] == 45
+
+
+def test_ponte_recebe_o_prazo_e_a_api_oficial_nao(monkeypatch):
+    """PONTE_PRAZO_v1: por uma ponte vai X-Ponte-Prazo = tempo - 5; à api.anthropic.com não vai."""
+    rede = Rede(MSG_OK, MSG_OK); monkeypatch.setattr(ia, "_post_json", rede)
+    ia_ponte(monkeypatch).chat("olá", tempo=90)
+    assert rede.pedidos[0][2]["X-Ponte-Prazo"] == "85"
+    monkeypatch.setenv("CHAVE_PONTE_TESTE", "x")
+    IA(IAConfig(fornecedor="anthropic", url="https://api.anthropic.com", chave_env="CHAVE_PONTE_TESTE")).chat("olá", tempo=90)
+    assert "X-Ponte-Prazo" not in rede.pedidos[1][2]

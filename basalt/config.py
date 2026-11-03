@@ -306,6 +306,8 @@ class Config:
                 raise ConfigInvalida(f"[ia.reserva] {k} tem de ser texto entre aspas")
         if "tempo_limite" in r and (isinstance(r["tempo_limite"], bool) or not isinstance(r["tempo_limite"], int) or r["tempo_limite"] <= 0):
             raise ConfigInvalida(f"[ia.reserva] tempo_limite tem de ser um número inteiro de segundos, não {r['tempo_limite']!r}")
+        if r and "fornecedor" not in r:
+            raise ConfigInvalida("[ia.reserva] falta o fornecedor (sem ele a reserva ficava desligada sem aviso)")
         if r and r.get("fornecedor", "nenhum") not in FORNECEDORES:
             raise ConfigInvalida(f"[ia.reserva] fornecedor tem de ser um de {FORNECEDORES}, não {r.get('fornecedor')!r}")
         if r.get("fornecedor") == "openai" and not r.get("url"):
