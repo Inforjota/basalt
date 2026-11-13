@@ -311,7 +311,9 @@ class IA:
         except FileNotFoundError:
             raise IAIndisponivel("o comando `claude` não está instalado nesta máquina")
         except subprocess.TimeoutExpired:
-            raise IAIndisponivel(f"o `claude` não respondeu em {tempo} s")
+            # auditoria 12/11/2026: «não respondeu» é silêncio, como o «sem resposta» da ponte — vai à [ia.reserva]
+            # (o CHANGELOG r23 promete-o para «[ia] ou uma tarefa»; no 104 [ia.unir]/[ia.arrumar] são claude-cli)
+            raise IASemResposta(f"o `claude` não respondeu em {tempo} s")
         try:
             d = json.loads(r.stdout or "{}")
         except ValueError:
